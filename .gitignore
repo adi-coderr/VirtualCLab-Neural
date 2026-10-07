@@ -75,7 +75,7 @@ ChemRxn/
 ChemRxn
 
 # Neural ML Model Weights & Checkpoints
-virtual_chem_lab_model/
+# virtual_chem_lab_model/
 *.pt
 *.pth
 *.bin
