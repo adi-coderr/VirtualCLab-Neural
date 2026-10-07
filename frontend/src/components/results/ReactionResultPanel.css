@@ -1,0 +1,989 @@
+.reaction-result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  height: auto;
+  min-height: 100%;
+  padding-bottom: var(--space-6);
+}
+
+.reaction-result__headline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.reaction-result__type {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: capitalize;
+  color: var(--graphite-500);
+  background: var(--paper-100);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--paper-200);
+}
+
+/* AI Dynamic Prediction Banner */
+.reaction-result__ai-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-3) var(--space-4);
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.07) 0%, rgba(99, 102, 241, 0.08) 100%);
+  border: 1px solid rgba(124, 58, 237, 0.25);
+  border-radius: var(--radius-md);
+  color: #5b21b6;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+.reaction-result__ai-badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #7c3aed;
+}
+
+.reaction-result__ai-text {
+  margin: 0;
+  color: var(--graphite-700);
+}
+
+.reaction-result__ai-text strong {
+  color: #6d28d9;
+}
+
+/* Equation Card: Combined Balanced + Net Ionic */
+.reaction-result__equation-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--paper-0);
+  border: 1px solid var(--paper-300);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+.reaction-result__main-equation {
+  padding-bottom: 2px;
+}
+
+.reaction-result__no-equation {
+  font-size: var(--text-md);
+  color: var(--graphite-500);
+  font-style: italic;
+  margin: 0;
+}
+
+.reaction-result__ionic {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: var(--space-3);
+  border-top: 1px dashed var(--paper-200);
+}
+
+.reaction-result__ionic-label {
+  align-self: flex-start;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--azure-700);
+  background: rgba(0, 119, 190, 0.08);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.reaction-result__ionic-display {
+  font-size: var(--text-sm);
+}
+
+/* Explanation Box */
+.reaction-result__explanation-box {
+  padding: var(--space-3) var(--space-4);
+  background: var(--paper-50);
+  border: 1px solid var(--paper-200);
+  border-radius: var(--radius-md);
+}
+
+.reaction-result__explanation {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--ink-900);
+  line-height: 1.65;
+  letter-spacing: 0.01em;
+}
+
+/* Warnings */
+.reaction-result__warnings-card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: var(--radius-md);
+  color: #92400e;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+.reaction-result__warnings-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.reaction-result__warnings-list {
+  margin: 0;
+  padding-left: var(--space-3);
+}
+
+/* Calorimetry Card */
+.reaction-result__thermo-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.reaction-result__thermo-card--cold {
+  background: linear-gradient(135deg, rgba(43, 114, 186, 0.08) 0%, rgba(70, 150, 236, 0.12) 100%);
+  border: 1px solid rgba(43, 114, 186, 0.3);
+  color: #1a4f80;
+}
+
+.reaction-result__thermo-card--warm {
+  background: linear-gradient(135deg, rgba(224, 86, 36, 0.08) 0%, rgba(245, 120, 70, 0.12) 100%);
+  border: 1px solid rgba(224, 86, 36, 0.3);
+  color: #a3320c;
+}
+
+.reaction-result__thermo-card--neutral {
+  background: var(--paper-100);
+  border: var(--border-hairline);
+  color: var(--ink-900);
+}
+
+.reaction-result__thermo-icon {
+  font-size: 1.5rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.reaction-result__thermo-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.reaction-result__thermo-title {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.reaction-result__thermo-details {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--graphite-600);
+}
+
+.reaction-result__thermo-arrow {
+  color: var(--graphite-400);
+}
+
+.reaction-result__thermo-sep {
+  color: var(--graphite-300);
+}
+
+/* Species Picker */
+.reaction-result__species-picker-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.reaction-result__species-picker-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--graphite-500);
+}
+
+.reaction-result__species-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.reaction-result__species-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--paper-300);
+  border-radius: var(--radius-md);
+  padding: 4px 10px;
+  background: var(--paper-0);
+  font-size: var(--text-xs);
+  color: var(--graphite-700);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.reaction-result__species-chip:hover {
+  background: var(--paper-100);
+  border-color: var(--azure-400);
+}
+
+.reaction-result__species-chip.is-selected {
+  border-color: var(--azure-600);
+  background: rgba(0, 119, 190, 0.08);
+  color: var(--azure-800);
+  font-weight: 600;
+}
+
+.reaction-result__species-chip-name {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+/* Down Part: Result Tabs Redesign */
+.reaction-result__bottom-tabs {
+  margin-top: var(--space-2);
+}
+
+.reaction-result__tabs.tabs {
+  height: auto;
+  min-height: 0;
+}
+
+.reaction-result__tabs .tabs__list {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--paper-100);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--paper-200);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.reaction-result__tabs .tabs__list::-webkit-scrollbar {
+  display: none;
+}
+
+.reaction-result__tabs .tabs__tab {
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  border-bottom: none;
+  color: var(--graphite-600);
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.reaction-result__tabs .tabs__tab:hover {
+  color: var(--graphite-900);
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.reaction-result__tabs .tabs__tab--active {
+  background: var(--paper-0);
+  color: var(--azure-700);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  font-weight: 700;
+}
+
+.reaction-result__tabs .tabs__panel {
+  flex: none;
+  overflow: visible;
+  padding: var(--space-3) 0 0 0;
+  height: auto;
+  min-height: 120px;
+}
+
+.reaction-result__no-stoich,
+.reaction-result__placeholder {
+  font-size: var(--text-xs);
+  color: var(--graphite-400);
+  font-style: italic;
+  padding: var(--space-4) var(--space-2);
+  text-align: center;
+}
+
+/* Quantities Table */
+.quantities-table-wrapper {
+  overflow-x: auto;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--paper-200);
+  background: var(--paper-0);
+}
+
+.quantities-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.quantities-table th {
+  text-align: left;
+  color: var(--graphite-500);
+  font-weight: 600;
+  padding: 6px 8px;
+  background: var(--paper-50);
+  border-bottom: 1px solid var(--paper-200);
+  white-space: nowrap;
+}
+
+.quantities-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--paper-100);
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+}
+
+.quantities-table__limiting {
+  background: #fffbeb;
+}
+
+/* AI Key prompt */
+.reaction-result__ai-key-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.06) 0%, rgba(99, 102, 241, 0.08) 100%);
+  border: 1px solid rgba(124, 58, 237, 0.25);
+  border-radius: var(--radius-md);
+}
+
+.reaction-result__ai-key-prompt-header {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+
+.reaction-result__ai-key-icon {
+  font-size: 1.3rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.reaction-result__ai-key-prompt-content {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.reaction-result__ai-key-prompt-content strong {
+  font-size: var(--text-xs);
+  color: #6d28d9;
+}
+
+.reaction-result__ai-key-prompt-desc {
+  font-size: 11px;
+  color: var(--graphite-600);
+  line-height: 1.45;
+  margin: 0;
+}
+
+.reaction-result__open-settings-btn {
+  align-self: flex-start;
+  padding: 5px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #ffffff;
+  background: linear-gradient(135deg, #7c3aed 0%, #6366f1 100%);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(124, 58, 237, 0.3);
+  transition: all 0.15s ease;
+}
+
+.reaction-result__open-settings-btn:hover {
+  opacity: 0.95;
+  box-shadow: 0 2px 6px rgba(124, 58, 237, 0.4);
+  transform: translateY(-1px);
+}
+
+/* 1.8M Neural ML Model Card */
+.reaction-result__ml-card {
+  background: linear-gradient(135deg, #142028 0%, #1c2b34 100%);
+  border: 1px solid #284759;
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  color: #f4f6f4;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.12);
+}
+
+.reaction-result__ml-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.reaction-result__ml-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.reaction-result__ml-icon {
+  font-size: 18px;
+  background: rgba(255, 255, 255, 0.08);
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.reaction-result__ml-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -0.2px;
+}
+
+.reaction-result__ml-subtitle {
+  font-size: 10px;
+  color: #7dd3fc;
+}
+
+.reaction-result__ml-meta {
+  font-size: 10px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 3px 8px;
+  border-radius: 4px;
+  color: #a5f3fc;
+  white-space: nowrap;
+}
+
+.reaction-result__ml-equation {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #e0f2fe;
+  word-break: break-all;
+}
+
+.reaction-result__ml-products {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.reaction-result__ml-products-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  color: #94a3b8;
+  letter-spacing: 0.4px;
+  font-weight: 600;
+}
+
+.reaction-result__ml-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.reaction-result__ml-chip {
+  background: rgba(14, 116, 144, 0.3);
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  color: #e0f2fe;
+}
+
+.reaction-result__ml-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 8px;
+  font-size: 10px;
+}
+
+.reaction-result__ml-toggle {
+  background: none;
+  border: none;
+  color: #38bdf8;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.reaction-result__ml-toggle:hover {
+  text-decoration: underline;
+}
+
+.reaction-result__ml-provenance {
+  color: #94a3b8;
+}
+
+.reaction-result__ml-tokens {
+  background: #090e11;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 10px;
+  color: #cbd5e1;
+  word-break: break-all;
+}
+
+/* 2.0M Patent Literature Match Card */
+.reaction-result__patent-card {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+.reaction-result__patent-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.reaction-result__patent-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.reaction-result__patent-badge {
+  background: #166534;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.reaction-result__patent-doc {
+  background: #e2e8f0;
+  color: #1e293b;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 3px;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.reaction-result__patent-doc:hover {
+  background: #cbd5e1;
+  color: #0f172a;
+  text-decoration: underline;
+}
+
+.reaction-result__patent-year {
+  background: #dbeafe;
+  color: #1e40af;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+.reaction-result__patent-yield {
+  background: #dcfce7;
+  color: #15803d;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+.reaction-result__patent-tag {
+  background: #e0f2fe;
+  color: #0369a1;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+.reaction-result__patent-heading {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.reaction-result__patent-equation {
+  background: #ffffff;
+  border: 1px solid #dcfce7;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: #166534;
+  word-break: break-all;
+}
+
+/* Patent Reactants & Products Grid */
+.reaction-result__patent-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.reaction-result__patent-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #166534;
+}
+
+.reaction-result__patent-items-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 6px;
+}
+
+.reaction-result__patent-item-card {
+  background: #ffffff;
+  border: 1px solid #d1fae5;
+  border-radius: 5px;
+  padding: 6px 8px;
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.reaction-result__patent-item-card--product {
+  border-color: #a7f3d0;
+  background: #fcfdfd;
+}
+
+.reaction-result__patent-item-name {
+  font-weight: 600;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.reaction-result__patent-item-yield {
+  font-size: 10px;
+  font-weight: 700;
+  color: #15803d;
+  background: #dcfce7;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.reaction-result__patent-item-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: #475569;
+}
+
+.reaction-result__patent-item-formula {
+  font-weight: 700;
+  color: #1e40af;
+}
+
+.reaction-result__patent-item-qty {
+  color: #047857;
+  font-weight: 600;
+}
+
+.reaction-result__patent-item-appearance {
+  font-size: 10px;
+  color: #64748b;
+  font-style: italic;
+}
+
+.reaction-result__patent-item-smiles {
+  font-size: 9px;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reaction-result__patent-meta {
+  display: flex;
+  gap: 10px;
+  font-size: 11px;
+  color: #475569;
+  flex-wrap: wrap;
+}
+
+/* Patent Procedure Actions Stepper */
+.reaction-result__patent-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #ffffff;
+  border: 1px solid #dcfce7;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.reaction-result__patent-action-list {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11px;
+  color: #334155;
+}
+
+.reaction-result__patent-action-item {
+  line-height: 1.4;
+}
+
+.reaction-result__patent-action-type {
+  color: #166534;
+}
+
+.reaction-result__patent-action-cond {
+  display: flex;
+  gap: 8px;
+  font-size: 10px;
+  color: #0284c7;
+  margin-top: 1px;
+}
+
+.reaction-result__patent-procedure {
+  border-top: 1px dashed #bbf7d0;
+  padding-top: 6px;
+}
+
+.reaction-result__patent-toggle {
+  background: none;
+  border: none;
+  color: #15803d;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.reaction-result__patent-toggle:hover {
+  text-decoration: underline;
+}
+
+.reaction-result__patent-text {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #334155;
+  background: #ffffff;
+  padding: 8px 10px;
+  border-radius: 4px;
+  border: 1px solid #e2e8f0;
+}
+
+/* ML Model Enriched Badges and Profiles */
+.reaction-result__ml-badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.reaction-result__ml-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.reaction-result__ml-badge--type {
+  background: rgba(147, 51, 234, 0.25);
+  color: #d8b4fe;
+  border: 1px solid rgba(168, 85, 247, 0.4);
+}
+
+.reaction-result__ml-badge--eco {
+  background: rgba(34, 197, 94, 0.2);
+  color: #86efac;
+  border: 1px solid rgba(74, 222, 128, 0.4);
+}
+
+.reaction-result__ml-badge--beams {
+  background: rgba(59, 130, 246, 0.2);
+  color: #93c5fd;
+  border: 1px solid rgba(96, 165, 250, 0.4);
+}
+
+.reaction-result__ml-profiles {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.reaction-result__ml-profiles-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #cbd5e1;
+}
+
+.reaction-result__ml-profiles-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 8px;
+}
+
+.reaction-result__ml-profile-card {
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.reaction-result__ml-profile-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.reaction-result__ml-profile-name {
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffffff;
+  display: block;
+}
+
+.reaction-result__ml-profile-formula {
+  font-size: 10px;
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+.reaction-result__ml-state-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  text-transform: capitalize;
+}
+
+.reaction-result__ml-state-badge--liquid {
+  background: rgba(14, 165, 233, 0.25);
+  color: #7dd3fc;
+}
+
+.reaction-result__ml-state-badge--solid {
+  background: rgba(148, 163, 184, 0.25);
+  color: #f1f5f9;
+}
+
+.reaction-result__ml-state-badge--gas {
+  background: rgba(245, 158, 11, 0.25);
+  color: #fcd34d;
+}
+
+.reaction-result__ml-state-badge--aqueous {
+  background: rgba(99, 102, 241, 0.25);
+  color: #a5b4fc;
+}
+
+.reaction-result__ml-profile-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 4px;
+}
+
+.reaction-result__ml-detail-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.reaction-result__ml-detail-label {
+  color: #94a3b8;
+}
+
+.reaction-result__ml-detail-val {
+  color: #e2e8f0;
+  text-align: right;
+}
+
+.reaction-result__ml-smiles {
+  font-size: 9px;
+  color: #64748b;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reaction-result__ml-groups {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.reaction-result__ml-group-tag {
+  background: rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.reaction-result__ml-byproducts {
+  font-size: 11px;
+  color: #93c5fd;
+  background: rgba(59, 130, 246, 0.1);
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.reaction-result__ml-notes {
+  font-size: 11px;
+  color: #cbd5e1;
+  line-height: 1.4;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 6px 8px;
+  border-radius: 4px;
+  border-left: 2px solid #a855f7;
+}
+

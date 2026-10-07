@@ -1,0 +1,155 @@
+# ==============================================================================
+# Virtual Chemistry Laboratory — Git Ignore Rules
+# Protects sensitive API keys, credentials, large binaries, datasets, and builds
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Environment & Secrets (NEVER COMMIT API KEYS OR PASSWORDS)
+# ------------------------------------------------------------------------------
+.env
+.env.*
+*.env
+*.env.local
+*.env.development.local
+*.env.test.local
+*.env.production.local
+!*.example
+
+# Private Keys & Certificates
+*.pem
+*.key
+*.cert
+*.crt
+*.pfx
+*.p12
+
+# ------------------------------------------------------------------------------
+# 2. Dependencies
+# ------------------------------------------------------------------------------
+node_modules/
+*/node_modules/
+jspm_packages/
+.pnp
+.pnp.js
+.pnpm-store/
+
+# ------------------------------------------------------------------------------
+# 3. Python Virtual Environments & Bytecode
+# ------------------------------------------------------------------------------
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ------------------------------------------------------------------------------
+# 4. Large Datasets & Machine Learning Models (>100MB exceeds GitHub push limits)
+# ------------------------------------------------------------------------------
+# Daniel Lowe USPTO 14GB Patent Reaction Dataset
+ChemRxn/
+ChemRxn
+
+# Neural ML Model Weights & Checkpoints
+virtual_chem_lab_model/
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.onnx
+*.h5
+*.ckpt
+
+# ------------------------------------------------------------------------------
+# 5. SQLite Databases & Runtime WAL / SHM Cache
+# ------------------------------------------------------------------------------
+backend/data/*.db
+backend/data/*.db-shm
+backend/data/*.db-wal
+data/*.db
+data/*.db-shm
+data/*.db-wal
+*.sqlite
+*.sqlite3
+*.sqlite-shm
+*.sqlite-wal
+
+# ------------------------------------------------------------------------------
+# 6. Production Builds & Bundler Caches
+# ------------------------------------------------------------------------------
+frontend/dist/
+frontend/build/
+backend/dist/
+backend/build/
+dist/
+build/
+out/
+.next/
+.vite/
+.turbo/
+.cache/
+
+# ------------------------------------------------------------------------------
+# 7. Testing & Coverage
+# ------------------------------------------------------------------------------
+coverage/
+*.lcov
+.nyc_output/
+.vitest/
+
+# ------------------------------------------------------------------------------
+# 8. Logs & Diagnostic Dumps
+# ------------------------------------------------------------------------------
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ------------------------------------------------------------------------------
+# 9. Operating System & IDE Artifacts
+# ------------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDEs & Editors
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.sublime-workspace
+*.sublime-project
+*.swp
+*.swo
+*~
