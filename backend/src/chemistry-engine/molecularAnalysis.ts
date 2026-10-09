@@ -319,9 +319,8 @@ export function analyzeReactionTransformation(
   }
   const atomEconomyPercent = Math.min(100, Math.round((targetMw / Math.max(targetMw, totalReactantMw)) * 100));
 
-  const observationsSummary = `${reactionType}: Produces ${productProfiles.map((p) => `${p.name} (${p.appearance})`).join(", ")}${
-    expectedByproducts.length > 0 ? ` with ${expectedByproducts.join(", ")} byproduct` : ""
-  }.`;
+  const observationsSummary = `${reactionType}: Produces ${productProfiles.map((p) => `${p.name} (${p.appearance})`).join(", ")}${expectedByproducts.length > 0 ? ` with ${expectedByproducts.join(", ")} byproduct` : ""
+    }.`;
 
   return {
     reactionType,

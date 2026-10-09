@@ -35,7 +35,7 @@ export function ReactionControls({ pendingChemical, onAdded }: { pendingChemical
     let cancelled = false;
     reactionsApi.list(100).then((res) => {
       if (!cancelled) setCuratedReactions(res.items);
-    }).catch(() => {});
+    }).catch(() => { });
     return () => {
       cancelled = true;
     };
@@ -50,7 +50,7 @@ export function ReactionControls({ pendingChemical, onAdded }: { pendingChemical
     const timer = setTimeout(() => {
       reactionsApi.list(50, 0, reactionSearchQuery.trim()).then((res) => {
         if (!cancelled) setSearchResults(res.items);
-      }).catch(() => {});
+      }).catch(() => { });
     }, 250);
 
     return () => {
@@ -179,9 +179,8 @@ export function ReactionControls({ pendingChemical, onAdded }: { pendingChemical
                   <button
                     key={r.id}
                     type="button"
-                    className={`reaction-controls__suggestion-item ${
-                      r.id === selectedReactionId ? "reaction-controls__suggestion-item--selected" : ""
-                    }`}
+                    className={`reaction-controls__suggestion-item ${r.id === selectedReactionId ? "reaction-controls__suggestion-item--selected" : ""
+                      }`}
                     onClick={() => {
                       setSelectedReactionId(r.id);
                       setReactionSearchQuery(r.name);

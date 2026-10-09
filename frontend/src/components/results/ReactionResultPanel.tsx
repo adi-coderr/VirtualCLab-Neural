@@ -406,13 +406,12 @@ export function ReactionResultPanel({ result }: { result: SimulationResult }) {
       {calorimetry && (
 
         <div
-          className={`reaction-result__thermo-card ${
-            calorimetry.temperatureDeltaC < 0
+          className={`reaction-result__thermo-card ${calorimetry.temperatureDeltaC < 0
               ? "reaction-result__thermo-card--cold"
               : calorimetry.temperatureDeltaC > 0
                 ? "reaction-result__thermo-card--warm"
                 : "reaction-result__thermo-card--neutral"
-          }`}
+            }`}
         >
           <div className="reaction-result__thermo-icon" aria-hidden="true">
             {calorimetry.temperatureDeltaC < 0 ? "❄️" : calorimetry.temperatureDeltaC > 0 ? "🔥" : "🌡️"}

@@ -234,11 +234,11 @@ function tryAcidBase(a: Chemical, b: Chemical, lookup: ChemicalLookupPort): Reac
   const tier = bothStrong ? "PREDICTED" : "APPROXIMATE";
   const explanation = bothStrong
     ? "Applied the general strong-acid/strong-base neutralization rule (acid + base \u2192 salt + water) and " +
-      "balanced the equation from element conservation. This specific pair is not individually curated."
+    "balanced the equation from element conservation. This specific pair is not individually curated."
     : "At least one of the acid/base is weak, so this reaction proceeds to an equilibrium position rather " +
-      "than going to completion. The molecular identity of the product shown is correct, but the actual pH " +
-      "and the exact extent of reaction depend on equilibrium constants (Ka/Kb) that this engine does not " +
-      "currently model -- treat the quantities as an idealized upper bound, not a precise prediction.";
+    "than going to completion. The molecular identity of the product shown is correct, but the actual pH " +
+    "and the exact extent of reaction depend on equilibrium constants (Ka/Kb) that this engine does not " +
+    "currently model -- treat the quantities as an idealized upper bound, not a precise prediction.";
 
   return {
     status: "REACTION",
@@ -648,9 +648,9 @@ export function generateProcessBreakdown(resolution: ReactionResolution): Chemic
           `Thermochemical nature: ${resolution.energyClassification ? resolution.energyClassification.toUpperCase() : "Energetically active"}`,
           ...(resolution.calorimetry
             ? [
-                `Actual temperature change: ${resolution.calorimetry.summaryText}`,
-                `Reaction enthalpy: ΔH = ${resolution.calorimetry.enthalpyKjPerMol > 0 ? "+" : ""}${resolution.calorimetry.enthalpyKjPerMol} kJ/mol (${(Math.abs(resolution.calorimetry.heatJoules) / 1000).toFixed(2)} kJ ${resolution.calorimetry.heatJoules > 0 ? "absorbed from" : "released to"} ${resolution.calorimetry.totalMassGrams} g mixture)`,
-              ]
+              `Actual temperature change: ${resolution.calorimetry.summaryText}`,
+              `Reaction enthalpy: ΔH = ${resolution.calorimetry.enthalpyKjPerMol > 0 ? "+" : ""}${resolution.calorimetry.enthalpyKjPerMol} kJ/mol (${(Math.abs(resolution.calorimetry.heatJoules) / 1000).toFixed(2)} kJ ${resolution.calorimetry.heatJoules > 0 ? "absorbed from" : "released to"} ${resolution.calorimetry.totalMassGrams} g mixture)`,
+            ]
             : resolution.enthalpyKjPerMol !== undefined
               ? [`Standard enthalpy change: ΔH = ${resolution.enthalpyKjPerMol > 0 ? "+" : ""}${resolution.enthalpyKjPerMol} kJ/mol`]
               : []),

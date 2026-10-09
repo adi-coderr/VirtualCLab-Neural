@@ -120,25 +120,19 @@ npm run db:reset
 
 ---
 
-## 📖 Unified Reaction Simulation Flow
+## 📖 How to Use the New Features on the Webpage
 
-Whenever you mix chemicals in a virtual vessel and click **React**:
-1. **Core Science Engine**: Computes exact stoichiometric conservation, limiting reagent, calorimetry, state changes, color shifts, and pH.
-2. **2.0M Patent Literature Match (`ChemRxn`)**: Instantly searches the USPTO patent database for verified real-world laboratory protocols, isolated yields, physical states, and Google Patents citations.
-3. **1.8M Neural ML Model Analysis (`virtual_chem_lab_model`)**: Evaluates the transformation using PyTorch on Apple Silicon GPU (`mps`), deriving molecular formulas, molar mass, estimated STP physical states, visual appearance, and detected functional groups.
+1. **Test the 1.8M Neural Model**:
+   - Click the **"🧠 1.8M ML Model"** button in the header or the right-side tab.
+   - Click any pre-loaded demo (e.g., *Esterification*, *Aromatic Halogenation*, *Diels-Alder*) or enter your own SMILES/reactants.
+   - Click **"⚡ Predict Reaction Outcome (ML Model)"** to generate the predicted equation and synthesized products.
 
-All three layers render simultaneously inside the **Result** panel without requiring extra clicks.
-
----
-
-## 📚 Technical Documentation (`docs/`)
-
-* **[ML Model & 2.0M ChemRxn Guide](docs/ML_MODEL_AND_CHEMRXN.md)** — Architecture, PyTorch serving, FastAPI inference endpoints, and hardware acceleration.
-* **[Architecture Overview](docs/ARCHITECTURE.md)** — System layering, simulation request lifecycles, and state management.
-* **[API Reference](docs/API.md)** — Complete REST endpoints and request/response specifications.
-* **[Chemistry Engine Guide](docs/CHEMISTRY_ENGINE.md)** — Balance algorithms, stoichiometry, and rule systems.
-* **[Adding Chemicals & Reactions](docs/ADDING_NEW_REACTIONS.md)** — Walkthrough for extending curated data and ML predictions.
-* **[Database Schema](docs/DATABASE_SCHEMA.md)** — SQLite relational structures and indexes.
+2. **Explore the 2 Million Patent Reactions Database**:
+   - Click the **"📚 2M Reactions DB"** button in the top navigation bar.
+   - Search across chemicals, products, or patent IDs.
+   - Filter by Era (1970s to 2010s), Minimum Yield (≥50%, ≥75%, ≥90%), or Phase State.
+   - Use **"🧠 Test in ML Model"** on any reaction to compare historical literature with the neural model's prediction.
+   - Use **"🧪 Lab Bench"** to load the reaction directly into a virtual vessel.
 
 ---
 
@@ -147,3 +141,10 @@ All three layers render simultaneously inside the **Result** panel without requi
 - **Curated Lab Bench Data**: General chemistry reference knowledge verified by the exact equation balancer.
 - **ChemRxn Dataset**: Curated from public United States Patent and Trademark Office (USPTO) experimental chemical reaction archives (1976–2016).
 - **ML Model**: Pretrained transformer Seq2Seq architecture on 1.8 million USPTO chemical reaction transformations.
+
+
+
+
+One-Command All-in-One Startup
+cd "/Users/adi/Documents/Github Projects/VirtualCLab"
+./start.sh
