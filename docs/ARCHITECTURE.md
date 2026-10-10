@@ -88,7 +88,7 @@ implemented:
       - Queries `backend/data/chemrxn.db` (< 1ms query latency via SQLite B-tree/FTS5).
       - If matched, attaches verified real-world laboratory experimental protocol,
         isolated yields, physical state/color, and Google Patents link.
-   d. **1.8M Neural ML Model Prediction (`virtual_chem_lab_model`)**:
+   d. **ReactionT5v2 Neural ML Model Prediction (`ReactionT5v2`)**:
       - Calls the local PyTorch T5 inference server (`backend/src/ai/model_service.py` on port 5005).
       - Executes hardware-accelerated beam search on Apple Silicon Metal GPU (`mps`).
       - Derives molecular properties via `molecularAnalysis.ts`: formula, molar mass,

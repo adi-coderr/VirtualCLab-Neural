@@ -75,7 +75,12 @@ ChemRxn/
 ChemRxn
 
 # Neural ML Model Weights & Checkpoints
-# virtual_chem_lab_model/
+virtual_chem_lab_model/
+virtual_chem_lab_model.disabled/
+virtual_chem_lab_modelV2/model/*.safetensors
+virtual_chem_lab_modelV2/model/*.bin
+ReactionT5v2/model/*.safetensors
+ReactionT5v2/model/*.bin
 *.pt
 *.pth
 *.bin

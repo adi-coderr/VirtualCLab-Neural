@@ -1,6 +1,6 @@
-# 🧠 1.8M Neural ML Model & 2.0M ChemRxn Database Guide
+# 🧠 ReactionT5v2 Neural ML Model & 2.0M ChemRxn Database Guide
 
-This document details how the **PyTorch Neural ML Model** (`virtual_chem_lab_model`) and the **2.0M Patent Literature Database** (`ChemRxn`) are integrated, served, and utilized within the Virtual Chemistry Laboratory.
+This document details how the **PyTorch Neural ML Model** (`ReactionT5v2`) and the **2.0M Patent Literature Database** (`ChemRxn`) are integrated, served, and utilized within the Virtual Chemistry Laboratory.
 
 ---
 
@@ -16,8 +16,8 @@ The Virtual Chemistry Laboratory employs a **3-tier hybrid reaction simulation p
         ┌───────────────────────────┼───────────────────────────┐
         ▼                           ▼                           ▼
 ┌──────────────────┐    ┌──────────────────────┐    ┌───────────────────────────┐
-│  Tier 1: Core    │    │  Tier 2: 2.0M Patent │    │  Tier 3: 1.8M Neural ML   │
-│ Chemistry Engine │    │ Literature (ChemRxn) │    │  Model (T5 Seq2Seq)       │
+│  Tier 1: Core    │    │  Tier 2: 2.0M Patent │    │  Tier 3: ReactionT5v2     │
+│ Chemistry Engine │    │ Literature (ChemRxn) │    │  Neural ML Model          │
 │                  │    │                      │    │                           │
 │ • Deterministic  │    │ • Daniel Lowe USPTO  │    │ • PyTorch on Apple Metal  │
 │ • Stoichiometry  │    │   1976-2016 Archive  │    │   GPU (MPS) / CUDA / CPU  │
@@ -32,27 +32,27 @@ The Virtual Chemistry Laboratory employs a **3-tier hybrid reaction simulation p
 
 1. **Grounded Science Engine**: Computes exact balancing, stoichiometry, limiting reagent, calorimetry, and pH.
 2. **Literature Reference (ChemRxn)**: Pulls verbatim laboratory synthesis procedures, verified yields, physical appearances, and Google Patent citations.
-3. **Neural ML Model (`virtual_chem_lab_model`)**: Predicts complex organic transformations, estimated physical states, and molecular properties using sequence-to-sequence neural inference.
+3. **Neural ML Model (`ReactionT5v2`)**: Predicts complex organic transformations, estimated physical states, and molecular properties using sequence-to-sequence neural inference.
 
 ---
 
-## 2. The Neural Model Folder (`virtual_chem_lab_model`)
+## 2. The Neural Model Folder (`virtual_chem_lab_modelV2`)
 
 ### Model Specifications
-* **Architecture**: `T5ForConditionalGeneration` (Sequence-to-Sequence Transformer)
-* **Parameter Count**: ~60.5 Million parameters
-* **Vocabulary Size**: 32,100 tokens
-* **Training Dataset**: 1.8 Million USPTO chemical reaction schemes
-* **Default Checkpoint Folder**: `virtual_chem_lab_model/` (in the project root)
+* **Architecture**: ReactionT5 (`sagawa/ReactionT5v2-forward`, T5 Seq2Seq Transformer)
+* **Parameter Count**: ~248 Million parameters
+* **Vocabulary Size**: 268 tokens (specialized chemical SMILES tokenization)
+* **Training Dataset**: Open Reaction Database (ORD) pretraining + USPTO fine-tuning (*Journal of Cheminformatics*, 2025)
+* **Default Checkpoint Folder**: `virtual_chem_lab_modelV2/model/` (in the project root)
 
-### Expected Files in `virtual_chem_lab_model/`
+### Expected Files in `virtual_chem_lab_modelV2/model/`
 A standard Hugging Face model directory containing:
 ```
-virtual_chem_lab_model/
+virtual_chem_lab_modelV2/model/
 ├── config.json                 # Model architecture parameters
 ├── generation_config.json      # Default beam search & decoding settings
-├── model.safetensors           # Neural network weights (or pytorch_model.bin)
-├── tokenizer.json              # Tokenizer vocabulary and BPE merges
+├── model.safetensors           # Neural network weights (758 MB)
+├── tokenizer.json              # Specialized chemical tokenizer vocabulary
 ├── tokenizer_config.json       # Special token mappings
 └── special_tokens_map.json     # </s>, <unk>, <pad> tokens
 ```
@@ -147,7 +147,7 @@ Rather than parsing 14 GB of XML files in real time, representative reactions ac
 ## 6. Using Custom ML Models or Fine-Tuning
 
 To use a custom model or newer fine-tuned checkpoint:
-1. Replace or export the model weights into `virtual_chem_lab_model/`.
+1. Replace or export the model weights into `virtual_chem_lab_modelV2/model/`.
 2. Ensure `tokenizer.json` and `config.json` match the new model architecture.
 3. Restart the Python server:
    ```bash

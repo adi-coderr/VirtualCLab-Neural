@@ -349,7 +349,7 @@ export class SimulationService {
       logger.debug("ChemRxn lookup skipped", { error: err.message });
     }
 
-    // 2. Query Local 1.8M Neural ML Model (virtual_chem_lab_model)
+    // 2. Query Local Neural ML Model (ReactionT5v2)
     try {
       const mlTokens = inputs.map((input) => {
         const chem = this.chemicalRepo.getById(input.chemicalId);

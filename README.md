@@ -6,11 +6,11 @@ A scientifically grounded virtual chemistry laboratory where you can select real
 
 ## 🌟 Key Capabilities
 
-1. **🧠 Neural ML Reaction Predictor (`virtual_chem_lab_model`)**:
-   - **Architecture**: Hugging Face / PyTorch `T5ForConditionalGeneration` (T5-small Seq2Seq, 60.5M parameters).
-   - **Pre-trained Knowledge**: **1.8 Million chemical reactions** from the USPTO patent corpus for forward reaction prediction and synthesis.
-   - **Hardware Acceleration**: Automatic Apple Silicon Metal (`mps`) GPU acceleration with CPU fallback, running inference in ~900 ms.
-   - **Web Interface**: Integrated **"🧠 1.8M ML Model"** tab with quick reaction presets (esterification, halogenation, Diels-Alder, aldol condensation), custom SMILES input, and beam-search controls.
+1. **🧠 Neural ML Reaction Predictor (`ReactionT5v2`)**:
+   - **Architecture**: ReactionT5 (`sagawa/ReactionT5v2-forward`, T5 Seq2Seq architecture, 248M parameters).
+   - **Pre-trained Knowledge**: Pre-trained on the **Open Reaction Database (ORD)** and fine-tuned on the USPTO chemical reaction dataset (*Journal of Cheminformatics*, 2025).
+   - **Hardware Acceleration**: Automatic Apple Silicon Metal (`mps`) GPU acceleration with CPU fallback, running inference in ~800–1200 ms.
+   - **Web Interface**: Integrated **"🧠 Reaction ML Model"** tab with quick reaction presets (esterification, halogenation, Diels-Alder, aldol condensation), custom SMILES input, and beam-search controls.
 
 2. **📚 2.0 Million Chemical Reactions Patent Database (`ChemRxn`)**:
    - **Scope**: Complete 41-year experimental patent dataset (**1976–2016**) across **2,460 XML archive volumes**.
@@ -30,7 +30,7 @@ A scientifically grounded virtual chemistry laboratory where you can select real
 
 ```
 VirtualCLab/
-├── virtual_chem_lab_model/ # 1.8M reaction T5 neural model weights & tokenizer
+├── virtual_chem_lab_modelV2/ # ReactionT5v2 forward prediction model weights & tokenizer
 ├── ChemRxn/                # 2.0M reactions USPTO patent dataset (1976–2016 XML archives)
 ├── backend/                # Node.js + Express API, SQLite data layer, & Python ML service
 │   ├── src/ai/             # ML inference server (FastAPI) & assistant NLU
@@ -38,7 +38,7 @@ VirtualCLab/
 │   ├── src/data/           # SQLite databases (chemlab.db & chemrxn.db)
 │   └── src/services/       # Simulation, ML model manager, and ChemRxn search services
 ├── frontend/               # React + TypeScript + Vite web application
-│   ├── src/components/ml/  # 1.8M Neural ML Model Panel
+│   ├── src/components/ml/  # ReactionT5v2 Neural ML Model Panel
 │   ├── src/components/database/ # 2M Patent Reactions Database Explorer
 │   ├── src/components/lab/ # Interactive glassware vessels & 3D lab bench
 │   └── src/components/results/ # Reaction outcome, equation, & effect panels
@@ -140,7 +140,7 @@ npm run db:reset
 
 - **Curated Lab Bench Data**: General chemistry reference knowledge verified by the exact equation balancer.
 - **ChemRxn Dataset**: Curated from public United States Patent and Trademark Office (USPTO) experimental chemical reaction archives (1976–2016).
-- **ML Model**: Pretrained transformer Seq2Seq architecture on 1.8 million USPTO chemical reaction transformations.
+- **ML Model (ReactionT5v2)**: Pretrained chemical foundation model on the Open Reaction Database (ORD) and USPTO patent literature (*Journal of Cheminformatics*, 2025).
 
 
 

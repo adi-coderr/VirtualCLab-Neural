@@ -101,11 +101,11 @@ class LocalMlModelService {
         const data = (await res.json()) as any;
         return {
           status: "ready",
-          modelName: data.model_name || "virtual_chem_lab_model",
+          modelName: data.model_name || "ReactionT5v2",
           architecture: data.architecture || "T5ForConditionalGeneration",
-          parameters: data.parameters || "60.5M",
-          trainingDataset: data.training_dataset || "1.8 Million USPTO Chemical Reactions",
-          vocabSize: data.vocab_size || 32100,
+          parameters: data.parameters || "248M",
+          trainingDataset: data.training_dataset || "Open Reaction Database (ORD) & USPTO",
+          vocabSize: data.vocab_size || 268,
           device: data.device || "cpu",
           loadTimeSec: data.load_time_sec,
           endpoint: this.baseUrl,
@@ -118,11 +118,11 @@ class LocalMlModelService {
     if (this.isSpawning) {
       return {
         status: "starting",
-        modelName: "virtual_chem_lab_model",
+        modelName: "ReactionT5v2",
         architecture: "T5ForConditionalGeneration",
-        parameters: "60.5M",
-        trainingDataset: "1.8 Million USPTO Chemical Reactions",
-        vocabSize: 32100,
+        parameters: "248M",
+        trainingDataset: "Open Reaction Database (ORD) & USPTO",
+        vocabSize: 268,
         device: "mps",
         endpoint: this.baseUrl,
       };
@@ -130,11 +130,11 @@ class LocalMlModelService {
 
     return {
       status: "offline",
-      modelName: "virtual_chem_lab_model",
+      modelName: "ReactionT5v2",
       architecture: "T5ForConditionalGeneration",
-      parameters: "60.5M",
-      trainingDataset: "1.8 Million USPTO Chemical Reactions",
-      vocabSize: 32100,
+      parameters: "248M",
+      trainingDataset: "Open Reaction Database (ORD) & USPTO",
+      vocabSize: 268,
       device: "unknown",
       endpoint: this.baseUrl,
       error: "ML service is offline. Click Start or trigger a prediction to auto-launch.",

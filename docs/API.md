@@ -63,7 +63,7 @@ re-running rule matching.
 ### `GET /reactions` / `GET /reactions/:id`
 List / fetch curated reaction records directly.
 
-## 🧠 Local Neural ML Model (`virtual_chem_lab_model`)
+## 🧠 Local Neural ML Model (`ReactionT5v2`)
 
 ### `GET /reactions/model-status`
 Returns the status, architecture, device, parameter count, and latency of the local neural model server.
@@ -72,9 +72,9 @@ Returns the status, architecture, device, parameter count, and latency of the lo
   "status": "ok",
   "data": {
     "status": "ready",
-    "modelName": "virtual_chem_lab_model",
-    "architecture": "T5ForConditionalGeneration",
-    "parameters": "60.5M",
+    "modelName": "ReactionT5v2",
+    "architecture": "ReactionT5 (T5ForConditionalGeneration)",
+    "parameters": "248M",
     "device": "mps",
     "endpoint": "http://127.0.0.1:5005"
   }

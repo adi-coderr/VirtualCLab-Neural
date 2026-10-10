@@ -124,14 +124,14 @@ export function ReactionResultPanel({ result }: { result: SimulationResult }) {
         </div>
       )}
 
-      {/* 5b. 🧠 1.8M Neural ML Model Analysis Card (virtual_chem_lab_model) */}
+      {/* 5b. 🧠 ReactionT5v2 Neural Prediction */}
       {result.mlPrediction && (
         <div className="reaction-result__ml-card">
           <div className="reaction-result__ml-header">
             <div className="reaction-result__ml-title-wrap">
               <span className="reaction-result__ml-icon">🧠</span>
               <div>
-                <div className="reaction-result__ml-title">1.8M Neural ML Model Analysis</div>
+                <div className="reaction-result__ml-title">ReactionT5v2 Neural Prediction</div>
                 <div className="reaction-result__ml-subtitle mono">{result.mlPrediction.modelName}</div>
               </div>
             </div>

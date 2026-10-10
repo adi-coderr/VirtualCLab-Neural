@@ -17,7 +17,7 @@ echo "🧪 Starting Virtual Chemistry Laboratory Stack..."
 echo "=========================================================="
 
 # 1. Start Neural ML Model Service
-echo "🧠 [1/3] Launching 1.8M Neural ML Model Service (port 5005)..."
+echo "🧠 [1/3] Launching ReactionT5v2 Neural ML Model Service (port 5005)..."
 if [ -f "$PROJECT_ROOT/.venv/bin/python3" ]; then
   PYTHON_BIN="$PROJECT_ROOT/.venv/bin/python3"
 else

@@ -57,11 +57,11 @@ export function MlModelPanel() {
     } catch (err: any) {
       setModelStatus({
         status: "offline",
-        modelName: "virtual_chem_lab_model",
+        modelName: "ReactionT5v2",
         architecture: "T5ForConditionalGeneration",
-        parameters: "60.5M",
-        trainingDataset: "1.8 Million USPTO Chemical Reactions",
-        vocabSize: 32100,
+        parameters: "248M",
+        trainingDataset: "Open Reaction Database (ORD) & USPTO",
+        vocabSize: 268,
         device: "unknown",
         endpoint: "http://127.0.0.1:5005",
         error: err.message,
@@ -124,9 +124,9 @@ export function MlModelPanel() {
         <div className="ml-hero-header">
           <div className="ml-badge-icon">🧠</div>
           <div>
-            <h3 className="ml-hero-title">Virtual ChemLab Neural Predictor</h3>
+            <h3 className="ml-hero-title">ReactionT5v2 Neural Predictor</h3>
             <p className="ml-hero-subtitle">
-              Seq2Seq T5 Architecture trained on 1.8M USPTO Patent Reactions
+              Chemical Foundation Model trained on Open Reaction Database (ORD) & USPTO
             </p>
           </div>
         </div>
@@ -134,15 +134,15 @@ export function MlModelPanel() {
         <div className="ml-stats-grid">
           <div className="ml-stat-chip">
             <span className="ml-stat-label">Model</span>
-            <span className="ml-stat-val mono">virtual_chem_lab_model</span>
+            <span className="ml-stat-val mono">{modelStatus?.modelName || "ReactionT5v2"}</span>
           </div>
           <div className="ml-stat-chip">
             <span className="ml-stat-label">Weights</span>
-            <span className="ml-stat-val">60.5M Params (T5-small)</span>
+            <span className="ml-stat-val">{modelStatus?.parameters || "248M Params"}</span>
           </div>
           <div className="ml-stat-chip">
             <span className="ml-stat-label">Training Data</span>
-            <span className="ml-stat-val">1.8M Reactions</span>
+            <span className="ml-stat-val">{modelStatus?.trainingDataset || "ORD & USPTO"}</span>
           </div>
           <div className="ml-stat-chip">
             <span className="ml-stat-label">Hardware Device</span>
@@ -329,8 +329,8 @@ export function MlModelPanel() {
 
           <div className="ml-provenance-footer">
             <span>
-              Trained on <strong>1.8 Million chemical reactions</strong> | Model:{" "}
-              <code>virtual_chem_lab_model</code>
+              Trained on <strong>Open Reaction Database (ORD) & USPTO</strong> | Model:{" "}
+              <code>{predictionResult.modelName || "ReactionT5v2"}</code>
             </span>
           </div>
         </div>

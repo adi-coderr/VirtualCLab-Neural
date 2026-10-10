@@ -1,6 +1,7 @@
 """
 Virtual ChemLab Local ML Model Inference Service
-Loads and serves `virtual_chem_lab_model` (T5-based model trained on 1.8M USPTO chemical reactions).
+Loads and serves `ReactionT5v2` (ReactionT5 model pretrained on the Open Reaction Database and USPTO).
+Provides local forward reaction synthesis prediction and property analysis.
 """
 
 import os
@@ -12,22 +13,30 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import torch
-from transformers import PreTrainedTokenizerFast, T5ForConditionalGeneration
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
-MODEL_DIR = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "../../../virtual_chem_lab_model")
+# Project root paths
+PROJECT_ROOT = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "../../..")
 )
-
-# Fallback if relative path shifts
+MODEL_DIR = os.path.join(PROJECT_ROOT, "virtual_chem_lab_modelV2")
 if not os.path.exists(MODEL_DIR):
-    candidate = os.path.abspath("virtual_chem_lab_model")
-    if os.path.exists(candidate):
-        MODEL_DIR = candidate
+    MODEL_DIR = os.path.join(PROJECT_ROOT, "ReactionT5v2")
+if os.path.exists(MODEL_DIR):
+    sys.path.insert(0, MODEL_DIR)
+    sys.path.insert(0, os.path.join(MODEL_DIR, "task_forward"))
+
+# Check for local checkpoint in virtual_chem_lab_modelV2/model, else fallback to Hugging Face ID
+LOCAL_MODEL_DIR = os.path.join(MODEL_DIR, "model")
+if os.path.exists(os.path.join(LOCAL_MODEL_DIR, "config.json")):
+    MODEL_PATH = LOCAL_MODEL_DIR
+else:
+    MODEL_PATH = os.environ.get("REACTIONT5_MODEL", "sagawa/ReactionT5v2-forward")
 
 app = FastAPI(
-    title="Virtual ChemLab ML Model Service",
-    description="Local inference server for the 1.8M reaction trained neural model",
-    version="1.0.0"
+    title="Virtual ChemLab ReactionT5v2 Service",
+    description="Local inference server for ReactionT5v2 chemical reaction neural model",
+    version="2.0.0"
 )
 
 app.add_middleware(
@@ -48,40 +57,37 @@ def load_model():
     if model is not None:
         return
     t0 = time.time()
-    print(f"[ML Model] Loading tokenizer and model from {MODEL_DIR}...")
+    print(f"[ReactionT5v2] Loading tokenizer and model from {MODEL_PATH}...")
     
-    tokenizer_file = os.path.join(MODEL_DIR, "tokenizer.json")
-    if not os.path.exists(tokenizer_file):
-        raise FileNotFoundError(f"tokenizer.json not found in {MODEL_DIR}")
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, fix_markdown=False)
+    
+    if torch.backends.mps.is_available():
+        device = "mps"
+    elif torch.cuda.is_available():
+        device = "cuda"
+    else:
+        device = "cpu"
         
-    tokenizer = PreTrainedTokenizerFast(
-        tokenizer_file=tokenizer_file,
-        eos_token="</s>",
-        unk_token="<unk>",
-        pad_token="<pad>"
-    )
+    print(f"[ReactionT5v2] Using device: {device}")
     
-    device = "mps" if torch.backends.mps.is_available() else "cpu"
-    print(f"[ML Model] Using device: {device}")
-    
-    model = T5ForConditionalGeneration.from_pretrained(MODEL_DIR)
+    model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_PATH)
     model.to(device)
     model.eval()
     
     load_time_sec = round(time.time() - t0, 2)
-    print(f"[ML Model] Model loaded successfully in {load_time_sec}s! Vocab size: {len(tokenizer)}")
+    print(f"[ReactionT5v2] Model loaded successfully in {load_time_sec}s! Vocab size: {len(tokenizer)}")
 
 @app.on_event("startup")
 def on_startup():
     try:
         load_model()
     except Exception as e:
-        print(f"[ML Model] Startup warning: {e}", file=sys.stderr)
+        print(f"[ReactionT5v2] Startup warning (will retry on first request): {e}", file=sys.stderr)
 
 class PredictRequest(BaseModel):
     input: str
-    num_beams: Optional[int] = 4
-    max_length: Optional[int] = 128
+    num_beams: Optional[int] = 5
+    max_length: Optional[int] = 200
     temperature: Optional[float] = 1.0
 
 class PredictResponse(BaseModel):
@@ -101,23 +107,36 @@ def health():
     is_ready = model is not None and tokenizer is not None
     return {
         "status": "ready" if is_ready else "not_loaded",
-        "model_name": "virtual_chem_lab_model",
-        "architecture": "T5ForConditionalGeneration",
-        "parameters": "60.5M",
-        "training_dataset": "1.8 Million USPTO Chemical Reactions",
-        "vocab_size": len(tokenizer) if tokenizer else 32100,
+        "model_name": "ReactionT5v2",
+        "architecture": "ReactionT5 (T5ForConditionalGeneration)",
+        "parameters": "248M",
+        "training_dataset": "Open Reaction Database (ORD) & USPTO",
+        "vocab_size": len(tokenizer) if tokenizer else 268,
         "device": device,
         "load_time_sec": load_time_sec,
     }
 
 def clean_smiles(raw: str) -> str:
-    # Remove extra spaces, clean up duplicate tokens
-    cleaned = raw.strip()
-    # Strip potential prefix markers
+    cleaned = raw.strip().replace(" ", "")
     cleaned = re.sub(r"^(output:|products:|result:)\s*", "", cleaned, flags=re.IGNORECASE)
-    # Strip CXSMILES annotations like |f:0.1|
     cleaned = re.sub(r"\|[^|]*\|", "", cleaned).strip()
     return cleaned
+
+def format_reactiont5_input(query: str) -> str:
+    """Format input according to ReactionT5's standard: REACTANT:<reactants>REAGENT:<reagents>"""
+    query = query.strip()
+    if "REACTANT:" in query:
+        return query
+    
+    if ">" in query:
+        parts = query.split(">")
+        reactants = parts[0].strip().replace(" ", "")
+        reagents = parts[1].strip().replace(" ", "") if len(parts) > 1 else ""
+        return f"REACTANT:{reactants}REAGENT:{reagents}"
+    
+    # Otherwise treat entered chemicals as reactants
+    reactants = query.replace(" + ", ".").replace("+", ".").replace(" ", "")
+    return f"REACTANT:{reactants}REAGENT:"
 
 @app.post("/predict", response_model=PredictResponse)
 def predict(req: PredictRequest):
@@ -129,23 +148,23 @@ def predict(req: PredictRequest):
     if not query:
         raise HTTPException(status_code=400, detail="Input cannot be empty")
         
-    # Prepare tokenization
-    encoded = tokenizer(query, return_tensors="pt")
+    formatted_input = format_reactiont5_input(query)
+    
+    encoded = tokenizer(formatted_input, return_tensors="pt")
     encoded.pop("token_type_ids", None)
     
-    # Move to target device
     input_ids = encoded["input_ids"].to(device)
     attention_mask = encoded.get("attention_mask")
     if attention_mask is not None:
         attention_mask = attention_mask.to(device)
         
-    beams = max(1, min(req.num_beams or 4, 8))
+    beams = max(1, min(req.num_beams or 5, 8))
     
     with torch.no_grad():
         out = model.generate(
             input_ids=input_ids,
             attention_mask=attention_mask,
-            max_length=req.max_length or 128,
+            max_length=req.max_length or 200,
             num_beams=beams,
             early_stopping=True,
             do_sample=False
@@ -154,12 +173,10 @@ def predict(req: PredictRequest):
     raw_output = tokenizer.decode(out[0], skip_special_tokens=True).strip()
     cleaned = clean_smiles(raw_output)
     
-    # Parse into discrete product species separated by '.' in SMILES
     product_parts = [p.strip() for p in cleaned.split(".") if p.strip()]
     if not product_parts:
         product_parts = [cleaned] if cleaned else ["Unknown Product"]
         
-    # Formulate predicted reaction equation
     predicted_equation = f"{query} → {cleaned}" if cleaned else query
     
     latency_ms = round((time.time() - t0) * 1000, 2)
@@ -171,8 +188,8 @@ def predict(req: PredictRequest):
         predicted_equation=predicted_equation,
         predicted_products=product_parts,
         latency_ms=latency_ms,
-        model_name="virtual_chem_lab_model (T5 Seq2Seq)",
-        training_dataset="1.8 Million USPTO Chemical Reactions",
+        model_name="ReactionT5v2 (Forward Prediction)",
+        training_dataset="Open Reaction Database (ORD) & USPTO",
         device=device,
         beams_used=beams
     )
@@ -180,5 +197,5 @@ def predict(req: PredictRequest):
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("ML_PORT", "5005"))
-    print(f"Starting ML Model Server on port {port}...")
+    print(f"Starting ReactionT5v2 Model Server on port {port}...")
     uvicorn.run(app, host="127.0.0.1", port=port)

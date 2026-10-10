@@ -124,13 +124,13 @@ Write a unit test in `reactionResolver.test.ts` using the existing
 in-memory fake `ChemicalLookupPort` pattern — you don't need the real
 database to test resolver logic in isolation.
 
-## Predicting complex organic reactions via the 1.8M Neural ML Model
+## Predicting complex organic reactions via ReactionT5v2
 
 For complex organic reactions (e.g. multistep syntheses, esterifications, couplings,
 or novel combinations not covered by the curated seed records):
 * You do **not** have to hand-code rules.
-* The local PyTorch model in `virtual_chem_lab_model/` automatically evaluates
-  the reaction using its 1.8 million USPTO-trained weights and returns predicted
+* The local PyTorch model in `virtual_chem_lab_modelV2/` automatically evaluates
+  the reaction using its weights trained on the Open Reaction Database and USPTO and returns predicted
   species, molar masses, STP states, and functional groups.
 * The 2.0M Patent Literature database (`ChemRxn`) cross-references the mixture
   to find matching published patents, isolated experimental yields, and procedures.
