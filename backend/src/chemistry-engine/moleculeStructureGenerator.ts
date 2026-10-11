@@ -288,6 +288,9 @@ function parseSmilesToGraph(smiles: string): SmilesNode[] {
         let explicitH: number | null = null;
         if (match && match[2] !== undefined) {
           explicitH = match[2] === "" ? 1 : parseInt(match[2], 10) || 0;
+        } else {
+          // OpenSMILES standard: Bracketed atoms without explicit H have 0 implicit hydrogens
+          explicitH = 0;
         }
 
         const idx = nodes.length;
@@ -371,6 +374,24 @@ function getHybridization(node: SmilesNode): Hybridization {
   return "SP3";
 }
 
+function getImplicitValence(elem: string, usedV: number): number {
+  if (elem === "C" || elem === "Si") return 4;
+  if (elem === "N") return 3;
+  if (elem === "O") return 2;
+  if (elem === "S") {
+    if (usedV > 4) return 6;
+    if (usedV > 2) return 4;
+    return 2;
+  }
+  if (elem === "P") {
+    if (usedV > 3) return 5;
+    return 3;
+  }
+  if (["F", "Cl", "Br", "I", "H"].includes(elem)) return 1;
+  if (elem === "B") return 3;
+  return 0; // Metals and all other elements have 0 implicit hydrogens in SMILES
+}
+
 // -----------------------------------------------------------------------------
 // 3. Ring Detection & Perimeter Ordering
 // -----------------------------------------------------------------------------
@@ -440,6 +461,206 @@ function isAromatic6Ring(ring: number[], nodes: SmilesNode[]): boolean {
   return doubleBondCount >= 3;
 }
 
+function hasPathToPlaced(ring: number[], nodes: SmilesNode[], placed: Set<number>): boolean {
+  if (placed.size === 0) return false;
+  const visited = new Set<number>(ring);
+  const q = [...ring];
+  while (q.length > 0) {
+    const curr = q.shift()!;
+    for (const edge of nodes[curr]!.edges) {
+      if (placed.has(edge.target)) return true;
+      if (!visited.has(edge.target)) {
+        visited.add(edge.target);
+        q.push(edge.target);
+      }
+    }
+  }
+  return false;
+}
+
+function placeConnected6Ring(
+  ring: number[],
+  attachInRing: number,
+  attachPlaced: number,
+  graph: SmilesNode[],
+  coords: Vec3[],
+  placed: Set<number>,
+  aromaticRingAtoms: Set<number>,
+  aromaticRingOutward: Map<number, Vec3>,
+  ringIndex: number = 0
+): void {
+  const isArom = isAromatic6Ring(ring, graph);
+  const radius = 1.39;
+  const pPos = coords[attachPlaced]!;
+  const uNode = graph[attachPlaced]!;
+  const vNode = graph[attachInRing]!;
+  const edge = uNode.edges.find((e) => e.target === attachInRing);
+  const bondDist = getBondDistance(uNode.elem, vNode.elem, edge?.order ?? 1);
+
+  let outDir: Vec3;
+  if (aromaticRingOutward.has(attachPlaced)) {
+    outDir = aromaticRingOutward.get(attachPlaced)!;
+  } else {
+    const otherNeighbors = uNode.edges.filter((e) => e.target !== attachInRing && placed.has(e.target) && coords[e.target]);
+    if (otherNeighbors.length === 1) {
+      const nPos = coords[otherNeighbors[0]!.target]!;
+      const v = { x: pPos.x - nPos.x, y: pPos.y - nPos.y, z: pPos.z - nPos.z };
+      outDir = vNormalize(v);
+    } else if (otherNeighbors.length >= 2) {
+      let sumNgh = { x: 0, y: 0, z: 0 };
+      for (const n of otherNeighbors) {
+        sumNgh.x += coords[n.target]!.x;
+        sumNgh.y += coords[n.target]!.y;
+        sumNgh.z += coords[n.target]!.z;
+      }
+      sumNgh.x /= otherNeighbors.length;
+      sumNgh.y /= otherNeighbors.length;
+      sumNgh.z /= otherNeighbors.length;
+      const v = { x: pPos.x - sumNgh.x, y: pPos.y - sumNgh.y, z: pPos.z - sumNgh.z };
+      const vLen = Math.hypot(v.x, v.y, v.z);
+      if (vLen > 0.3) {
+        outDir = { x: v.x / vLen, y: v.y / vLen, z: v.z / vLen };
+      } else {
+        const n1 = coords[otherNeighbors[0]!.target]!;
+        const v1 = vNormalize({ x: n1.x - pPos.x, y: n1.y - pPos.y, z: n1.z - pPos.z });
+        const ref = Math.abs(v1.z) < 0.9 ? { x: 0, y: 0, z: 1 } : { x: 1, y: 0, z: 0 };
+        outDir = vNormalize(vCross(v1, ref));
+      }
+    } else {
+      outDir = { x: 1, y: 0, z: 0 };
+    }
+  }
+
+  // 3D twist: alternate twist angle so attached and adjacent rings form non-clashing propeller geometry
+  const twistAngle = ((ringIndex % 2 === 0 ? 35 : -35) * Math.PI) / 180;
+  const uBond = vNormalize(outDir);
+  let refUp = Math.abs(uBond.z) < 0.9 ? { x: 0, y: 0, z: 1 } : { x: 1, y: 0, z: 0 };
+  const vPerp = vNormalize(vCross(uBond, refUp));
+  const wNorm = vNormalize(vCross(vPerp, uBond));
+  const vPrime = {
+    x: vPerp.x * Math.cos(twistAngle) + wNorm.x * Math.sin(twistAngle),
+    y: vPerp.y * Math.cos(twistAngle) + wNorm.y * Math.sin(twistAngle),
+    z: vPerp.z * Math.cos(twistAngle) + wNorm.z * Math.sin(twistAngle),
+  };
+
+  const center = {
+    x: pPos.x + (bondDist + radius) * uBond.x,
+    y: pPos.y + (bondDist + radius) * uBond.y,
+    z: pPos.z + (bondDist + radius) * uBond.z,
+  };
+
+  const startK = ring.indexOf(attachInRing);
+  for (let k = 0; k < 6; k++) {
+    const idx = ring[(startK + k) % 6]!;
+    const theta = (k * 2 * Math.PI) / 6;
+    const dirX = -Math.cos(theta) * uBond.x + Math.sin(theta) * vPrime.x;
+    const dirY = -Math.cos(theta) * uBond.y + Math.sin(theta) * vPrime.y;
+    const dirZ = -Math.cos(theta) * uBond.z + Math.sin(theta) * vPrime.z;
+
+    const x = center.x + radius * dirX;
+    const y = center.y + radius * dirY;
+    const z = center.z + radius * dirZ;
+
+    coords[idx] = { x: Number(x.toFixed(3)), y: Number(y.toFixed(3)), z: Number(z.toFixed(3)) };
+    placed.add(idx);
+    if (isArom) {
+      aromaticRingAtoms.add(idx);
+      aromaticRingOutward.set(idx, { x: dirX, y: dirY, z: dirZ });
+    }
+  }
+}
+
+function placeConnected5Ring(
+  ring: number[],
+  attachInRing: number,
+  attachPlaced: number,
+  graph: SmilesNode[],
+  coords: Vec3[],
+  placed: Set<number>,
+  aromaticRingAtoms: Set<number>,
+  aromaticRingOutward: Map<number, Vec3>,
+  ringIndex: number = 0
+): void {
+  const isArom = ring.every((idx) => graph[idx]!.isAromatic);
+  const radius = 1.25;
+  const pPos = coords[attachPlaced]!;
+  const uNode = graph[attachPlaced]!;
+  const vNode = graph[attachInRing]!;
+  const edge = uNode.edges.find((e) => e.target === attachInRing);
+  const bondDist = getBondDistance(uNode.elem, vNode.elem, edge?.order ?? 1);
+
+  let outDir: Vec3;
+  if (aromaticRingOutward.has(attachPlaced)) {
+    outDir = aromaticRingOutward.get(attachPlaced)!;
+  } else {
+    const otherNeighbors = uNode.edges.filter((e) => e.target !== attachInRing && placed.has(e.target) && coords[e.target]);
+    if (otherNeighbors.length === 1) {
+      const nPos = coords[otherNeighbors[0]!.target]!;
+      const v = { x: pPos.x - nPos.x, y: pPos.y - nPos.y, z: pPos.z - nPos.z };
+      outDir = vNormalize(v);
+    } else if (otherNeighbors.length >= 2) {
+      let sumNgh = { x: 0, y: 0, z: 0 };
+      for (const n of otherNeighbors) {
+        sumNgh.x += coords[n.target]!.x;
+        sumNgh.y += coords[n.target]!.y;
+        sumNgh.z += coords[n.target]!.z;
+      }
+      sumNgh.x /= otherNeighbors.length;
+      sumNgh.y /= otherNeighbors.length;
+      sumNgh.z /= otherNeighbors.length;
+      const v = { x: pPos.x - sumNgh.x, y: pPos.y - sumNgh.y, z: pPos.z - sumNgh.z };
+      const vLen = Math.hypot(v.x, v.y, v.z);
+      if (vLen > 0.3) {
+        outDir = { x: v.x / vLen, y: v.y / vLen, z: v.z / vLen };
+      } else {
+        const n1 = coords[otherNeighbors[0]!.target]!;
+        const v1 = vNormalize({ x: n1.x - pPos.x, y: n1.y - pPos.y, z: n1.z - pPos.z });
+        const ref = Math.abs(v1.z) < 0.9 ? { x: 0, y: 0, z: 1 } : { x: 1, y: 0, z: 0 };
+        outDir = vNormalize(vCross(v1, ref));
+      }
+    } else {
+      outDir = { x: 1, y: 0, z: 0 };
+    }
+  }
+
+  const twistAngle = ((ringIndex % 2 === 0 ? 30 : -30) * Math.PI) / 180;
+  const uBond = vNormalize(outDir);
+  let refUp = Math.abs(uBond.z) < 0.9 ? { x: 0, y: 0, z: 1 } : { x: 1, y: 0, z: 0 };
+  const vPerp = vNormalize(vCross(uBond, refUp));
+  const wNorm = vNormalize(vCross(vPerp, uBond));
+  const vPrime = {
+    x: vPerp.x * Math.cos(twistAngle) + wNorm.x * Math.sin(twistAngle),
+    y: vPerp.y * Math.cos(twistAngle) + wNorm.y * Math.sin(twistAngle),
+    z: vPerp.z * Math.cos(twistAngle) + wNorm.z * Math.sin(twistAngle),
+  };
+
+  const center = {
+    x: pPos.x + (bondDist + radius) * uBond.x,
+    y: pPos.y + (bondDist + radius) * uBond.y,
+    z: pPos.z + (bondDist + radius) * uBond.z,
+  };
+
+  const startK = ring.indexOf(attachInRing);
+  for (let k = 0; k < 5; k++) {
+    const idx = ring[(startK + k) % 5]!;
+    const theta = (k * 2 * Math.PI) / 5;
+    const dirX = -Math.cos(theta) * uBond.x + Math.sin(theta) * vPrime.x;
+    const dirY = -Math.cos(theta) * uBond.y + Math.sin(theta) * vPrime.y;
+    const dirZ = -Math.cos(theta) * uBond.z + Math.sin(theta) * vPrime.z;
+
+    const x = center.x + radius * dirX;
+    const y = center.y + radius * dirY;
+    const z = center.z + radius * dirZ;
+
+    coords[idx] = { x: Number(x.toFixed(3)), y: Number(y.toFixed(3)), z: Number(z.toFixed(3)) };
+    placed.add(idx);
+    if (isArom) {
+      aromaticRingAtoms.add(idx);
+      aromaticRingOutward.set(idx, { x: dirX, y: dirY, z: dirZ });
+    }
+  }
+}
+
 // -----------------------------------------------------------------------------
 // 4. Comprehensive 3D Molecular Layout from SMILES Graph
 // -----------------------------------------------------------------------------
@@ -452,73 +673,221 @@ function generateFromSmiles(smiles: string, rng: () => number): MoleculeStructur
   const placed = new Set<number>();
   const aromaticRingAtoms = new Set<number>();
   const aromaticRingOutward = new Map<number, Vec3>();
+  let placedRingCount = 0;
 
-  // 1. Detect rings and lay out prominent 6-membered benzene and 5-membered rings
+  // 1. Detect rings and iteratively lay out isolated and fused 6- and 5-membered rings
   const rings = findRings(graph);
-  for (const rawRing of rings) {
-    if (rawRing.length === 6 && rawRing.every((idx) => !placed.has(idx))) {
-      const isArom = isAromatic6Ring(rawRing, graph);
-      const ring = orderRingPerimeter(rawRing, graph);
-      const radius = 1.39; // Ångströms
+  let ringProgress = true;
+  let loopCount = 0;
+  while (ringProgress && loopCount < 10) {
+    ringProgress = false;
+    loopCount++;
 
-      for (let k = 0; k < 6; k++) {
-        const idx = ring[k]!;
-        const angle = (k * 2 * Math.PI) / 6;
-        const x = radius * Math.cos(angle);
-        const y = radius * Math.sin(angle);
-        // Saturated cyclohexane gets classic chair conformation; benzene is STRICTLY planar z = 0
-        const z = isArom ? 0 : k % 2 === 0 ? 0.25 : -0.25;
-        coords[idx] = { x, y, z };
-        placed.add(idx);
+    for (const rawRing of rings) {
+      if (rawRing.length === 6) {
+        const unplaced = rawRing.filter((idx) => !placed.has(idx));
+        const isArom = isAromatic6Ring(rawRing, graph);
+        const ring = orderRingPerimeter(rawRing, graph);
+        const radius = 1.39; // Ångströms
 
-        if (isArom) {
-          aromaticRingAtoms.add(idx);
-          // Outward radial unit vector strictly in the ring plane
-          aromaticRingOutward.set(idx, { x: Math.cos(angle), y: Math.sin(angle), z: 0 });
-        }
-      }
+        if (unplaced.length === 6) {
+          // Check if any atom in this ring is connected to an already-placed atom
+          let attachInRing = -1;
+          let attachPlaced = -1;
+          for (const idx of ring) {
+            const edge = graph[idx]!.edges.find((e) => placed.has(e.target) && coords[e.target]);
+            if (edge) {
+              attachInRing = idx;
+              attachPlaced = edge.target;
+              break;
+            }
+          }
 
-      // If aromatic benzene ring, immediately lay out direct heavy substituents radially in-plane
-      if (isArom) {
-        for (let k = 0; k < 6; k++) {
-          const idx = ring[k]!;
-          const uOut = aromaticRingOutward.get(idx)!;
-          const node = graph[idx]!;
-          const extEdges = node.edges.filter((e) => !rawRing.includes(e.target));
-
-          if (extEdges.length > 0) {
-            extEdges.forEach((edge, eIdx) => {
-              const sub = edge.target;
-              if (!placed.has(sub)) {
-                const bondDist = getBondDistance(node.elem, graph[sub]!.elem, edge.order);
-                const fanAngle = extEdges.length > 1 ? (eIdx === 0 ? 0.25 : -0.25) : 0;
-                const cosFan = Math.cos(fanAngle);
-                const sinFan = Math.sin(fanAngle);
-                const dirX = uOut.x * cosFan - uOut.y * sinFan;
-                const dirY = uOut.x * sinFan + uOut.y * cosFan;
-
-                coords[sub] = {
-                  x: Number((coords[idx]!.x + dirX * bondDist).toFixed(3)),
-                  y: Number((coords[idx]!.y + dirY * bondDist).toFixed(3)),
-                  z: 0,
-                };
-                placed.add(sub);
+          if (attachInRing >= 0 && attachPlaced >= 0) {
+            placeConnected6Ring(ring, attachInRing, attachPlaced, graph, coords, placed, aromaticRingAtoms, aromaticRingOutward, placedRingCount++);
+            ringProgress = true;
+          } else if (!hasPathToPlaced(rawRing, graph, placed)) {
+            // Truly unplaced isolated 6-ring: place at origin or offset
+            const centerOffsetX = placed.size > 0 ? Math.max(...Array.from(placed).map((idx) => coords[idx]?.x ?? 0)) + 3.0 : 0;
+            for (let k = 0; k < 6; k++) {
+              const idx = ring[k]!;
+              const angle = (k * 2 * Math.PI) / 6;
+              const x = centerOffsetX + radius * Math.cos(angle);
+              const y = radius * Math.sin(angle);
+              const z = isArom ? 0 : k % 2 === 0 ? 0.25 : -0.25;
+              coords[idx] = { x: Number(x.toFixed(3)), y: Number(y.toFixed(3)), z };
+              placed.add(idx);
+              if (isArom) {
+                aromaticRingAtoms.add(idx);
+                aromaticRingOutward.set(idx, { x: Math.cos(angle), y: Math.sin(angle), z: 0 });
               }
-            });
+            }
+            placedRingCount++;
+            ringProgress = true;
+          }
+        } else if (unplaced.length > 0 && unplaced.length <= 4) {
+          // Fused 6-ring: find two adjacent placed atoms in perimeter
+          let pA = -1;
+          let pB = -1;
+          for (let k = 0; k < 6; k++) {
+            const curr = ring[k]!;
+            const nxt = ring[(k + 1) % 6]!;
+            if (placed.has(curr) && placed.has(nxt)) {
+              pA = curr;
+              pB = nxt;
+              break;
+            }
+          }
+
+          if (pA >= 0 && pB >= 0) {
+            const rA = coords[pA]!;
+            const rB = coords[pB]!;
+            const M = { x: (rA.x + rB.x) / 2, y: (rA.y + rB.y) / 2 };
+            const v = { x: rB.x - rA.x, y: rB.y - rA.y };
+            const d = Math.hypot(v.x, v.y) || 1.39;
+            const h = (d * Math.sqrt(3)) / 2;
+            const u1 = { x: -v.y / d, y: v.x / d };
+            const u2 = { x: v.y / d, y: -v.x / d };
+
+            const c1 = { x: M.x + h * u1.x, y: M.y + h * u1.y };
+            const c2 = { x: M.x + h * u2.x, y: M.y + h * u2.y };
+
+            // Find neighbors of pA and pB that are already placed (belonging to the existing fused ring)
+            const existingRingNeighbors: Vec3[] = [];
+            for (const edge of graph[pA]!.edges) {
+              if (edge.target !== pB && placed.has(edge.target) && coords[edge.target]) {
+                existingRingNeighbors.push(coords[edge.target]!);
+              }
+            }
+            for (const edge of graph[pB]!.edges) {
+              if (edge.target !== pA && placed.has(edge.target) && coords[edge.target]) {
+                existingRingNeighbors.push(coords[edge.target]!);
+              }
+            }
+
+            let awayVec = { x: 0, y: 0 };
+            if (existingRingNeighbors.length > 0) {
+              let avgNghX = 0;
+              let avgNghY = 0;
+              for (const n of existingRingNeighbors) {
+                avgNghX += n.x;
+                avgNghY += n.y;
+              }
+              avgNghX /= existingRingNeighbors.length;
+              avgNghY /= existingRingNeighbors.length;
+              awayVec = { x: M.x - avgNghX, y: M.y - avgNghY };
+            }
+
+            let center: { x: number; y: number };
+            if (Math.hypot(awayVec.x, awayVec.y) > 1e-4) {
+              const dot1 = (c1.x - M.x) * awayVec.x + (c1.y - M.y) * awayVec.y;
+              const dot2 = (c2.x - M.x) * awayVec.x + (c2.y - M.y) * awayVec.y;
+              center = dot1 >= dot2 ? c1 : c2;
+            } else {
+              let sumPlacedX = 0, sumPlacedY = 0, pCount = 0;
+              for (const idx of placed) {
+                if (idx !== pA && idx !== pB && coords[idx]) {
+                  sumPlacedX += coords[idx]!.x;
+                  sumPlacedY += coords[idx]!.y;
+                  pCount++;
+                }
+              }
+              const avgX = pCount > 0 ? sumPlacedX / pCount : M.x;
+              const avgY = pCount > 0 ? sumPlacedY / pCount : M.y;
+              const d1 = Math.hypot(c1.x - avgX, c1.y - avgY);
+              const d2 = Math.hypot(c2.x - avgX, c2.y - avgY);
+              center = d1 >= d2 ? c1 : c2;
+            }
+
+            const startAngle = Math.atan2(rA.y - center.y, rA.x - center.x);
+            const bAngle = Math.atan2(rB.y - center.y, rB.x - center.x);
+            let deltaAngle = bAngle - startAngle;
+            while (deltaAngle < -Math.PI) deltaAngle += 2 * Math.PI;
+            while (deltaAngle > Math.PI) deltaAngle -= 2 * Math.PI;
+            const stepAngle = deltaAngle > 0 ? (2 * Math.PI) / 6 : -(2 * Math.PI) / 6;
+
+            const pAIdx = ring.indexOf(pA);
+            for (let k = 0; k < 6; k++) {
+              const idx = ring[(pAIdx + k) % 6]!;
+              if (!placed.has(idx)) {
+                const ang = startAngle + k * stepAngle;
+                const x = center.x + radius * Math.cos(ang);
+                const y = center.y + radius * Math.sin(ang);
+                coords[idx] = { x: Number(x.toFixed(3)), y: Number(y.toFixed(3)), z: 0 };
+                placed.add(idx);
+              }
+              if (isArom) {
+                aromaticRingAtoms.add(idx);
+              }
+            }
+            ringProgress = true;
           }
         }
+      } else if (rawRing.length === 5 && rawRing.every((idx) => !placed.has(idx))) {
+        let attachInRing = -1;
+        let attachPlaced = -1;
+        for (const idx of rawRing) {
+          const edge = graph[idx]!.edges.find((e) => placed.has(e.target) && coords[e.target]);
+          if (edge) {
+            attachInRing = idx;
+            attachPlaced = edge.target;
+            break;
+          }
+        }
+
+        const ring = orderRingPerimeter(rawRing, graph);
+        if (attachInRing >= 0 && attachPlaced >= 0) {
+          placeConnected5Ring(ring, attachInRing, attachPlaced, graph, coords, placed, aromaticRingAtoms, aromaticRingOutward, placedRingCount++);
+          ringProgress = true;
+        } else if (!hasPathToPlaced(rawRing, graph, placed)) {
+          const radius = 1.25;
+          const isArom = rawRing.every((idx) => graph[idx]!.isAromatic);
+          const centerOffsetX = placed.size > 0 ? Math.max(...Array.from(placed).map((idx) => coords[idx]?.x ?? 0)) + 3.0 : 0;
+          for (let k = 0; k < 5; k++) {
+            const idx = ring[k]!;
+            const angle = (k * 2 * Math.PI) / 5 - Math.PI / 2;
+            const x = centerOffsetX + radius * Math.cos(angle);
+            const y = radius * Math.sin(angle);
+            coords[idx] = { x: Number(x.toFixed(3)), y: Number(y.toFixed(3)), z: 0 };
+            placed.add(idx);
+            if (isArom) {
+              aromaticRingAtoms.add(idx);
+              aromaticRingOutward.set(idx, { x: Math.cos(angle), y: Math.sin(angle), z: 0 });
+            }
+          }
+          placedRingCount++;
+          ringProgress = true;
+        }
       }
-    } else if (rawRing.length === 5 && rawRing.every((idx) => !placed.has(idx))) {
-      const ring = orderRingPerimeter(rawRing, graph);
-      const radius = 1.25;
-      for (let k = 0; k < 5; k++) {
-        const idx = ring[k]!;
-        const angle = (k * 2 * Math.PI) / 5 - Math.PI / 2;
-        const x = radius * Math.cos(angle);
-        const y = radius * Math.sin(angle);
-        coords[idx] = { x, y, z: 0 };
-        placed.add(idx);
-      }
+    }
+  }
+
+  // Lay out direct heavy substituents radially for aromatic rings
+  for (const idx of aromaticRingAtoms) {
+    const uOut = aromaticRingOutward.get(idx);
+    if (!uOut) continue;
+    const node = graph[idx]!;
+    const extEdges = node.edges.filter((e) => !aromaticRingAtoms.has(e.target));
+    if (extEdges.length > 0) {
+      extEdges.forEach((edge, eIdx) => {
+        const sub = edge.target;
+        if (!placed.has(sub)) {
+          const bondDist = getBondDistance(node.elem, graph[sub]!.elem, edge.order);
+          const fanAngle = extEdges.length > 1 ? (eIdx === 0 ? 0.25 : -0.25) : 0;
+          const cosFan = Math.cos(fanAngle);
+          const sinFan = Math.sin(fanAngle);
+          const dirX = uOut.x * cosFan - uOut.y * sinFan;
+          const dirY = uOut.x * sinFan + uOut.y * cosFan;
+          const dirZ = uOut.z || 0;
+
+          coords[sub] = {
+            x: Number((coords[idx]!.x + dirX * bondDist).toFixed(3)),
+            y: Number((coords[idx]!.y + dirY * bondDist).toFixed(3)),
+            z: Number((coords[idx]!.z + dirZ * bondDist).toFixed(3)),
+          };
+          placed.add(sub);
+        }
+      });
     }
   }
 
@@ -546,20 +915,15 @@ function generateFromSmiles(smiles: string, rng: () => number): MoleculeStructur
 
   // 3. Lay out each component via BFS with hybridization-guided bond vectors
   components.forEach((comp, compIdx) => {
-    let root = comp[0]!;
-    for (const idx of comp) {
-      if (placed.has(idx)) {
-        root = idx;
-        break;
-      }
-    }
-
-    if (!placed.has(root)) {
+    const alreadyPlaced = comp.filter((idx) => placed.has(idx));
+    if (alreadyPlaced.length === 0) {
+      const root = comp[0]!;
       coords[root] = { x: 0, y: 0, z: 0 };
       placed.add(root);
+      alreadyPlaced.push(root);
     }
 
-    const queue: number[] = [root];
+    const queue: number[] = [...alreadyPlaced];
     const parentMap: Record<number, number> = {};
 
     while (queue.length > 0) {
@@ -572,18 +936,65 @@ function generateFromSmiles(smiles: string, rng: () => number): MoleculeStructur
       if (parentMap[u] !== undefined) {
         const pPos = coords[parentMap[u]!]!;
         inDir = vNormalize({ x: uPos.x - pPos.x, y: uPos.y - pPos.y, z: uPos.z - pPos.z });
+      } else {
+        const placedNeighbors = uNode.edges
+          .filter((e) => placed.has(e.target) && coords[e.target])
+          .map((e) => coords[e.target]!);
+        if (placedNeighbors.length === 1) {
+          const p = placedNeighbors[0]!;
+          inDir = vNormalize({ x: uPos.x - p.x, y: uPos.y - p.y, z: uPos.z - p.z });
+        } else if (placedNeighbors.length >= 2) {
+          let sumOut = { x: 0, y: 0, z: 0 };
+          for (const p of placedNeighbors) {
+            const v = vNormalize({ x: uPos.x - p.x, y: uPos.y - p.y, z: uPos.z - p.z });
+            sumOut.x += v.x;
+            sumOut.y += v.y;
+            sumOut.z += v.z;
+          }
+          const len = Math.hypot(sumOut.x, sumOut.y, sumOut.z);
+          if (len > 1e-3) {
+            inDir = { x: sumOut.x / len, y: sumOut.y / len, z: sumOut.z / len };
+          }
+        }
       }
 
       const unplacedNeighbors = uNode.edges.filter((e) => !placed.has(e.target));
       if (unplacedNeighbors.length === 0) continue;
 
       let fwd = inDir || { x: 1, y: 0, z: 0 };
-      let up = Math.abs(fwd.z) < 0.9 ? { x: 0, y: 0, z: 1 } : { x: 0, y: 1, z: 0 };
+      let up = Math.abs(fwd.z) < 0.9 ? { x: 0, y: 0, z: 1 } : { x: 1, y: 0, z: 0 };
       let right = vNormalize(vCross(fwd, up));
       let perp = vNormalize(vCross(right, fwd));
 
-      unplacedNeighbors.forEach((edge, nIdx) => {
+      for (let nIdx = 0; nIdx < unplacedNeighbors.length; nIdx++) {
+        const edge = unplacedNeighbors[nIdx]!;
         const v = edge.target;
+        if (placed.has(v)) continue;
+
+        // Check if v belongs to an unplaced 6-ring
+        const unplaced6 = rings.find((r) => r.length === 6 && r.includes(v) && r.every((idx) => !placed.has(idx)));
+        if (unplaced6) {
+          const orderedRing = orderRingPerimeter(unplaced6, graph);
+          placeConnected6Ring(orderedRing, v, u, graph, coords, placed, aromaticRingAtoms, aromaticRingOutward, placedRingCount++);
+          for (const idx of orderedRing) {
+            parentMap[idx] = u;
+            queue.push(idx);
+          }
+          continue;
+        }
+
+        // Check if v belongs to an unplaced 5-ring
+        const unplaced5 = rings.find((r) => r.length === 5 && r.includes(v) && r.every((idx) => !placed.has(idx)));
+        if (unplaced5) {
+          const orderedRing = orderRingPerimeter(unplaced5, graph);
+          placeConnected5Ring(orderedRing, v, u, graph, coords, placed, aromaticRingAtoms, aromaticRingOutward, placedRingCount++);
+          for (const idx of orderedRing) {
+            parentMap[idx] = u;
+            queue.push(idx);
+          }
+          continue;
+        }
+
         const vNode = graph[v]!;
         const bondDist = getBondDistance(uNode.elem, vNode.elem, edge.order);
         let outDir: Vec3;
@@ -592,24 +1003,24 @@ function generateFromSmiles(smiles: string, rng: () => number): MoleculeStructur
           outDir = fwd;
         } else if (hyb === "SP2") {
           const sign = nIdx % 2 === 0 ? 1 : -1;
-          const cos120 = -0.5;
-          const sin120 = 0.866 * sign;
+          const cosFwd = 0.5; // cos(180° - 120°) = cos(60°) = +0.5 pointing forward
+          const sinFwd = 0.866 * sign;
           outDir = {
-            x: fwd.x * cos120 + right.x * sin120,
-            y: fwd.y * cos120 + right.y * sin120,
-            z: fwd.z * cos120 + right.z * sin120,
+            x: fwd.x * cosFwd + right.x * sinFwd,
+            y: fwd.y * cosFwd + right.y * sinFwd,
+            z: fwd.z * cosFwd + right.z * sinFwd,
           };
         } else {
-          const cosTet = -0.3333; // 109.5 deg
-          const sinTet = 0.9428;
+          const cosFwd = 0.3333; // cos(180° - 109.5°) = cos(70.5°) = +0.3333 pointing forward
+          const sinFwd = 0.9428;
           const phi = (nIdx * (2 * Math.PI) / 3) + (u % 2 === 0 ? 0 : Math.PI / 3);
           const cx = Math.cos(phi);
           const cy = Math.sin(phi);
 
           outDir = {
-            x: fwd.x * cosTet + (right.x * cx + perp.x * cy) * sinTet,
-            y: fwd.y * cosTet + (right.y * cx + perp.y * cy) * sinTet,
-            z: fwd.z * cosTet + (right.z * cx + perp.z * cy) * sinTet,
+            x: fwd.x * cosFwd + (right.x * cx + perp.x * cy) * sinFwd,
+            y: fwd.y * cosFwd + (right.y * cx + perp.y * cy) * sinFwd,
+            z: fwd.z * cosFwd + (right.z * cx + perp.z * cy) * sinFwd,
           };
         }
 
@@ -623,14 +1034,28 @@ function generateFromSmiles(smiles: string, rng: () => number): MoleculeStructur
         placed.add(v);
         parentMap[v] = u;
         queue.push(v);
-      });
+      }
     }
 
     if (compIdx > 0) {
-      const offsetX = compIdx * 3.4;
+      let maxX = -Infinity;
+      for (let k = 0; k < graph.length; k++) {
+        if (placed.has(k) && !comp.includes(k) && coords[k]) {
+          maxX = Math.max(maxX, coords[k]!.x);
+        }
+      }
+      if (!Number.isFinite(maxX)) maxX = 0;
+
+      let currMinX = Infinity;
+      for (const idx of comp) {
+        if (coords[idx]) currMinX = Math.min(currMinX, coords[idx]!.x);
+      }
+      if (!Number.isFinite(currMinX)) currMinX = 0;
+
+      const shift = maxX + 2.8 - currMinX;
       for (const idx of comp) {
         if (coords[idx]) {
-          coords[idx]!.x += offsetX;
+          coords[idx]!.x += shift;
         }
       }
     }
@@ -712,22 +1137,66 @@ function generateFromSmiles(smiles: string, rng: () => number): MoleculeStructur
 
     // Case A: Aromatic benzene ring atom
     if (aromaticRingAtoms.has(i)) {
-      const uOut = aromaticRingOutward.get(i);
-      const extHeavyNeighbors = node.edges.filter((e) => !aromaticRingAtoms.has(e.target));
-      // In benzene ring, each carbon has 2 ring neighbors. If no external heavy group, it gets 1 planar H
-      if (extHeavyNeighbors.length === 0 && elem === "C" && uOut) {
+      // In aromatic rings, carbon valence 4 is fully satisfied if heavy degree >= 3 (bridgehead or substituted)
+      let needAromH = 0;
+      if (node.explicitH !== null) {
+        needAromH = node.explicitH;
+      } else if (elem === "C" && node.edges.length === 2) {
+        needAromH = 1;
+      }
+
+      if (needAromH === 1) {
+        const myRing = rings.find((r) => r.length === 6 && r.includes(i)) || rings.find((r) => r.includes(i));
+        let ringCenterOut: Vec3 | null = null;
+        if (myRing && myRing.length >= 3) {
+          let cx = 0, cy = 0, cz = 0;
+          for (const rIdx of myRing) {
+            const a = atoms[rIdx];
+            if (a) { cx += a.x3d; cy += a.y3d; cz += a.z3d; }
+          }
+          cx /= myRing.length; cy /= myRing.length; cz /= myRing.length;
+          const v = { x: parentPos.x3d - cx, y: parentPos.y3d - cy, z: parentPos.z3d - cz };
+          const vLen = Math.hypot(v.x, v.y, v.z);
+          if (vLen > 1e-3) {
+            ringCenterOut = { x: v.x / vLen, y: v.y / vLen, z: v.z / vLen };
+          }
+        }
+
+        let uOut: Vec3 | null = null;
+        const ringOut = ringCenterOut || aromaticRingOutward.get(i);
+        if (node.edges.length === 2) {
+          const n1 = atoms[node.edges[0]!.target];
+          const n2 = atoms[node.edges[1]!.target];
+          if (n1 && n2) {
+            const v1 = vNormalize({ x: n1.x3d - parentPos.x3d, y: n1.y3d - parentPos.y3d, z: n1.z3d - parentPos.z3d });
+            const v2 = vNormalize({ x: n2.x3d - parentPos.x3d, y: n2.y3d - parentPos.y3d, z: n2.z3d - parentPos.z3d });
+            const vSum = { x: v1.x + v2.x, y: v1.y + v2.y, z: v1.z + v2.z };
+            const vSumLen = Math.hypot(vSum.x, vSum.y, vSum.z);
+            if (vSumLen > 1e-3) {
+              let cand = { x: -vSum.x / vSumLen, y: -vSum.y / vSumLen, z: -vSum.z / vSumLen };
+              if (ringOut && (cand.x * ringOut.x + cand.y * ringOut.y + cand.z * ringOut.z) < 0.3) {
+                cand = ringOut;
+              }
+              uOut = cand;
+            }
+          }
+        }
+        if (!uOut) {
+          uOut = ringOut || { x: 1, y: 0, z: 0 };
+        }
+
         const hDist = 1.09;
         const hIdx = atoms.length;
         const hx = parentPos.x3d + uOut.x * hDist;
         const hy = parentPos.y3d + uOut.y * hDist;
-        const hz = 0; // 100% strictly in-plane!
+        const hz = parentPos.z3d + (uOut.z || 0) * hDist;
 
         atoms.push({
           atomIndex: hIdx,
           element: "H",
           x3d: Number(hx.toFixed(3)),
           y3d: Number(hy.toFixed(3)),
-          z3d: 0,
+          z3d: Number(hz.toFixed(3)),
           x2d: Math.round(hx * 40),
           y2d: Math.round(hy * 40),
         });
@@ -747,8 +1216,8 @@ function generateFromSmiles(smiles: string, rng: () => number): MoleculeStructur
     if (node.explicitH !== null) {
       needH = node.explicitH;
     } else {
-      const maxV = ELEMENT_MAX_VALENCE[elem] ?? 4;
       const usedV = node.edges.reduce((sum, e) => sum + (e.order === 1.5 ? 1.5 : e.order), 0);
+      const maxV = getImplicitValence(elem, usedV);
       needH = Math.max(0, Math.floor(maxV - usedV));
     }
 
@@ -757,6 +1226,54 @@ function generateFromSmiles(smiles: string, rng: () => number): MoleculeStructur
     const existingNeighbors = bonds
       .filter((b) => b.atomIndex1 === i || b.atomIndex2 === i)
       .map((b) => (b.atomIndex1 === i ? atoms[b.atomIndex2]! : atoms[b.atomIndex1]!));
+
+    const hDist = getBondDistance(elem, "H");
+
+    if (needH === 2 && existingNeighbors.length === 2) {
+      // True tetrahedral sp3 methylene: H-C-H plane is strictly perpendicular to C-C-C plane
+      const n1 = existingNeighbors[0]!;
+      const n2 = existingNeighbors[1]!;
+      const v1 = vNormalize({ x: n1.x3d - parentPos.x3d, y: n1.y3d - parentPos.y3d, z: n1.z3d - parentPos.z3d });
+      const v2 = vNormalize({ x: n2.x3d - parentPos.x3d, y: n2.y3d - parentPos.y3d, z: n2.z3d - parentPos.z3d });
+      const bisector = vNormalize({ x: -(v1.x + v2.x), y: -(v1.y + v2.y), z: -(v1.z + v2.z) });
+      let normal = vNormalize(vCross(v1, v2));
+      if (Math.hypot(normal.x, normal.y, normal.z) < 1e-3) {
+        const ref = Math.abs(bisector.z) < 0.9 ? { x: 0, y: 0, z: 1 } : { x: 1, y: 0, z: 0 };
+        normal = vNormalize(vCross(bisector, ref));
+      }
+
+      const cosTet = 0.5774;
+      const sinTet = 0.8165;
+      const dirs = [
+        vNormalize({ x: bisector.x * cosTet + normal.x * sinTet, y: bisector.y * cosTet + normal.y * sinTet, z: bisector.z * cosTet + normal.z * sinTet }),
+        vNormalize({ x: bisector.x * cosTet - normal.x * sinTet, y: bisector.y * cosTet - normal.y * sinTet, z: bisector.z * cosTet - normal.z * sinTet }),
+      ];
+
+      for (const hDir of dirs) {
+        const hIdx = atoms.length;
+        const hx = parentPos.x3d + hDir.x * hDist;
+        const hy = parentPos.y3d + hDir.y * hDist;
+        const hz = parentPos.z3d + hDir.z * hDist;
+
+        atoms.push({
+          atomIndex: hIdx,
+          element: "H",
+          x3d: Number(hx.toFixed(3)),
+          y3d: Number(hy.toFixed(3)),
+          z3d: Number(hz.toFixed(3)),
+          x2d: Math.round(hx * 40),
+          y2d: Math.round(hy * 40),
+        });
+
+        bonds.push({
+          atomIndex1: i,
+          atomIndex2: hIdx,
+          order: 1,
+          type: "covalent",
+        });
+      }
+      continue;
+    }
 
     let avgNeighborDir = { x: 0, y: 0, z: 0 };
     for (const n of existingNeighbors) {
@@ -774,9 +1291,9 @@ function generateFromSmiles(smiles: string, rng: () => number): MoleculeStructur
       y: Math.abs(ay) > 1e-4 ? ay : (rng() - 0.5),
       z: Math.abs(az) > 1e-4 ? az : 0,
     });
-    const side = vNormalize(vCross(away, { x: 0, y: 0, z: 1 }));
+    const ref = Math.abs(away.z) < 0.9 ? { x: 0, y: 0, z: 1 } : { x: 1, y: 0, z: 0 };
+    const side = vNormalize(vCross(away, ref));
     const up = vNormalize(vCross(side, away));
-    const hDist = getBondDistance(elem, "H");
 
     for (let h = 0; h < needH; h++) {
       let hDir = away;
@@ -796,6 +1313,14 @@ function generateFromSmiles(smiles: string, rng: () => number): MoleculeStructur
           y: away.y * cosCone + (side.y * Math.cos(phi) + up.y * Math.sin(phi)) * sinCone,
           z: away.z * cosCone + (side.z * Math.cos(phi) + up.z * Math.sin(phi)) * sinCone,
         });
+      } else if (needH === 4) {
+        const tet = [
+          { x: 0.577, y: 0.577, z: 0.577 },
+          { x: 0.577, y: -0.577, z: -0.577 },
+          { x: -0.577, y: 0.577, z: -0.577 },
+          { x: -0.577, y: -0.577, z: 0.577 },
+        ];
+        hDir = tet[h]!;
       }
 
       const hIdx = atoms.length;
@@ -820,6 +1345,7 @@ function generateFromSmiles(smiles: string, rng: () => number): MoleculeStructur
         type: "covalent",
       });
     }
+
   }
 
   // 6. Force Field Minimization
@@ -836,16 +1362,26 @@ function detectCentralAtom(comp: ElementComposition, formula: string): string | 
   const elements = Object.keys(comp);
   if (elements.length <= 1) return null;
 
-  if ((comp["O"] ?? 0) >= 2) {
-    for (const c of [
-      "S", "Se", "Te", "P", "As", "Sb", "Cr", "Mo", "W", "Mn", "Re", "N", "C", "Si", "Ge", "Cl", "Br", "I", "B", "V",
-    ]) {
-      if (comp[c] && comp[c]! <= 2) return c;
+  // 1. Organic molecules with multiple carbons MUST NOT use single-center VSEPR
+  if ((comp["C"] ?? 0) > 1) {
+    return null;
+  }
+  // Organic 1-carbon with multiple heteroatoms/hydrogens (e.g. methanol CH3OH, methylamine CH3NH2)
+  if (comp["C"] === 1 && (comp["H"] ?? 0) >= 3 && elements.length > 2) {
+    return null;
+  }
+
+  // 2. Simple Oxoacids and Oxoanions with at most 4 oxygens per central atom (SO2, SO3, SO4^2-, NO2-, NO3-, CO3^2-, PO4^3-)
+  const oCount = comp["O"] ?? 0;
+  if (oCount >= 2 && oCount <= 4) {
+    for (const c of ["S", "P", "N", "C", "Si", "Cl", "Br", "I", "B", "Se", "As"]) {
+      if (comp[c] && comp[c]! === 1) return c;
     }
   }
 
+  // 3. Central atom candidates (monocentric inorganic halides, oxides, hydrides)
   const centralCandidates = [
-    "Be", "Mg", "Ca", "Sr", "Ba", "Li", "Na", "K", "Cs",
+    "Be", "Mg", "Ca", "Sr", "Ba",
     "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn",
     "B", "Al", "Ga", "In", "Si", "Ge", "Sn", "Pb", "P", "As", "Sb", "S", "Se", "C", "N",
   ];
@@ -853,13 +1389,16 @@ function detectCentralAtom(comp: ElementComposition, formula: string): string | 
     if (comp[c] && comp[c] === 1) {
       const others = elements.filter((e) => e !== c);
       if (others.every((e) => ["F", "Cl", "Br", "I", "H", "O"].includes(e))) {
-        return c;
+        let ligTotal = 0;
+        for (const o of others) ligTotal += comp[o] ?? 0;
+        if (ligTotal <= 6) return c;
       }
     }
   }
 
-  if (comp["O"] === 1 && (comp["H"] ?? 0) >= 2) return "O";
-  if (comp["S"] === 1 && (comp["H"] ?? 0) >= 2) return "S";
+  // Water / H2S specifically
+  if (comp["O"] === 1 && comp["H"] === 2 && elements.length === 2) return "O";
+  if (comp["S"] === 1 && comp["H"] === 2 && elements.length === 2) return "S";
 
   return null;
 }
@@ -889,7 +1428,7 @@ function generateInorganicVsepr(
   const oCount = comp["O"] || 0;
   const hCount = comp["H"] || 0;
 
-  if (oCount >= 2 && central !== "O") {
+  if (oCount >= 2 && oCount <= 4 && central !== "O") {
     const oIndices: number[] = [];
     const trigAngle = (120 * Math.PI) / 180;
 
@@ -945,9 +1484,22 @@ function generateInorganicVsepr(
       const hDist = 0.96;
       const hIdx = atoms.length;
 
-      const hx = oAtom.x3d * 1.45 + 0.2;
-      const hy = oAtom.y3d * 1.45 - 0.2;
-      const hz = oAtom.z3d * 1.45;
+      const oDist = Math.hypot(oAtom.x3d, oAtom.y3d, oAtom.z3d) || 1;
+      const ux = oAtom.x3d / oDist;
+      const uy = oAtom.y3d / oDist;
+      const uz = oAtom.z3d / oDist;
+
+      // Perpendicular vector for bent O-H bond (~107°)
+      const p1 = Math.abs(ux) < 0.8 ? { x: 1, y: 0, z: 0 } : { x: 0, y: 1, z: 0 };
+      const dot = p1.x * ux + p1.y * uy + p1.z * uz;
+      const px = p1.x - dot * ux;
+      const py = p1.y - dot * uy;
+      const pz = p1.z - dot * uz;
+      const pLen = Math.hypot(px, py, pz) || 1;
+
+      const hx = oAtom.x3d + hDist * (0.35 * ux + 0.94 * (px / pLen));
+      const hy = oAtom.y3d + hDist * (0.35 * uy + 0.94 * (py / pLen));
+      const hz = oAtom.z3d + hDist * (0.35 * uz + 0.94 * (pz / pLen));
 
       atoms.push({
         atomIndex: hIdx,
@@ -968,17 +1520,58 @@ function generateInorganicVsepr(
       placedH++;
     }
 
+    // Any excess hydrogens attached to oxygens
+    while (placedH < hCount) {
+      const targetO = oIndices[placedH % oIndices.length]!;
+      const oAtom = atoms[targetO]!;
+      const hIdx = atoms.length;
+      const ang = (placedH * 2.1) % (2 * Math.PI);
+      const hx = oAtom.x3d + 0.96 * Math.cos(ang);
+      const hy = oAtom.y3d + 0.96 * Math.sin(ang);
+      const hz = oAtom.z3d + (placedH % 2 === 0 ? 0.6 : -0.6);
+      atoms.push({
+        atomIndex: hIdx,
+        element: "H",
+        x3d: Number(hx.toFixed(3)),
+        y3d: Number(hy.toFixed(3)),
+        z3d: Number(hz.toFixed(3)),
+        x2d: Math.round(hx * 40),
+        y2d: Math.round(hy * 40),
+      });
+      bonds.push({
+        atomIndex1: targetO,
+        atomIndex2: hIdx,
+        order: 1,
+        type: "covalent",
+      });
+      placedH++;
+    }
+
     const metals = Object.keys(comp).filter((k) => k !== central && k !== "O" && k !== "H");
+    // Prioritize deprotonated oxygens (oxygens that did not receive an H)
+    const availableOIndices = oIndices.slice(placedH).concat(oIndices.slice(0, placedH));
+
     for (const m of metals) {
       const mCount = comp[m] || 0;
       for (let j = 0; j < mCount; j++) {
         const mIdx = atoms.length;
-        const targetO = oIndices[j % oIndices.length]!;
+        const targetO = (availableOIndices.length > 0 ? availableOIndices : oIndices)[j % oIndices.length]!;
         const oAtom = atoms[targetO]!;
 
-        const mx = oAtom.x3d * 1.8 + (j === 0 ? 0.3 : -0.3);
-        const my = oAtom.y3d * 1.8 + (j === 0 ? -0.3 : 0.3);
-        const mz = oAtom.z3d * 1.8;
+        const oDist = Math.hypot(oAtom.x3d, oAtom.y3d, oAtom.z3d) || 1;
+        const ux = oAtom.x3d / oDist;
+        const uy = oAtom.y3d / oDist;
+        const uz = oAtom.z3d / oDist;
+
+        const mDist = 2.15;
+        const angle = (j * 2 * Math.PI) / Math.max(1, mCount) + Math.PI / 4;
+        const perpX = -uy * Math.cos(angle);
+        const perpY = ux * Math.cos(angle);
+        const perpZ = Math.sin(angle);
+
+        const mx = oAtom.x3d + mDist * (0.85 * ux + 0.52 * perpX);
+        const my = oAtom.y3d + mDist * (0.85 * uy + 0.52 * perpY);
+        const mz = oAtom.z3d + mDist * (0.85 * uz + 0.52 * perpZ);
 
         atoms.push({
           atomIndex: mIdx,
@@ -1011,6 +1604,7 @@ function generateInorganicVsepr(
   }
 
   const n = ligandList.length;
+  if (n === 0 || n > 6) return null;
   for (let i = 0; i < n; i++) {
     const ligElem = ligandList[i]!;
     let vx = 0;
@@ -1319,17 +1913,30 @@ function generateOrganicStructure(
     }
   }
 
-  // Leftover hydrogens
-  while (placedH < hTotal && atoms.length > 0) {
-    const parentIdx = placedH % atoms.length;
-    const parent = atoms[parentIdx]!;
-    const ang = (placedH * 2.4) % (2 * Math.PI);
-    const x = parent.x3d + 1.09 * Math.cos(ang);
-    const y = parent.y3d + 1.09 * Math.sin(ang);
-    const z = parent.z3d + (placedH % 2 === 0 ? 0.6 : -0.6);
+  // Leftover hydrogens: attach only to non-hydrogen heavy atoms
+  const eligibleParents = atoms
+    .map((a, idx) => ({ a, idx }))
+    .filter(({ a }) => a.element !== "H" && !["F", "Cl", "Br", "I"].includes(a.element));
+
+  while (placedH < hTotal && eligibleParents.length > 0) {
+    const { a: parent, idx: parentIdx } = eligibleParents[placedH % eligibleParents.length]!;
+    const maxV = ELEMENT_MAX_VALENCE[parent.element] ?? 4;
+    const isOvercoordinated = (valenceUsed[parentIdx] ?? 0) >= maxV;
+    const shell = Math.floor(placedH / (eligibleParents.length * 6));
+    const rDist = (isOvercoordinated ? 2.35 : 1.2) + shell * 1.2;
+    const phi = ((placedH * 137.5) * Math.PI) / 180;
+    const zOffset = (1 - ((placedH % 6) / 3)) * (rDist * 0.7);
+    const rInPlane = Math.sqrt(Math.max(0, rDist * rDist - zOffset * zOffset));
+    const x = parent.x3d + rInPlane * Math.cos(phi);
+    const y = parent.y3d + rInPlane * Math.sin(phi);
+    const z = parent.z3d + zOffset;
 
     const hIdx = addAtom("H", x, y, z);
-    addBond(parentIdx, hIdx, 1);
+    if (!isOvercoordinated) {
+      addBond(parentIdx, hIdx, 1, "covalent");
+    } else {
+      addBond(parentIdx, hIdx, 1, "ionic");
+    }
     placedH++;
   }
 
@@ -1356,7 +1963,7 @@ function relaxGeometry(
     adj.get(b.atomIndex2)?.push({ neighbor: b.atomIndex1, order: b.order, type: b.type });
   }
 
-  const iterations = 64;
+  const iterations = 100;
 
   for (let iter = 0; iter < iterations; iter++) {
     // 1. Harmonic Bond Distance Springs
@@ -1376,7 +1983,7 @@ function relaxGeometry(
         dist = Math.hypot(dx, dy, dz) || 0.1;
       }
 
-      const diff = (dist - targetDist) * 0.35;
+      const diff = (dist - targetDist) * 0.5;
       const nx = dx / dist;
       const ny = dy / dist;
       const nz = dz / dist;
@@ -1387,25 +1994,25 @@ function relaxGeometry(
 
       a1.x3d += nx * diff * 0.5;
       a1.y3d += ny * diff * 0.5;
-      if (!a1IsArom) a1.z3d += nz * diff * 0.5;
+      a1.z3d += nz * diff * 0.5;
 
       a2.x3d -= nx * diff * 0.5;
       a2.y3d -= ny * diff * 0.5;
-      if (!a2IsArom) a2.z3d -= nz * diff * 0.5;
+      a2.z3d -= nz * diff * 0.5;
     }
 
-    // 2. Harmonic Bond Angle Restorations (for non-aromatic centers)
+    // 2. Harmonic Bond Angle Restorations
     for (let b = 0; b < atoms.length; b++) {
-      if (aromaticRingAtoms.has(b)) continue; // Aromatic ring angles are rigidly 120 deg
       const nList = adj.get(b);
       if (!nList || nList.length < 2) continue;
 
       const center = atoms[b]!;
       const isLinear = nList.length === 2 && nList.some((e) => e.order === 3);
       const isPlanar = nList.some((e) => e.order === 2);
+      const isArom = aromaticRingAtoms.has(b);
       const targetAngleRad = isLinear
         ? Math.PI
-        : isPlanar || nList.length === 3
+        : isPlanar || isArom || nList.length === 3
         ? (120 * Math.PI) / 180
         : (109.5 * Math.PI) / 180;
 
@@ -1425,20 +2032,29 @@ function relaxGeometry(
 
           const angleDiff = targetAngleRad - currentAngle;
           if (Math.abs(angleDiff) > 0.05) {
-            const push = angleDiff * 0.06;
+            const push = angleDiff * 0.04;
             const u1 = { x: v1.x / d1, y: v1.y / d1, z: v1.z / d1 };
             const u2 = { x: v2.x / d2, y: v2.y / d2, z: v2.z / d2 };
 
-            if (!aromaticRingAtoms.has(nList[i]!.neighbor)) {
-              a1.x3d -= u2.x * push;
-              a1.y3d -= u2.y * push;
-              a1.z3d -= u2.z * push;
-            }
-            if (!aromaticRingAtoms.has(nList[j]!.neighbor)) {
-              a2.x3d -= u1.x * push;
-              a2.y3d -= u1.y * push;
-              a2.z3d -= u1.z * push;
-            }
+            // Strictly perpendicular to bond u1 in the (u1, u2) plane
+            const p1x = u2.x - clampedDot * u1.x;
+            const p1y = u2.y - clampedDot * u1.y;
+            const p1z = u2.z - clampedDot * u1.z;
+            const p1Len = Math.hypot(p1x, p1y, p1z) || 1e-4;
+
+            // Strictly perpendicular to bond u2 in the (u1, u2) plane
+            const p2x = u1.x - clampedDot * u2.x;
+            const p2y = u1.y - clampedDot * u2.y;
+            const p2z = u1.z - clampedDot * u2.z;
+            const p2Len = Math.hypot(p2x, p2y, p2z) || 1e-4;
+
+            a1.x3d -= (p1x / p1Len) * push;
+            a1.y3d -= (p1y / p1Len) * push;
+            a1.z3d -= (p1z / p1Len) * push;
+
+            a2.x3d -= (p2x / p2Len) * push;
+            a2.y3d -= (p2y / p2Len) * push;
+            a2.z3d -= (p2z / p2Len) * push;
           }
         }
       }
@@ -1458,9 +2074,13 @@ function relaxGeometry(
         let dz = a2.z3d - a1.z3d;
         let dist = Math.hypot(dx, dy, dz);
 
+        const is13 = adj.get(i)?.some((e) => adj.get(e.neighbor)?.some((n2) => n2.neighbor === j));
+        const minDist13 = a1.element === "H" && a2.element === "H" ? 1.40 : 1.90;
+        if (is13 && dist >= minDist13) continue;
+
         const r1 = getVdwRadius(a1.element);
         const r2 = getVdwRadius(a2.element);
-        const contactDist = (r1 + r2) * 0.65;
+        const contactDist = is13 ? Math.min((r1 + r2) * 0.65, minDist13) : (r1 + r2) * 0.65;
 
         if (dist < contactDist) {
           if (dist < 0.001) {
@@ -1470,35 +2090,88 @@ function relaxGeometry(
             dist = Math.hypot(dx, dy, dz) || 0.1;
           }
 
-          const push = (contactDist - dist) * 0.3;
+          const push = (contactDist - dist) * 0.35;
           const nx = dx / dist;
           const ny = dy / dist;
           const nz = dz / dist;
 
-          if (!aromaticRingAtoms.has(i)) {
-            a1.x3d -= nx * push;
-            a1.y3d -= ny * push;
-            a1.z3d -= nz * push;
-          }
-          if (!aromaticRingAtoms.has(j)) {
-            a2.x3d += nx * push;
-            a2.y3d += ny * push;
-            a2.z3d += nz * push;
-          }
+          a1.x3d -= nx * push * 0.5;
+          a1.y3d -= ny * push * 0.5;
+          a1.z3d -= nz * push * 0.5;
+
+          a2.x3d += nx * push * 0.5;
+          a2.y3d += ny * push * 0.5;
+          a2.z3d += nz * push * 0.5;
         }
       }
     }
 
-    // 4. Strict Planar Enforce on all Aromatic Ring Carbons & In-Plane Ring Hydrogens
-    for (const rIdx of aromaticRingAtoms) {
-      const a = atoms[rIdx]!;
-      a.z3d = 0; // Strictly planar z = 0!
-      // Also keep direct ring hydrogens strictly in-plane
-      for (const n of adj.get(rIdx) || []) {
-        const neighborAtom = atoms[n.neighbor]!;
-        if (neighborAtom.element === "H") {
-          neighborAtom.z3d = 0;
+    // 4. Strict Covalent Bond Length Preservation (SHAKE-like enforcement)
+    for (const b of bonds) {
+      if (b.type === "ionic") continue;
+      const a1 = atoms[b.atomIndex1]!;
+      const a2 = atoms[b.atomIndex2]!;
+      const targetDist = getBondDistance(a1.element, a2.element, b.order);
+      const dx = a2.x3d - a1.x3d;
+      const dy = a2.y3d - a1.y3d;
+      const dz = a2.z3d - a1.z3d;
+      const dist = Math.hypot(dx, dy, dz) || 1e-4;
+      const diff = dist - targetDist;
+      if (Math.abs(diff) > 0.03) {
+        const nx = dx / dist;
+        const ny = dy / dist;
+        const nz = dz / dist;
+        const corr = diff * 0.6;
+
+        a1.x3d += nx * corr * 0.5;
+        a1.y3d += ny * corr * 0.5;
+        a1.z3d += nz * corr * 0.5;
+
+        a2.x3d -= nx * corr * 0.5;
+        a2.y3d -= ny * corr * 0.5;
+        a2.z3d -= nz * corr * 0.5;
+      }
+    }
+
+    // 5. Strict Planar Enforce: keep single isolated aromatic systems flat at z = 0
+    if (aromaticRingAtoms.size <= 10) {
+      for (const rIdx of aromaticRingAtoms) {
+        const a = atoms[rIdx]!;
+        a.z3d = 0;
+        for (const n of adj.get(rIdx) || []) {
+          const neighborAtom = atoms[n.neighbor]!;
+          if (neighborAtom.element === "H") {
+            neighborAtom.z3d = 0;
+          }
         }
+      }
+    }
+  }
+
+  // Final convergence pass: snap all covalent bonds strictly towards target length
+  for (let snap = 0; snap < 8; snap++) {
+    for (const b of bonds) {
+      if (b.type === "ionic") continue;
+      const a1 = atoms[b.atomIndex1]!;
+      const a2 = atoms[b.atomIndex2]!;
+      const targetDist = getBondDistance(a1.element, a2.element, b.order);
+      const dx = a2.x3d - a1.x3d;
+      const dy = a2.y3d - a1.y3d;
+      const dz = a2.z3d - a1.z3d;
+      const dist = Math.hypot(dx, dy, dz) || 1e-4;
+      const diff = dist - targetDist;
+      if (Math.abs(diff) > 0.02) {
+        const nx = dx / dist;
+        const ny = dy / dist;
+        const nz = dz / dist;
+        const corr = diff * 0.5;
+        a1.x3d += nx * corr * 0.5;
+        a1.y3d += ny * corr * 0.5;
+        a1.z3d += nz * corr * 0.5;
+
+        a2.x3d -= nx * corr * 0.5;
+        a2.y3d -= ny * corr * 0.5;
+        a2.z3d -= nz * corr * 0.5;
       }
     }
   }
@@ -1602,9 +2275,274 @@ export function generateMoleculeStructure(
         ],
       };
     }
+    if (count > 2) {
+      const d = Math.max(1.4, getBondDistance(elem, elem) || 2.0);
+      const atoms: MoleculeStructure["atoms"] = [];
+      const bonds: MoleculeStructure["bonds"] = [];
+      const gridSize = Math.ceil(Math.cbrt(count));
+      let placedCount = 0;
+      const gridCoords: [number, number, number][] = [];
+
+      for (let x = 0; x < gridSize && placedCount < count; x++) {
+        for (let y = 0; y < gridSize && placedCount < count; y++) {
+          for (let z = 0; z < gridSize && placedCount < count; z++) {
+            const xPos = Number(((x - (gridSize - 1) / 2) * d).toFixed(3));
+            const yPos = Number(((y - (gridSize - 1) / 2) * d).toFixed(3));
+            const zPos = Number(((z - (gridSize - 1) / 2) * d).toFixed(3));
+            atoms.push({
+              atomIndex: placedCount,
+              element: elem,
+              x3d: xPos,
+              y3d: yPos,
+              z3d: zPos,
+              x2d: Math.round(xPos * 30),
+              y2d: Math.round(yPos * 30),
+            });
+            gridCoords.push([x, y, z]);
+            placedCount++;
+          }
+        }
+      }
+
+      for (let i = 0; i < atoms.length; i++) {
+        const [x1, y1, z1] = gridCoords[i]!;
+        for (let j = i + 1; j < atoms.length; j++) {
+          const [x2, y2, z2] = gridCoords[j]!;
+          const manhattan = Math.abs(x1 - x2) + Math.abs(y1 - y2) + Math.abs(z1 - z2);
+          if (manhattan === 1) {
+            bonds.push({ atomIndex1: i, atomIndex2: j, order: 1, type: "covalent" });
+          }
+        }
+      }
+
+      return { curated: true, atoms, bonds };
+    }
   }
 
+function generateCoordinationComplex(
+  comp: ElementComposition,
+  formula: string,
+  commonName: string
+): MoleculeStructure | null {
+  const metals = ["Co", "Cr", "Ni", "Cu", "Fe", "Pt", "Pd", "Ru", "Rh", "Mn", "Zn", "Ag"];
+  const metal = metals.find((m) => (comp[m] ?? 0) === 1);
+  if (!metal) return null;
+
+  const nCount = comp["N"] ?? 0;
+  const hCount = comp["H"] ?? 0;
+  // Ammonia complex [M(NH3)n]
+  if (nCount >= 2 && nCount <= 6 && hCount >= nCount * 3) {
+    const atoms: MoleculeStructure["atoms"] = [];
+    const bonds: MoleculeStructure["bonds"] = [];
+
+    // Metal at origin
+    atoms.push({ atomIndex: 0, element: metal, x3d: 0, y3d: 0, z3d: 0, x2d: 0, y2d: 0 });
+
+    const octDirections = [
+      { x: 1, y: 0, z: 0 },
+      { x: -1, y: 0, z: 0 },
+      { x: 0, y: 1, z: 0 },
+      { x: 0, y: -1, z: 0 },
+      { x: 0, y: 0, z: 1 },
+      { x: 0, y: 0, z: -1 },
+    ];
+    const sqDirections = [
+      { x: 1, y: 0, z: 0 },
+      { x: -1, y: 0, z: 0 },
+      { x: 0, y: 1, z: 0 },
+      { x: 0, y: -1, z: 0 },
+    ];
+    const dirs = nCount === 4 ? sqDirections : octDirections.slice(0, nCount);
+    const m_n_dist = 1.96;
+
+    dirs.forEach((dir) => {
+      const nx = dir.x * m_n_dist;
+      const ny = dir.y * m_n_dist;
+      const nz = dir.z * m_n_dist;
+      const nIdx = atoms.length;
+      atoms.push({
+        atomIndex: nIdx,
+        element: "N",
+        x3d: Number(nx.toFixed(3)),
+        y3d: Number(ny.toFixed(3)),
+        z3d: Number(nz.toFixed(3)),
+        x2d: Math.round(nx * 35),
+        y2d: Math.round(ny * 35),
+      });
+      bonds.push({ atomIndex1: 0, atomIndex2: nIdx, order: 1, type: "covalent" });
+
+      // Perpendicular vectors e1, e2 to dir
+      const p1 = Math.abs(dir.x) < 0.8 ? { x: 1, y: 0, z: 0 } : { x: 0, y: 1, z: 0 };
+      const dot = p1.x * dir.x + p1.y * dir.y + p1.z * dir.z;
+      const e1x = p1.x - dot * dir.x;
+      const e1y = p1.y - dot * dir.y;
+      const e1z = p1.z - dot * dir.z;
+      const e1Len = Math.hypot(e1x, e1y, e1z) || 1;
+      const e1 = { x: e1x / e1Len, y: e1y / e1Len, z: e1z / e1Len };
+      const e2 = {
+        x: dir.y * e1.z - dir.z * e1.y,
+        y: dir.z * e1.x - dir.x * e1.z,
+        z: dir.x * e1.y - dir.y * e1.x,
+      };
+
+      // 3 Hydrogens forming NH3 umbrella
+      for (let m = 0; m < 3; m++) {
+        const theta = (m * 2 * Math.PI) / 3;
+        const cosT = Math.cos(theta);
+        const sinT = Math.sin(theta);
+        const radOut = 0.94;
+        const axial = 0.35;
+        const hDist = 1.01;
+        const hx = nx + hDist * (axial * dir.x + radOut * (cosT * e1.x + sinT * e2.x));
+        const hy = ny + hDist * (axial * dir.y + radOut * (cosT * e1.y + sinT * e2.y));
+        const hz = nz + hDist * (axial * dir.z + radOut * (cosT * e1.z + sinT * e2.z));
+        const hIdx = atoms.length;
+        atoms.push({
+          atomIndex: hIdx,
+          element: "H",
+          x3d: Number(hx.toFixed(3)),
+          y3d: Number(hy.toFixed(3)),
+          z3d: Number(hz.toFixed(3)),
+          x2d: Math.round(hx * 35),
+          y2d: Math.round(hy * 35),
+        });
+        bonds.push({ atomIndex1: nIdx, atomIndex2: hIdx, order: 1, type: "covalent" });
+      }
+    });
+
+    // Halogen counterions (e.g. Cl3)
+    const halogens = ["Cl", "Br", "I", "F"];
+    for (const hal of halogens) {
+      const cnt = comp[hal] ?? 0;
+      for (let c = 0; c < cnt; c++) {
+        const phi = (c * 2 * Math.PI) / cnt + Math.PI / 4;
+        const cx = 3.6 * Math.cos(phi);
+        const cy = 3.6 * Math.sin(phi);
+        const cz = 1.2 * (c % 2 === 0 ? 1 : -1);
+        const cIdx = atoms.length;
+        atoms.push({
+          atomIndex: cIdx,
+          element: hal,
+          x3d: Number(cx.toFixed(3)),
+          y3d: Number(cy.toFixed(3)),
+          z3d: Number(cz.toFixed(3)),
+          x2d: Math.round(cx * 35),
+          y2d: Math.round(cy * 35),
+        });
+        bonds.push({ atomIndex1: 0, atomIndex2: cIdx, order: 1, type: "ionic" });
+      }
+    }
+
+    return { curated: true, atoms, bonds };
+  }
+
+  return null;
+}
+
+function generatePolyOxoanionSalt(
+  comp: ElementComposition,
+  formula: string,
+  commonName: string
+): MoleculeStructure | null {
+  const centerElem = (comp["S"] ?? 0) > 1 ? "S" : (comp["P"] ?? 0) > 1 ? "P" : null;
+  if (!centerElem) return null;
+  const sCount = comp[centerElem] ?? 0;
+  const oCount = comp["O"] ?? 0;
+  if (sCount < 2 || oCount < sCount * 4) return null;
+
+  const metals = Object.keys(comp).filter((k) => k !== centerElem && k !== "O" && k !== "H");
+  if (metals.length === 0) return null;
+
+  const atoms: MoleculeStructure["atoms"] = [];
+  const bonds: MoleculeStructure["bonds"] = [];
+
+  const tetDirs = [
+    { x: 0.577, y: 0.577, z: 0.577 },
+    { x: 0.577, y: -0.577, z: -0.577 },
+    { x: -0.577, y: 0.577, z: -0.577 },
+    { x: -0.577, y: -0.577, z: 0.577 },
+  ];
+  const s_o_dist = 1.49;
+
+  // Build sCount tetrahedral SO4 / PO4 units
+  const oxoIndices: number[][] = [];
+  for (let s = 0; s < sCount; s++) {
+    const sx = (s - (sCount - 1) / 2) * 3.4;
+    const sy = 0;
+    const sz = 0;
+    const sIdx = atoms.length;
+    atoms.push({
+      atomIndex: sIdx,
+      element: centerElem,
+      x3d: Number(sx.toFixed(3)),
+      y3d: Number(sy.toFixed(3)),
+      z3d: Number(sz.toFixed(3)),
+      x2d: Math.round(sx * 35),
+      y2d: Math.round(sy * 35),
+    });
+
+    const oGroup: number[] = [];
+    for (let o = 0; o < 4; o++) {
+      const dir = tetDirs[o]!;
+      const ox = sx + dir.x * s_o_dist;
+      const oy = sy + dir.y * s_o_dist;
+      const oz = sz + dir.z * s_o_dist;
+      const oIdx = atoms.length;
+      atoms.push({
+        atomIndex: oIdx,
+        element: "O",
+        x3d: Number(ox.toFixed(3)),
+        y3d: Number(oy.toFixed(3)),
+        z3d: Number(oz.toFixed(3)),
+        x2d: Math.round(ox * 35),
+        y2d: Math.round(oy * 35),
+      });
+      bonds.push({ atomIndex1: sIdx, atomIndex2: oIdx, order: (o < 2 ? 2 : 1) as 1 | 2, type: "covalent" });
+      oGroup.push(oIdx);
+    }
+    oxoIndices.push(oGroup);
+  }
+
+  // Place metal cations above and below
+  for (const m of metals) {
+    const mCount = comp[m] ?? 0;
+    for (let j = 0; j < mCount; j++) {
+      const mx = (j - (mCount - 1) / 2) * 2.8;
+      const my = j % 2 === 0 ? 2.3 : -2.3;
+      const mz = 0.5;
+      const mIdx = atoms.length;
+      atoms.push({
+        atomIndex: mIdx,
+        element: m,
+        x3d: Number(mx.toFixed(3)),
+        y3d: Number(my.toFixed(3)),
+        z3d: Number(mz.toFixed(3)),
+        x2d: Math.round(mx * 35),
+        y2d: Math.round(my * 35),
+      });
+
+      // Connect ionic bonds to nearest oxygens
+      const targetGroup = oxoIndices[j % oxoIndices.length]!;
+      for (let k = 0; k < 2; k++) {
+        bonds.push({ atomIndex1: targetGroup[k]!, atomIndex2: mIdx, order: 1, type: "ionic" });
+      }
+    }
+  }
+
+  return { curated: true, atoms, bonds };
+}
+
   // 3. Inorganic & Oxoacid / Small Molecule VSEPR Generator
+  const complex = generateCoordinationComplex(comp, formula, commonName);
+  if (complex && complex.atoms.length > 0) {
+    return complex;
+  }
+
+  const polySalt = generatePolyOxoanionSalt(comp, formula, commonName);
+  if (polySalt && polySalt.atoms.length > 0) {
+    return polySalt;
+  }
+
   const vsepr = generateInorganicVsepr(comp, formula, commonName, rng);
   if (vsepr && vsepr.atoms.length > 0) {
     return vsepr;

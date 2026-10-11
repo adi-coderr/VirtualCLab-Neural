@@ -46,12 +46,6 @@ export function MoleculeViewer3D({
   const [hoveredAtom, setHoveredAtom] = useState<HoveredAtomInfo | null>(null);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 
-  const resetCameraRef = useRef<() => void>(() => {});
-
-  const handleResetCamera = useCallback(() => {
-    resetCameraRef.current?.();
-  }, []);
-
   const toggleFullscreen = useCallback(() => {
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
@@ -239,13 +233,6 @@ export function MoleculeViewer3D({
     controls.minDistance = 1.2;
     controls.maxDistance = 40;
 
-    resetCameraRef.current = () => {
-      camera.position.set(0, 0, initialDistance);
-      camera.lookAt(0, 0, 0);
-      controls.target.set(0, 0, 0);
-      controls.update();
-    };
-
     // Raycasting for Atom Hover
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
@@ -376,15 +363,7 @@ export function MoleculeViewer3D({
             <span className="molecule-3d__icon">{isRotating ? "⏸" : "▶"}</span>
             <span>{isRotating ? "Pause" : "Spin"}</span>
           </button>
-          <button
-            type="button"
-            className="molecule-3d__action-btn"
-            onClick={handleResetCamera}
-            title="Recenter camera on molecule"
-          >
-            <span className="molecule-3d__icon">↺</span>
-            <span>Reset</span>
-          </button>
+
           <button
             type="button"
             className={`molecule-3d__action-btn ${isFullscreen ? "is-active" : ""}`}
