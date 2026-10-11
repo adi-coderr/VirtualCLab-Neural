@@ -122,45 +122,157 @@ def clean_smiles(raw: str) -> str:
     cleaned = re.sub(r"\|[^|]*\|", "", cleaned).strip()
     return cleaned
 
+import sqlite3
+
 COMMON_NAME_TO_SMILES = {
-    "bromobenzene": "Brc1ccccc1",
-    "morpholine": "C1COCCN1",
+    # Hydrocarbons & alkynes / alkenes / alkanes
+    "c4h6": "C=CC=C",
+    "1,3-butadiene": "C=CC=C",
+    "butadiene": "C=CC=C",
+    "c2h2": "C#C",
+    "acetylene": "C#C",
+    "ethyne": "C#C",
+    "c2h4": "C=C",
+    "ethylene": "C=C",
+    "ethene": "C=C",
+    "c2h6": "CC",
+    "ethane": "CC",
+    "c3h8": "CCC",
+    "propane": "CCC",
+    "c3h6": "C=CC",
+    "propene": "C=CC",
+    "propylene": "C=CC",
+    "c4h10": "CCCC",
+    "butane": "CCCC",
+    "c4h8": "CCC=C",
+    "butene": "CCC=C",
+    "c5h12": "CCCCC",
+    "pentane": "CCCCC",
+    "ch4": "C",
+    "methane": "C",
+    "cyclopentadiene": "C1=CCC=C1",
+    "c5h6": "C1=CCC=C1",
+    "cyclohexadiene": "C1=CC=CCC1",
+    "1,3-cyclohexadiene": "C1=CC=CCC1",
+    "1,4-cyclohexadiene": "C1=CCC=CC1",
+    # Aromatics
     "benzene": "c1ccccc1",
+    "c6h6": "c1ccccc1",
     "toluene": "Cc1ccccc1",
+    "c7h8": "Cc1ccccc1",
+    "bromobenzene": "Brc1ccccc1",
+    "c6h5br": "Brc1ccccc1",
+    "chlorobenzene": "Clc1ccccc1",
+    "c6h5cl": "Clc1ccccc1",
+    "iodobenzene": "Ic1ccccc1",
     "aniline": "c1ccccc1N",
     "phenol": "c1ccccc1O",
+    "nitrobenzene": "O=[N+]([O-])c1ccccc1",
     "benzaldehyde": "c1ccccc1C=O",
+    "benzoic acid": "c1ccccc1C(=O)O",
     "acetophenone": "CC(=O)c1ccccc1",
-    "acetone": "CC(=O)C",
-    "acetic acid": "CC(=O)O",
-    "ethanol": "CCO",
-    "methanol": "CO",
-    "acetyl chloride": "CC(=O)Cl",
     "phenylboronic acid": "OB(O)c1ccccc1",
     "4-bromotoluene": "Cc1ccc(Br)cc1",
-    "methyl acrylate": "C=CC(=O)OC",
-    "iodobenzene": "Ic1ccccc1",
     "benzonitrile": "c1ccccc1C#N",
-    "water": "O",
-    "cyclopentadiene": "C1=CCC=C1",
+    # Alcohols, ethers & carbonyls
+    "methanol": "CO",
+    "ch3oh": "CO",
+    "ch4o": "CO",
+    "ethanol": "CCO",
+    "c2h5oh": "CCO",
+    "c2h6o": "CCO",
+    "acetone": "CC(=O)C",
+    "ch3coch3": "CC(=O)C",
+    "c3h6o": "CC(=O)C",
+    "acetic acid": "CC(=O)O",
+    "ch3cooh": "CC(=O)O",
+    "c2h4o2": "CC(=O)O",
+    "formic acid": "O=CO",
+    "hcooh": "O=CO",
+    "formaldehyde": "C=O",
+    "hcho": "C=O",
+    "ch2o": "C=O",
+    "acetaldehyde": "CC=O",
+    "ch3cho": "CC=O",
+    "acetyl chloride": "CC(=O)Cl",
+    "ethyl acetate": "CCOC(=O)C",
+    "diethyl ether": "CCOCC",
+    "morpholine": "C1COCCN1",
+    "methyl acrylate": "C=CC(=O)OC",
     "maleic anhydride": "O=C1OC(=O)C=C1",
-    "chlorobenzene": "Clc1ccccc1",
+    # Halides & inorganics
     "chlorine": "ClCl",
     "bromine": "Br",
+    "water": "O",
+    "h2o": "O",
+    "hydrogen peroxide": "OO",
+    "h2o2": "OO",
+    "carbon dioxide": "O=C=O",
+    "co2": "O=C=O",
+    "ammonia": "N",
+    "nh3": "N",
 }
 
+CHEMLAB_DB_SMILES = {}
+
+def load_chemlab_db():
+    global CHEMLAB_DB_SMILES
+    db_candidates = [
+        os.path.join(PROJECT_ROOT, "backend", "data", "chemlab.db"),
+        os.path.join(PROJECT_ROOT, "data", "chemlab.db"),
+    ]
+    for db_path in db_candidates:
+        if os.path.exists(db_path):
+            try:
+                conn = sqlite3.connect(db_path)
+                c = conn.cursor()
+                c.execute("SELECT id, formula, common_name, smiles FROM chemicals WHERE smiles IS NOT NULL")
+                count = 0
+                for cid, form, cname, sm in c.fetchall():
+                    if sm:
+                        s_clean = sm.strip()
+                        if cid: CHEMLAB_DB_SMILES[cid.lower().strip()] = s_clean
+                        if form: CHEMLAB_DB_SMILES[form.lower().strip()] = s_clean
+                        if cname: CHEMLAB_DB_SMILES[cname.lower().strip()] = s_clean
+                        count += 1
+                conn.close()
+                print(f"[ReactionT5v2] Successfully loaded {count} chemicals ({len(CHEMLAB_DB_SMILES)} aliases) from {db_path}!")
+                break
+            except Exception as e:
+                print(f"[ReactionT5v2] Warning: Could not read chemicals from {db_path}: {e}")
+
+load_chemlab_db()
+
+def resolve_single_species_to_smiles(token: str) -> str:
+    clean = token.strip()
+    if not clean:
+        return ""
+    lower = clean.lower()
+    
+    # 1. Exact match in built-in dictionary
+    if lower in COMMON_NAME_TO_SMILES:
+        return COMMON_NAME_TO_SMILES[lower]
+        
+    # 2. Match in chemlab.db
+    if lower in CHEMLAB_DB_SMILES:
+        return CHEMLAB_DB_SMILES[lower]
+        
+    # 3. Already valid aromatic or standard SMILES
+    if any(c in clean for c in ["=", "#", "(", ")", "[", "]", ":"]) or clean.islower():
+        # Likely already a SMILES string
+        return clean.replace("BrC1=CC=CC=C1", "Brc1ccccc1").replace("C1=CC=CC=C1", "c1ccccc1")
+        
+    return clean
+
 def resolve_names_to_smiles(query: str) -> str:
-    """Translate known chemical names in user inputs to valid canonical SMILES."""
+    """Translate chemical names and formulas in user inputs to valid canonical SMILES."""
     parts = re.split(r"(\s*\+\s*|\s*\.\s*|\s*,\s*|>)", query)
     resolved = []
     for p in parts:
-        clean = p.strip().lower()
-        if clean in COMMON_NAME_TO_SMILES:
-            resolved.append(COMMON_NAME_TO_SMILES[clean])
+        if re.match(r"^\s*(\+|\.|,|>)\s*$", p):
+            resolved.append(p)
         else:
-            # Normalize common Kekule benzene patterns to aromatic notation
-            s = p.replace("BrC1=CC=CC=C1", "Brc1ccccc1").replace("C1=CC=CC=C1", "c1ccccc1")
-            resolved.append(s)
+            resolved.append(resolve_single_species_to_smiles(p))
     return "".join(resolved)
 
 def format_reactiont5_input(query: str) -> str:

@@ -18,6 +18,7 @@ import {
   checkInertAlkaneMixture,
   type ReactionAuditReport,
 } from "../chemistry-engine/reactionAudit.js";
+import { estimateFormulaAndComposition } from "../chemistry-engine/molecularAnalysis.js";
 import { HttpError } from "../utils/errors.js";
 import type {
   CalorimetryResult,
@@ -143,6 +144,53 @@ export class SimulationService {
       );
     }
     return chemicals;
+  }
+
+  private resolveSpecies(token: string): ResolvedSpecies {
+    const clean = token.trim();
+    const lower = clean.toLowerCase();
+    const byId = this.chemicalRepo.getById(lower);
+    if (byId) {
+      return {
+        chemicalId: byId.id,
+        formula: byId.formula,
+        commonName: byId.commonName,
+        coefficient: 1,
+        isRegistered: true,
+      };
+    }
+    const searchRes = this.chemicalRepo.search(clean, 1, 0).items[0];
+    if (searchRes) {
+      return {
+        chemicalId: searchRes.id,
+        formula: searchRes.formula,
+        commonName: searchRes.commonName,
+        coefficient: 1,
+        isRegistered: true,
+      };
+    }
+    // Check if formula parser can parse it after formula casing normalization (e.g. c2h6 -> C2H6, c4h6 -> C4H6)
+    const norm = normalizeFormulaCasing(clean);
+    try {
+      const parsed = parseFormula(norm);
+      if (Object.keys(parsed.composition).length > 0) {
+        return {
+          chemicalId: lower.replace(/[^a-z0-9]/g, "_"),
+          formula: norm,
+          commonName: clean,
+          coefficient: 1,
+          isRegistered: false,
+        };
+      }
+    } catch {}
+    const est = estimateFormulaAndComposition(clean);
+    return {
+      chemicalId: lower.replace(/[^a-z0-9]/g, "_"),
+      formula: est.formula || clean,
+      commonName: clean,
+      coefficient: 1,
+      isRegistered: false,
+    };
   }
 
   private getMolarMass(chemicalId: string, formula?: string): number {
@@ -509,13 +557,16 @@ export class SimulationService {
             isRegistered: true,
           }));
 
-          const candidateProducts: ResolvedSpecies[] = (mlRes?.predictedProducts || []).map((p) => ({
-            chemicalId: p.toLowerCase().replace(/[^a-z0-9]/g, "_"),
-            formula: p,
-            commonName: p,
-            coefficient: 1,
-            isRegistered: true,
-          }));
+          const candidateProducts: ResolvedSpecies[] = (mlRes?.predictedProducts || []).map((p, idx) => {
+            const profile = mlRes?.productAnalyses?.[idx];
+            return {
+              chemicalId: (profile?.formula || p).toLowerCase().replace(/[^a-z0-9]/g, "_"),
+              formula: profile?.formula || p,
+              commonName: profile?.name || p,
+              coefficient: 1,
+              isRegistered: true,
+            };
+          });
 
           const audit: ReactionAuditReport = hasValidProducts && !isEcho
             ? auditReactionChemistry(resolvedReactants, candidateProducts)
@@ -643,11 +694,12 @@ export class SimulationService {
     options?: PredictReactionOptions
   ): Promise<{ simulationResult: SimulationResult; source: "curated_database" | "ai_predicted" }> {
     const clean = query.trim();
-    const mlTokens = clean.split(/[+.\s]+/).filter(Boolean);
+    // Split reactants by + or comma, preserving chemical names with spaces
+    const mlTokens = clean.split(/\s*[\+,]\s*|\s+\.\s+/).map((t) => t.trim()).filter(Boolean);
 
     // Chemical Plausibility check: Saturated alkanes (e.g. C2H6 + C3H8) are chemically inert
     const inertAlkaneRes = checkInertAlkaneMixture(
-      mlTokens.map((t) => ({ formula: t, chemicalId: t.toLowerCase() }))
+      mlTokens.map((t) => this.resolveSpecies(t))
     );
     if (inertAlkaneRes && !(conditions.temperatureC && conditions.temperatureC > 400)) {
       return {
@@ -661,8 +713,8 @@ export class SimulationService {
     let matchedRow = byKey;
 
     if (!matchedRow) {
-      const parts = clean.toLowerCase().split(/[+,\s]+/).filter(Boolean).sort().join("+");
-      matchedRow = await prisma.reaction.findUnique({ where: { reactantKey: parts } }).catch(() => null);
+      const sortedParts = mlTokens.map((t) => t.toLowerCase().replace(/[^a-z0-9]/g, "_")).sort().join("+");
+      matchedRow = await prisma.reaction.findUnique({ where: { reactantKey: sortedParts } }).catch(() => null);
     }
 
     // Search by name or id, or by equation if query has an arrow (e.g. "A + B -> C")
@@ -733,21 +785,18 @@ export class SimulationService {
         const hasValidProducts = !!(mlRes && mlRes.predictedProducts && mlRes.predictedProducts.length > 0);
         const isEcho = isReactionEcho(mlTokens, mlRes?.predictedProducts || []);
 
-        const mockReactants: ResolvedSpecies[] = mlTokens.map((tok) => ({
-          chemicalId: tok.toLowerCase().replace(/[^a-z0-9]/g, "_"),
-          formula: tok,
-          commonName: tok,
-          coefficient: 1,
-          isRegistered: true,
-        }));
+        const mockReactants: ResolvedSpecies[] = mlTokens.map((tok) => this.resolveSpecies(tok));
 
-        const candidateProducts: ResolvedSpecies[] = (mlRes?.predictedProducts || []).map((p) => ({
-          chemicalId: p.toLowerCase().replace(/[^a-z0-9]/g, "_"),
-          formula: p,
-          commonName: p,
-          coefficient: 1,
-          isRegistered: true,
-        }));
+        const candidateProducts: ResolvedSpecies[] = (mlRes?.predictedProducts || []).map((p, idx) => {
+          const profile = mlRes?.productAnalyses?.[idx];
+          return {
+            chemicalId: (profile?.formula || p).toLowerCase().replace(/[^a-z0-9]/g, "_"),
+            formula: profile?.formula || p,
+            commonName: profile?.name || p,
+            coefficient: 1,
+            isRegistered: true,
+          };
+        });
 
         const audit: ReactionAuditReport = hasValidProducts && !isEcho
           ? auditReactionChemistry(mockReactants, candidateProducts)

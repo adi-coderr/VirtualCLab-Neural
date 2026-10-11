@@ -1,4 +1,5 @@
 import type { ChemicalRepository } from "../data/repositories/chemicalRepository.js";
+import { getDb } from "../data/db.js";
 import { computeMolarMass } from "./molarMass.js";
 import { parseFormula } from "./formulaParser.js";
 import type { ElementComposition } from "./types.js";
@@ -139,12 +140,44 @@ export function estimateFormulaAndComposition(smiles: string): { formula: string
     else if (tok === "I") comp["I"] = (comp["I"] || 0) + 1;
   }
 
-  // Estimate implicit hydrogens if none or few were counted for organic carbons
+  // 1. Check if this canonical SMILES exists in curated chemlab.db
+  try {
+    const db = getDb();
+    const row = db.prepare("SELECT formula, composition FROM chemicals WHERE smiles = ?").get(norm) as any;
+    if (row && row.formula) {
+      const parsed = parseFormula(row.formula);
+      if (Object.keys(parsed.composition).length > 0) {
+        return { formula: row.formula, composition: parsed.composition };
+      }
+    }
+  } catch {
+    // Database fallback
+  }
+
+  // Estimate implicit hydrogens from organic valence & unsaturation
   const carbonCount = comp["C"] || 0;
-  if (carbonCount > 0 && (!comp["H"] || comp["H"] < carbonCount)) {
-    // Standard approximation: alkane 2n+2, aromatic subtract 1 per double bond/ring
-    const estimatedH = Math.max(1, Math.round(carbonCount * 2 + 2 - (comp["N"] || 0)));
-    comp["H"] = (comp["H"] || 0) + estimatedH;
+  if (carbonCount > 0) {
+    // Count double bonds '=' (each removes 2 H)
+    const doubleBonds = (norm.match(/=/g) || []).length;
+    // Count triple bonds '#' (each removes 4 H)
+    const tripleBonds = (norm.match(/#/g) || []).length;
+    // Count ring closures (each digit pair closure removes 2 H)
+    const digits = (norm.match(/[0-9]/g) || []).length;
+    const ringClosures = Math.floor(digits / 2);
+    // Count aromatic pi-bonds: 6 aromatic atoms add 3 pi-bonds (the ring itself is in ringClosures)
+    const aromaticAtoms = (norm.match(/[cnos]/g) || []).length;
+    const aromaticPiBonds = Math.round((aromaticAtoms / 6) * 3);
+
+    const totalUnsat = doubleBonds + 2 * tripleBonds + ringClosures + aromaticPiBonds;
+    const nitrogenCount = comp["N"] || 0;
+    const halogenCount = (comp["Cl"] || 0) + (comp["Br"] || 0) + (comp["F"] || 0) + (comp["I"] || 0);
+
+    // Standard organic formula: H = 2C + 2 - 2*U + N - X
+    const targetH = Math.max(0, 2 * carbonCount + 2 - 2 * totalUnsat + nitrogenCount - halogenCount);
+    const explicitH = comp["H"] || 0;
+    if (explicitH < targetH) {
+      comp["H"] = targetH;
+    }
   }
 
   // Format in Hill order: C first, H second, followed by others alphabetically

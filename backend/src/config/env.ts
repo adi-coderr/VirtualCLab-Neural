@@ -1,4 +1,5 @@
 import "dotenv/config";
+import fs from "node:fs";
 import path from "node:path";
 
 export interface AppConfig {
@@ -22,7 +23,12 @@ export function getConfig(): AppConfig {
   cached = {
     port: Number(process.env.PORT ?? 4000),
     databaseFile:
-      process.env.DATABASE_FILE ?? (nodeEnv === "test" ? ":memory:" : path.join(process.cwd(), "data", "chemlab.db")),
+      process.env.DATABASE_FILE ??
+      (nodeEnv === "test"
+        ? ":memory:"
+        : fs.existsSync(path.join(process.cwd(), "backend", "data", "chemlab.db"))
+          ? path.join(process.cwd(), "backend", "data", "chemlab.db")
+          : path.join(process.cwd(), "data", "chemlab.db")),
     corsOrigin: process.env.CORS_ORIGIN ?? "http://localhost:5173",
     nodeEnv,
     anthropicApiKey: process.env.ANTHROPIC_API_KEY,
