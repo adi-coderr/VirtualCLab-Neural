@@ -28,6 +28,7 @@ export function ReactionControls({ pendingChemical, onAdded }: { pendingChemical
   const conditions = useLabStore((s) => s.conditions);
   const setConditions = useLabStore((s) => s.setConditions);
   const runReaction = useLabStore((s) => s.runReaction);
+  const runReactionByEquation = useLabStore((s) => s.runReactionByEquation);
   const previewReaction = useLabStore((s) => s.previewReaction);
   const activeContainer = useLabStore((s) => s.containers.find((c) => c.id === s.activeContainerId));
 
@@ -133,22 +134,35 @@ export function ReactionControls({ pendingChemical, onAdded }: { pendingChemical
     }
   };
 
+  const handleReactCustomEquation = async (queryText?: string) => {
+    const q = (queryText ?? reactionSearchQuery).trim();
+    if (!q) return;
+    setIsDropdownOpen(false);
+    await runReactionByEquation(q);
+  };
+
   return (
     <div className="reaction-controls">
-      {(curatedReactions.length > 0 || searchResults.length > 0) && (
+      {(curatedReactions.length > 0 || searchResults.length > 0 || true) && (
         <div className="reaction-controls__presets">
-          <p className="reaction-controls__section-title">Reaction Presets</p>
+          <p className="reaction-controls__section-title">Reaction Equations &amp; Presets</p>
           <div className="reaction-controls__search-box" ref={searchBoxRef}>
             <div className="reaction-controls__search-input-wrapper">
               <span className="reaction-controls__search-icon" aria-hidden="true">🔍</span>
               <input
                 type="text"
                 className="reaction-controls__search-input"
-                placeholder="Search reaction (e.g. Haber, combustion, synthesis)..."
+                placeholder="Write equation or search (e.g. C2H4Cl2 + C2H4Br2, Haber)..."
                 value={reactionSearchQuery}
                 onChange={(e) => {
                   setReactionSearchQuery(e.target.value);
                   setIsDropdownOpen(true);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleReactCustomEquation();
+                  }
                 }}
                 onFocus={() => setIsDropdownOpen(true)}
               />
@@ -165,13 +179,40 @@ export function ReactionControls({ pendingChemical, onAdded }: { pendingChemical
                   ✕
                 </button>
               )}
+              <button
+                type="button"
+                className="reaction-controls__react-now-btn"
+                disabled={isLoading || isAiAnalyzing || !reactionSearchQuery.trim()}
+                onClick={() => handleReactCustomEquation()}
+                title="React equation via 3-tier pipeline: Curated DB → ReactionT5v2 Neural Model → Groq AI"
+              >
+                {isAiAnalyzing ? "Reacting…" : "React"}
+              </button>
             </div>
 
             {isDropdownOpen && (
               <div className="reaction-controls__suggestions-dropdown" role="listbox">
+                {reactionSearchQuery.trim() && (
+                  <button
+                    type="button"
+                    className="reaction-controls__suggestion-item reaction-controls__suggestion-item--custom"
+                    onClick={() => handleReactCustomEquation()}
+                  >
+                    <div className="reaction-controls__suggestion-header">
+                      <span className="reaction-controls__suggestion-name">
+                        ⚗️ React Equation: &ldquo;{reactionSearchQuery.trim()}&rdquo;
+                      </span>
+                      <span className="reaction-controls__suggestion-type">3-tier engine</span>
+                    </div>
+                    <div className="reaction-controls__suggestion-eq">
+                      Search local DB → ReactionT5v2 Neural Model → Groq AI
+                    </div>
+                  </button>
+                )}
+
                 <div className="reaction-controls__suggestions-header">
                   {reactionSearchQuery.trim()
-                    ? `${displayedReactions.length} matching reactions`
+                    ? `${displayedReactions.length} matching database records`
                     : `Popular Reactions`}
                 </div>
 
@@ -199,7 +240,7 @@ export function ReactionControls({ pendingChemical, onAdded }: { pendingChemical
                   </button>
                 ))}
 
-                {displayedReactions.length === 0 && (
+                {displayedReactions.length === 0 && !reactionSearchQuery.trim() && (
                   <div className="reaction-controls__no-suggestions">
                     No reactions matching &ldquo;{reactionSearchQuery}&rdquo;
                   </div>

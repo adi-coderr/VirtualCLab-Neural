@@ -351,7 +351,7 @@ export class AiReactionPredictor {
     try {
       if (provider === "groq") {
         // Use verified Groq active production models
-        const models = ["qwen/qwen3.8-27b", "openai/gpt-oss-120b", "llama-3.3-70b-versatile", "llama-3.1-8b-instant"];
+        const models = ["qwen/qwen3.8-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "allam-2-7b"];
         let lastErr = "";
         for (const model of models) {
           try {
@@ -563,7 +563,7 @@ export class AiReactionPredictor {
         throw new Error(`Gemini API failed: ${lastErr}`);
       }
     } else if (provider === "groq") {
-      const models = ["qwen/qwen3.8-27b", "openai/gpt-oss-120b", "llama-3.3-70b-versatile", "llama-3.1-8b-instant"];
+      const models = ["qwen/qwen3.8-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "allam-2-7b"];
       let lastErr = "";
       for (const model of models) {
         try {

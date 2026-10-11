@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { experimentsApi } from "../api/experiments";
 import { reactionsApi } from "../api/reactions";
+import { useSettingsStore } from "./settingsStore";
 import type { ChemicalSummary, ReactionConditions, SimulationResult, Unit } from "../types/chemistry";
 import type { Container, ContainerContent, EquipmentType, TimelineEntry } from "../types/experiment";
 import { getChemicalColor } from "../utils/chemicalColorMixer";
@@ -54,6 +55,7 @@ interface LabState {
   cool: (targetTemperatureC: number) => Promise<void>;
   setConditions: (conditions: ReactionConditions) => void;
   runReaction: () => Promise<void>;
+  runReactionByEquation: (query: string) => Promise<void>;
   previewReaction: () => Promise<void>;
   resetExperiment: () => Promise<void>;
   undo: () => void;
@@ -450,6 +452,94 @@ export const useLabStore = create<LabState>((set, get) => ({
       });
     } catch (err) {
       set({ isLoading: false, isAiAnalyzing: false, error: err instanceof Error ? err.message : "Failed to run reaction" });
+    }
+  },
+
+  runReactionByEquation: async (query: string) => {
+    if (!query.trim()) return;
+    const cleanQuery = query.trim();
+    set({ isLoading: true, isAiAnalyzing: true, error: null });
+    try {
+      const settings = useSettingsStore.getState();
+      const state = get();
+      const res = await reactionsApi.predictReaction(
+        cleanQuery,
+        state.conditions,
+        settings.apiKey || undefined,
+        settings.provider || undefined
+      );
+
+      const simulationResult = res.simulationResult;
+      const resolution = simulationResult.resolution;
+
+      set((s) => {
+        let containers = s.containers;
+        const activeContainer = containers.find((c) => c.id === s.activeContainerId);
+
+        if (activeContainer && resolution.status === "REACTION") {
+          const stoichByChemicalId = new Map(
+            (simulationResult.stoichiometry ?? []).map((line) => [line.chemicalId, line])
+          );
+          const primaryColorEffect = resolution.observableEffects?.find(
+            (e) => (e.type === "color_change" || e.type === "precipitation") && e.colorTo
+          );
+
+          const productContents: ContainerContent[] = resolution.products
+            .map((p, idx) => {
+              const line = stoichByChemicalId.get(p.chemicalId);
+              const mass = line?.theoreticalYieldMass ?? 0;
+              let color = getChemicalColor(p.chemicalId, p.formula, p.commonName);
+              if (!color && idx === 0 && primaryColorEffect?.colorTo) {
+                color = primaryColorEffect.colorTo;
+              }
+              return {
+                chemicalId: p.chemicalId,
+                commonName: p.commonName,
+                formula: p.formula,
+                substanceColor: color,
+                amount: mass > 0 ? parseFloat(mass.toFixed(4)) : Math.max(0.1, (p.coefficient || 1) * 2),
+                unit: "g" as Unit,
+              };
+            })
+            .filter((c) => c.amount > 0);
+
+          const calorimetry = simulationResult.calorimetry ?? resolution.calorimetry;
+          const nextTemp = calorimetry ? calorimetry.finalTemperatureC : activeContainer.temperatureC;
+          containers = s.containers.map((c) =>
+            c.id === activeContainer.id
+              ? { ...c, contents: consolidateContents(productContents), temperatureC: nextTemp }
+              : c
+          );
+        }
+
+        const entry: TimelineEntry = {
+          id: makeId(),
+          timeLabel: timeLabel(s.experimentStartedAt),
+          description:
+            resolution.status === "REACTION"
+              ? `Reaction simulated (${resolution.confidenceTier.toLowerCase()}): ${resolution.balancedEquation || cleanQuery}`
+              : resolution.status === "NO_REACTION"
+                ? `No reaction detected for: ${cleanQuery}`
+                : `Reaction not confidently supported for: ${cleanQuery}`,
+          actionType: "RUN_REACTION",
+        };
+
+        return {
+          history: [...s.history, snapshot(s)],
+          containers,
+          timeline: [...s.timeline, entry],
+          lastSimulationResult: simulationResult,
+          lastReactionContainerId: activeContainer?.id || null,
+          isLoading: false,
+          isAiAnalyzing: false,
+        };
+      });
+    } catch (err) {
+      set({
+        isLoading: false,
+        isAiAnalyzing: false,
+        error: err instanceof Error ? err.message : "Failed to simulate chemical equation",
+      });
     }
   },
 
