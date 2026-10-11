@@ -1,7 +1,4 @@
 import type Database from "better-sqlite3";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import type {
   AcidBaseStrength,
   Chemical,
@@ -13,135 +10,6 @@ import type {
   PhysicalState,
 } from "../../chemistry-engine/types.js";
 import { generateMoleculeStructure } from "../../chemistry-engine/moleculeStructureGenerator.js";
-import { parseFormula } from "../../chemistry-engine/formulaParser.js";
-import { computeMolarMass } from "../../chemistry-engine/molarMass.js";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-function inferCompositionFromName(name: string): ElementComposition {
-  const n = name.toLowerCase();
-  const comp: Record<string, number> = {};
-
-  if (n.includes("naphthalen") || n.includes("naphthyl")) {
-    comp["C"] = 10; comp["H"] = 8;
-  } else if (n.includes("anthracen")) {
-    comp["C"] = 14; comp["H"] = 10;
-  } else if (n.includes("pyridin") || n.includes("pyridyl")) {
-    comp["C"] = 5; comp["H"] = 5; comp["N"] = 1;
-  } else if (n.includes("pyrimidin")) {
-    comp["C"] = 4; comp["H"] = 4; comp["N"] = 2;
-  } else if (n.includes("thiophen")) {
-    comp["C"] = 4; comp["H"] = 4; comp["S"] = 1;
-  } else if (n.includes("furan")) {
-    comp["C"] = 4; comp["H"] = 4; comp["O"] = 1;
-  } else if (n.includes("pyrrole") || n.includes("pyrrol")) {
-    comp["C"] = 4; comp["H"] = 5; comp["N"] = 1;
-  } else if (n.includes("piperid")) {
-    comp["C"] = 5; comp["H"] = 11; comp["N"] = 1;
-  } else if (n.includes("benzen") || n.includes("phenyl") || n.includes("phenoxy") || n.includes("benzoyl") || n.includes("anil")) {
-    comp["C"] = 6; comp["H"] = 6;
-  } else if (n.includes("cyclopent")) {
-    comp["C"] = 5; comp["H"] = 10;
-  } else if (n.includes("cyclohex")) {
-    comp["C"] = 6; comp["H"] = 12;
-  } else {
-    comp["C"] = 4; comp["H"] = 10;
-  }
-
-  if (n.includes("nitro")) {
-    comp["N"] = (comp["N"] || 0) + 1;
-    comp["O"] = (comp["O"] || 0) + 2;
-    if (comp["H"] > 1) comp["H"] -= 1;
-  }
-  if (n.includes("amino") || n.includes("amine") || n.includes("anil")) {
-    comp["N"] = (comp["N"] || 0) + 1;
-    comp["H"] = (comp["H"] || 0) + 1;
-  }
-  if (n.includes("difluoro")) {
-    comp["F"] = (comp["F"] || 0) + 2;
-    if (comp["H"] > 2) comp["H"] -= 2;
-  } else if (n.includes("trifluoro")) {
-    comp["F"] = (comp["F"] || 0) + 3;
-    if (comp["H"] > 3) comp["H"] -= 3;
-  } else if (n.includes("fluoro")) {
-    comp["F"] = (comp["F"] || 0) + 1;
-    if (comp["H"] > 1) comp["H"] -= 1;
-  }
-  if (n.includes("dichloro")) {
-    comp["Cl"] = (comp["Cl"] || 0) + 2;
-    if (comp["H"] > 2) comp["H"] -= 2;
-  } else if (n.includes("trichloro")) {
-    comp["Cl"] = (comp["Cl"] || 0) + 3;
-    if (comp["H"] > 3) comp["H"] -= 3;
-  } else if (n.includes("chloro")) {
-    comp["Cl"] = (comp["Cl"] || 0) + 1;
-    if (comp["H"] > 1) comp["H"] -= 1;
-  }
-  if (n.includes("bromo")) {
-    comp["Br"] = (comp["Br"] || 0) + 1;
-    if (comp["H"] > 1) comp["H"] -= 1;
-  }
-  if (n.includes("iodo")) {
-    comp["I"] = (comp["I"] || 0) + 1;
-    if (comp["H"] > 1) comp["H"] -= 1;
-  }
-  if (n.includes("methoxy")) {
-    comp["C"] = (comp["C"] || 0) + 1;
-    comp["H"] = (comp["H"] || 0) + 2;
-    comp["O"] = (comp["O"] || 0) + 1;
-  } else if (n.includes("ethoxy")) {
-    comp["C"] = (comp["C"] || 0) + 2;
-    comp["H"] = (comp["H"] || 0) + 4;
-    comp["O"] = (comp["O"] || 0) + 1;
-  } else if (n.includes("hydroxy") || n.endsWith("ol")) {
-    comp["O"] = (comp["O"] || 0) + 1;
-  }
-  if (n.includes("acid") || n.includes("carboxy")) {
-    comp["C"] = (comp["C"] || 0) + 1;
-    comp["O"] = (comp["O"] || 0) + 2;
-  }
-  if (n.includes("methyl") && !n.includes("methoxy")) {
-    comp["C"] = (comp["C"] || 0) + 1;
-    comp["H"] = (comp["H"] || 0) + 2;
-  }
-  if (n.includes("ethyl") && !n.includes("ethoxy")) {
-    comp["C"] = (comp["C"] || 0) + 2;
-    comp["H"] = (comp["H"] || 0) + 4;
-  }
-
-  for (const k of Object.keys(comp)) {
-    if ((comp[k] ?? 0) <= 0) delete comp[k];
-  }
-  return comp;
-}
-
-function compositionToFormula(comp: ElementComposition): string {
-  let f = "";
-  if (comp["C"]) {
-    f += `C${comp["C"] > 1 ? comp["C"] : ""}`;
-  }
-  if (comp["H"]) {
-    f += `H${comp["H"] > 1 ? comp["H"] : ""}`;
-  }
-  const otherKeys = Object.keys(comp).filter((k) => k !== "C" && k !== "H").sort();
-  for (const k of otherKeys) {
-    const val = comp[k] ?? 1;
-    f += `${k}${val > 1 ? val : ""}`;
-  }
-  return f || "C";
-}
-
-
-function determinePhysicalState(name: string): PhysicalState {
-  const n = name.toLowerCase();
-  if (n.endsWith(" gas") || n === "methane" || n === "ethane" || n === "propane" || n === "butane" || n === "ethylene" || n === "acetylene") {
-    return "gas";
-  }
-  if (n.includes("oil") || n.includes("liquid") || n.endsWith("ol") || n.includes("ether") || n.includes("acid")) {
-    return "liquid";
-  }
-  return "solid";
-}
 
 
 interface ChemicalRow {
@@ -343,10 +211,9 @@ export class ChemicalRepository {
       .get(id, id) as ChemicalRow | undefined;
     if (byName) return this.rowToChemical(byName);
 
-    // 3. Normalize ID (strip chemrxn:, clean slug, replace underscores)
-    const stripped = id.replace(/^chemrxn:/i, "").trim();
-    const cleanWithSpaces = stripped.replace(/_/g, " ").trim();
-    const cleanSlug = stripped.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    // 3. Normalize ID (clean slug, replace underscores)
+    const cleanWithSpaces = id.replace(/_/g, " ").trim();
+    const cleanSlug = id.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
     const byNormalized = this.db
       .prepare(`
@@ -364,11 +231,11 @@ export class ChemicalRepository {
         LIMIT 1
       `)
       .get(
-        stripped,
+        id,
         cleanSlug,
-        stripped,
+        id,
         cleanWithSpaces,
-        stripped,
+        id,
         cleanWithSpaces,
         cleanSlug
       ) as ChemicalRow | undefined;
@@ -376,95 +243,6 @@ export class ChemicalRepository {
     if (byNormalized) {
       const chem = this.rowToChemical(byNormalized);
       return { ...chem, id };
-    }
-
-    // 4. If still not in chemlab.db, check chemrxn.db for patent record formulas and details
-    let resolvedFormula = "";
-    let resolvedSmiles: string | undefined;
-    try {
-      const chemrxnDbPath = path.resolve(__dirname, "../../../data/chemrxn.db");
-      if (fs.existsSync(chemrxnDbPath)) {
-        const chemrxnDb = new (this.db.constructor as any)(chemrxnDbPath, { readonly: true });
-        const rxnRow = chemrxnDb
-          .prepare(`
-            SELECT reactants_json, products_json 
-            FROM chemrxn_reactions 
-            WHERE reactant_names LIKE ? OR product_names LIKE ? 
-            LIMIT 1
-          `)
-          .get(`%${cleanWithSpaces}%`, `%${cleanWithSpaces}%`) as { reactants_json?: string; products_json?: string } | undefined;
-
-        if (rxnRow) {
-          const allItems = [
-            ...JSON.parse(rxnRow.reactants_json || "[]"),
-            ...JSON.parse(rxnRow.products_json || "[]"),
-          ];
-          const matched = allItems.find(
-            (item: any) =>
-              item.name &&
-              (item.name.toLowerCase() === cleanWithSpaces.toLowerCase() ||
-                item.name.toLowerCase() === stripped.toLowerCase())
-          );
-          if (matched) {
-            if (matched.formula && /^[A-Z]/.test(matched.formula)) {
-              resolvedFormula = matched.formula;
-            }
-            if (matched.smiles) {
-              resolvedSmiles = matched.smiles;
-            }
-          }
-        }
-        chemrxnDb.close();
-      }
-    } catch {
-      // Graceful fallback
-    }
-
-    // 5. If it's explicitly a ChemRxn chemical or has a resolved formula, generate structure
-    if (id.startsWith("chemrxn:") || resolvedFormula) {
-      let composition: ElementComposition = {};
-      let molarMass = 100.0;
-
-      if (resolvedFormula && /^[A-Z]/.test(resolvedFormula)) {
-        try {
-          const parsed = parseFormula(resolvedFormula);
-          composition = parsed.composition;
-          molarMass = computeMolarMass(composition);
-        } catch {
-          composition = inferCompositionFromName(cleanWithSpaces);
-          resolvedFormula = compositionToFormula(composition);
-          molarMass = computeMolarMass(composition);
-        }
-      } else {
-        composition = inferCompositionFromName(cleanWithSpaces);
-        resolvedFormula = compositionToFormula(composition);
-        molarMass = computeMolarMass(composition);
-      }
-
-      const struct = generateMoleculeStructure(id, resolvedFormula, composition, cleanWithSpaces);
-
-      return {
-        id,
-        commonName: cleanWithSpaces,
-        formula: resolvedFormula,
-        composition,
-        charge: 0,
-        molarMass,
-        smiles: resolvedSmiles,
-        physicalState: determinePhysicalState(cleanWithSpaces),
-        isAcid: cleanWithSpaces.toLowerCase().includes("acid"),
-        isBase: cleanWithSpaces.toLowerCase().includes("amine") || cleanWithSpaces.toLowerCase().includes("pyridine"),
-        acidBaseStrength: "none",
-        chemicalClass: "organic",
-        aliases: [cleanWithSpaces],
-        hazards: [],
-        structure: struct,
-        provenance: {
-          source: "ChemRxn Patent Database",
-          confidence: "high",
-          dataVersion: "1.0",
-        },
-      };
     }
 
     return undefined;

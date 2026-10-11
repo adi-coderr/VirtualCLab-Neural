@@ -8,7 +8,6 @@ import { computeCalorimetry } from "../chemistry-engine/calorimetry.js";
 import { parseFormula } from "../chemistry-engine/formulaParser.js";
 import { computeMolarMass } from "../chemistry-engine/molarMass.js";
 import { aiReactionPredictor, type PredictReactionOptions } from "./aiReactionPredictor.js";
-import { chemrxnService } from "./chemrxnService.js";
 import { localMlModelService } from "./localMlModelService.js";
 import { HttpError } from "../utils/errors.js";
 import type {
@@ -53,68 +52,12 @@ export interface MlPredictionData {
   beamsUsed?: number;
 }
 
-export interface PatentReactantInfo {
-  name: string;
-  formula?: string;
-  smiles?: string;
-  inchi?: string;
-  mass?: string;
-  amount?: string;
-}
-
-export interface PatentProductInfo {
-  name: string;
-  formula?: string;
-  smiles?: string;
-  inchi?: string;
-  yieldPercent?: number;
-  yieldText?: string;
-  mass?: string;
-  state?: string;
-  appearance?: string;
-}
-
-export interface PatentSpectatorInfo {
-  role: string;
-  name: string;
-  smiles?: string;
-}
-
-export interface PatentLabAction {
-  action: string;
-  phrase: string;
-  temp?: string;
-  time?: string;
-}
-
-export interface PatentMatchData {
-  id: string;
-  documentId: string;
-  year: number;
-  heading: string;
-  equationDisplay: string;
-  reactionSmiles?: string;
-  yieldPercent?: number;
-  yieldText?: string;
-  productState?: string;
-  productAppearance?: string;
-  solvents?: string;
-  catalysts?: string;
-  procedureText?: string;
-  patentUrl?: string;
-  reactants?: PatentReactantInfo[];
-  products?: PatentProductInfo[];
-  spectators?: PatentSpectatorInfo[];
-  actions?: PatentLabAction[];
-}
-
 export interface SimulationResult {
   resolution: ReactionResolution;
   stoichiometry?: StoichiometryLine[];
   limitingReagentChemicalId?: string;
   calorimetry?: CalorimetryResult;
   mlPrediction?: MlPredictionData;
-  patentMatch?: PatentMatchData;
 }
 
 
@@ -300,56 +243,7 @@ export class SimulationService {
   ): Promise<SimulationResult> {
     let result = this.simulate(inputs, conditions);
 
-    // 1. Check ChemRxn Patent Database (2.0 Million chemical reactions archive)
-    try {
-      const reactantGroups = inputs.map((input) => {
-        const chem = this.chemicalRepo.getById(input.chemicalId);
-        const tokens: string[] = [];
-        if (chem?.commonName) tokens.push(chem.commonName);
-        if (chem?.formula) tokens.push(chem.formula);
-        if (chem?.smiles) tokens.push(chem.smiles);
-        if (chem?.aliases) tokens.push(...chem.aliases);
-        if (tokens.length === 0) tokens.push(input.chemicalId);
-        return tokens;
-      });
-      const chemrxnMatch = chemrxnService.findByReactants(reactantGroups);
-      if (chemrxnMatch) {
-        logger.info("Found matching ChemRxn patent reaction", {
-          id: chemrxnMatch.id,
-          docId: chemrxnMatch.documentId,
-        });
-        const patentData: PatentMatchData = {
-          id: chemrxnMatch.id,
-          documentId: chemrxnMatch.documentId,
-          year: chemrxnMatch.year,
-          heading: chemrxnMatch.heading,
-          equationDisplay: chemrxnMatch.equationDisplay,
-          reactionSmiles: chemrxnMatch.reactionSmiles,
-          yieldPercent: chemrxnMatch.yieldPercent,
-          yieldText: chemrxnMatch.yieldText,
-          productState: chemrxnMatch.productState,
-          productAppearance: chemrxnMatch.productAppearance,
-          solvents: chemrxnMatch.solvents,
-          catalysts: chemrxnMatch.catalysts,
-          procedureText: chemrxnMatch.procedureText,
-          patentUrl: `https://patents.google.com/patent/${chemrxnMatch.documentId}/en`,
-          reactants: chemrxnMatch.reactants,
-          products: chemrxnMatch.products,
-          spectators: chemrxnMatch.spectators,
-          actions: chemrxnMatch.actions,
-        };
-        result.patentMatch = patentData;
-
-        if (result.resolution.status === "UNSUPPORTED" && process.env.NODE_ENV !== "test") {
-          const simRes = chemrxnService.simulateChemrxnReaction(chemrxnMatch, conditions);
-          result = { ...simRes, patentMatch: patentData };
-        }
-      }
-    } catch (err: any) {
-      logger.debug("ChemRxn lookup skipped", { error: err.message });
-    }
-
-    // 2. Query Local Neural ML Model (ReactionT5v2)
+    // 1. Query Local Neural ML Model (ReactionT5v2)
     try {
       const mlTokens = inputs.map((input) => {
         const chem = this.chemicalRepo.getById(input.chemicalId);
@@ -559,22 +453,7 @@ export class SimulationService {
       };
     }
 
-    // 2. Check ChemRxn Patent Database
-    try {
-      const chemrxnRes = chemrxnService.search({ q: clean, limit: 1 });
-      if (chemrxnRes.items.length > 0 && chemrxnRes.items[0]) {
-        const match = chemrxnRes.items[0];
-        const simRes = chemrxnService.simulateChemrxnReaction(match, conditions);
-        return {
-          simulationResult: simRes,
-          source: "curated_database",
-        };
-      }
-    } catch (err: any) {
-      logger.warn("ChemRxn predict lookup skipped", { error: err.message });
-    }
-
-    // 3. Not in database: use AI Reaction Predictor
+    // 2. Not in database: use AI Reaction Predictor
     const resolution = await aiReactionPredictor.predict(clean, {
       apiKey: options?.apiKey,
       provider: options?.provider,

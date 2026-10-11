@@ -132,9 +132,7 @@ or novel combinations not covered by the curated seed records):
 * The local PyTorch model in `virtual_chem_lab_modelV2/` automatically evaluates
   the reaction using its weights trained on the Open Reaction Database and USPTO and returns predicted
   species, molar masses, STP states, and functional groups.
-* The 2.0M Patent Literature database (`ChemRxn`) cross-references the mixture
-  to find matching published patents, isolated experimental yields, and procedures.
-* See [ML_MODEL_AND_CHEMRXN.md](ML_MODEL_AND_CHEMRXN.md) for configuring the model folder,
+* See [ML_MODEL.md](ML_MODEL.md) for configuring the model folder,
   beam search settings, and inference acceleration.
 
 ## After any of the above

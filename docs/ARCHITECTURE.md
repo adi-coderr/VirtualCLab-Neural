@@ -84,21 +84,17 @@ implemented:
         equation, products, observable effects, and a human-readable
         `explanation` that always names which rule or curated record was
         used (`ruleApplied`).
-   c. **ChemRxn 2.0M Patent Literature Match**:
-      - Queries `backend/data/chemrxn.db` (< 1ms query latency via SQLite B-tree/FTS5).
-      - If matched, attaches verified real-world laboratory experimental protocol,
-        isolated yields, physical state/color, and Google Patents link.
-   d. **ReactionT5v2 Neural ML Model Prediction (`ReactionT5v2`)**:
+   c. **Neural ML Model Prediction (`ReactionT5v2`)**:
       - Calls the local PyTorch T5 inference server (`backend/src/ai/model_service.py` on port 5005).
       - Executes hardware-accelerated beam search on Apple Silicon Metal GPU (`mps`).
       - Derives molecular properties via `molecularAnalysis.ts`: formula, molar mass,
         estimated STP physical state, visual appearance, and detected functional groups.
-   e. If a reaction occurred, calls `computeStoichiometry` with the user's
+   d. If a reaction occurred, calls `computeStoichiometry` with the user's
       actual input quantities to get moles, limiting reagent, and
       theoretical yield.
-4. Response is a unified JSON payload containing the core science resolution,
-   the literature patent match, and the neural ML model analysis.
-   *(See [ML_MODEL_AND_CHEMRXN.md](ML_MODEL_AND_CHEMRXN.md) for full details).*
+4. Response is a unified JSON payload containing the core science resolution
+   and the neural ML model analysis.
+   *(See [ML_MODEL.md](ML_MODEL.md) for full details).*
 
 ## Data flow for the AI assistant
 

@@ -216,68 +216,12 @@ export interface MlPredictionData {
   beamsUsed?: number;
 }
 
-export interface PatentReactantInfo {
-  name: string;
-  formula?: string;
-  smiles?: string;
-  inchi?: string;
-  mass?: string;
-  amount?: string;
-}
-
-export interface PatentProductInfo {
-  name: string;
-  formula?: string;
-  smiles?: string;
-  inchi?: string;
-  yieldPercent?: number;
-  yieldText?: string;
-  mass?: string;
-  state?: string;
-  appearance?: string;
-}
-
-export interface PatentSpectatorInfo {
-  role: string;
-  name: string;
-  smiles?: string;
-}
-
-export interface PatentLabAction {
-  action: string;
-  phrase: string;
-  temp?: string;
-  time?: string;
-}
-
-export interface PatentMatchData {
-  id: string;
-  documentId: string;
-  year: number;
-  heading: string;
-  equationDisplay: string;
-  reactionSmiles?: string;
-  yieldPercent?: number;
-  yieldText?: string;
-  productState?: string;
-  productAppearance?: string;
-  solvents?: string;
-  catalysts?: string;
-  procedureText?: string;
-  patentUrl?: string;
-  reactants?: PatentReactantInfo[];
-  products?: PatentProductInfo[];
-  spectators?: PatentSpectatorInfo[];
-  actions?: PatentLabAction[];
-}
-
 export interface SimulationResult {
   resolution: ReactionResolution;
   stoichiometry?: StoichiometryLine[];
   limitingReagentChemicalId?: string;
   calorimetry?: CalorimetryResult;
   mlPrediction?: MlPredictionData;
-  patentMatch?: PatentMatchData;
 }
 
 

@@ -1,38 +1,37 @@
-# 🧠 ReactionT5v2 Neural ML Model & 2.0M ChemRxn Database Guide
+# 🧠 ReactionT5v2 Neural ML Model Guide
 
-This document details how the **PyTorch Neural ML Model** (`ReactionT5v2`) and the **2.0M Patent Literature Database** (`ChemRxn`) are integrated, served, and utilized within the Virtual Chemistry Laboratory.
+This document details how the **PyTorch Neural ML Model** (`ReactionT5v2` / `virtual_chem_lab_modelV2`) is integrated, served, and utilized within the Virtual Chemistry Laboratory.
 
 ---
 
 ## 1. Overview & Architecture
 
-The Virtual Chemistry Laboratory employs a **3-tier hybrid reaction simulation pipeline**:
+The Virtual Chemistry Laboratory employs a **hybrid reaction simulation pipeline**:
 
 ```
                          Reactants Mixed on Bench
                                     │
                          POST /api/reactions/simulate
                                     │
-        ┌───────────────────────────┼───────────────────────────┐
-        ▼                           ▼                           ▼
-┌──────────────────┐    ┌──────────────────────┐    ┌───────────────────────────┐
-│  Tier 1: Core    │    │  Tier 2: 2.0M Patent │    │  Tier 3: ReactionT5v2     │
-│ Chemistry Engine │    │ Literature (ChemRxn) │    │  Neural ML Model          │
-│                  │    │                      │    │                           │
-│ • Deterministic  │    │ • Daniel Lowe USPTO  │    │ • PyTorch on Apple Metal  │
-│ • Stoichiometry  │    │   1976-2016 Archive  │    │   GPU (MPS) / CUDA / CPU  │
-│ • Calorimetry    │    │ • Fast SQLite (FTS5) │    │ • Functional Group Detect │
-│ • State & pH     │    │ • Real lab protocols │    │ • Molar Mass & Appearance │
-└────────┬─────────┘    └──────────┬───────────┘    └─────────────┬─────────────┘
-         │                         │                              │
-         └─────────────────────────┼──────────────────────────────┘
-                                   ▼
-                Unified Reaction Result in Web UI
+        ┌───────────────────────────┴───────────────────────────┐
+        ▼                                                       ▼
+┌──────────────────┐                                ┌───────────────────────────┐
+│  Tier 1: Core    │                                │  Tier 2: ReactionT5v2     │
+│ Chemistry Engine │                                │  Neural ML Model          │
+│                  │                                │                           │
+│ • Deterministic  │                                │ • PyTorch on Apple Metal  │
+│ • Stoichiometry  │                                │   GPU (MPS) / CUDA / CPU  │
+│ • Calorimetry    │                                │ • Functional Group Detect │
+│ • State & pH     │                                │ • Molar Mass & Appearance │
+└────────┬─────────┘                                └─────────────┬─────────────┘
+         │                                                        │
+         └──────────────────────────┬─────────────────────────────┘
+                                    ▼
+                 Unified Reaction Result in Web UI
 ```
 
 1. **Grounded Science Engine**: Computes exact balancing, stoichiometry, limiting reagent, calorimetry, and pH.
-2. **Literature Reference (ChemRxn)**: Pulls verbatim laboratory synthesis procedures, verified yields, physical appearances, and Google Patent citations.
-3. **Neural ML Model (`ReactionT5v2`)**: Predicts complex organic transformations, estimated physical states, and molecular properties using sequence-to-sequence neural inference.
+2. **Neural ML Model (`ReactionT5v2`)**: Predicts complex organic transformations, estimated physical states, and molecular properties using sequence-to-sequence neural inference.
 
 ---
 
@@ -124,27 +123,7 @@ Predictions returned from the neural network are analyzed in `backend/src/chemis
 
 ---
 
-## 5. The 2.0M Patent Database (`ChemRxn`)
-
-### Dataset Origins
-Created by Daniel Lowe from USPTO patent grants (1976–2016), containing ~2,000,000 organic chemical reactions.
-
-### Local SQLite Storage (`backend/data/chemrxn.db`)
-Rather than parsing 14 GB of XML files in real time, representative reactions across all 40+ years are pre-indexed into a fast local SQLite database (~209 MB):
-* **FTS5 Full-Text Search**: Instant search by reactant name, product name, or procedural keyword.
-* **Sub-Millisecond Query Latency**: Typically **0.3 to 1.0 ms** per query.
-* **Low Memory Footprint**: Uses ~20–30 MB of RAM via `better-sqlite3`.
-
-### Extracted Real-Life Laboratory Data
-* **Starting Materials**: Names, CAS/formulas, SMILES, and recorded lab amounts (e.g., `75.3 g`, `0.5 mol`, `18 mL`).
-* **Isolated Products**: Name, SMILES, isolated mass, physical state (crystalline, solid, oil), visual color/appearance.
-* **Verified Yields**: Quantitative yield percentages and text from patent literature.
-* **Step-by-Step Laboratory Procedure**: Numbered experimental steps (e.g., *1. Dissolve*, *2. Add*, *3. Reflux for 5 hours*, *4. Evaporate in vacuo*).
-* **Clickable Google Patent Citations**: Direct links to `https://patents.google.com/patent/{documentId}/en`.
-
----
-
-## 6. Using Custom ML Models or Fine-Tuning
+## 5. Using Custom ML Models or Fine-Tuning
 
 To use a custom model or newer fine-tuned checkpoint:
 1. Replace or export the model weights into `virtual_chem_lab_modelV2/model/`.
