@@ -5,9 +5,34 @@ import "./MlModelPanel.css";
 
 const PRESET_REACTIONS = [
   {
+    name: "Buchwald-Hartwig Amination",
+    desc: "Bromobenzene + Morpholine → 4-Phenylmorpholine",
+    query: "Brc1ccccc1.C1COCCN1",
+  },
+  {
+    name: "Suzuki-Miyaura Coupling",
+    desc: "Phenylboronic acid + 4-Bromotoluene → 4-Methylbiphenyl",
+    query: "OB(O)c1ccccc1.Cc1ccc(Br)cc1",
+  },
+  {
+    name: "Wittig Carbonyl Olefination",
+    desc: "Benzaldehyde + Ylide → Styrene",
+    query: "c1ccccc1C=O.C=P(c1ccccc1)(c1ccccc1)c1ccccc1",
+  },
+  {
+    name: "Heck Cross-Coupling",
+    desc: "Iodobenzene + Methyl acrylate → Methyl cinnamate",
+    query: "Ic1ccccc1.C=CC(=O)OC",
+  },
+  {
+    name: "Grignard Addition",
+    desc: "Acetophenone + MeMgBr → 2-Phenylpropan-2-ol",
+    query: "CC(=O)c1ccccc1.C[Mg]Br",
+  },
+  {
     name: "Esterification (Fischer)",
     desc: "Acetic acid + Ethanol → Ethyl acetate",
-    query: "[CH3:1][C:2](=[O:3])[OH:4].[CH3:5][CH2:6][OH:7]",
+    query: "CC(=O)O.CCO",
   },
   {
     name: "Aromatic Halogenation",
@@ -18,16 +43,6 @@ const PRESET_REACTIONS = [
     name: "Diels-Alder Cycloaddition",
     desc: "1,3-Butadiene + Ethylene → Cyclohexene",
     query: "C=CC=C.C=C",
-  },
-  {
-    name: "Nucleophilic Acyl Transfer",
-    desc: "Acetyl chloride + Ethylamine → N-ethylacetamide",
-    query: "CC(=O)Cl.CCN",
-  },
-  {
-    name: "Simple Alcohol + Acid",
-    desc: "Ethanol + Acetic acid (SMILES)",
-    query: "CCO.CC(=O)O",
   },
   {
     name: "Aldol Condensation",
@@ -41,7 +56,7 @@ export function MlModelPanel() {
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
   const [isStartingServer, setIsStartingServer] = useState(false);
 
-  const [inputQuery, setInputQuery] = useState("[CH3:1][C:2](=[O:3])[OH:4].[CH3:5][CH2:6][OH:7]");
+  const [inputQuery, setInputQuery] = useState("Brc1ccccc1.C1COCCN1");
   const [numBeams, setNumBeams] = useState(4);
   const [maxLength, setMaxLength] = useState(128);
 

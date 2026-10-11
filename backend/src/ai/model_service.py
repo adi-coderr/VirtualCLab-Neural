@@ -122,9 +122,50 @@ def clean_smiles(raw: str) -> str:
     cleaned = re.sub(r"\|[^|]*\|", "", cleaned).strip()
     return cleaned
 
+COMMON_NAME_TO_SMILES = {
+    "bromobenzene": "Brc1ccccc1",
+    "morpholine": "C1COCCN1",
+    "benzene": "c1ccccc1",
+    "toluene": "Cc1ccccc1",
+    "aniline": "c1ccccc1N",
+    "phenol": "c1ccccc1O",
+    "benzaldehyde": "c1ccccc1C=O",
+    "acetophenone": "CC(=O)c1ccccc1",
+    "acetone": "CC(=O)C",
+    "acetic acid": "CC(=O)O",
+    "ethanol": "CCO",
+    "methanol": "CO",
+    "acetyl chloride": "CC(=O)Cl",
+    "phenylboronic acid": "OB(O)c1ccccc1",
+    "4-bromotoluene": "Cc1ccc(Br)cc1",
+    "methyl acrylate": "C=CC(=O)OC",
+    "iodobenzene": "Ic1ccccc1",
+    "benzonitrile": "c1ccccc1C#N",
+    "water": "O",
+    "cyclopentadiene": "C1=CCC=C1",
+    "maleic anhydride": "O=C1OC(=O)C=C1",
+    "chlorobenzene": "Clc1ccccc1",
+    "chlorine": "ClCl",
+    "bromine": "Br",
+}
+
+def resolve_names_to_smiles(query: str) -> str:
+    """Translate known chemical names in user inputs to valid canonical SMILES."""
+    parts = re.split(r"(\s*\+\s*|\s*\.\s*|\s*,\s*|>)", query)
+    resolved = []
+    for p in parts:
+        clean = p.strip().lower()
+        if clean in COMMON_NAME_TO_SMILES:
+            resolved.append(COMMON_NAME_TO_SMILES[clean])
+        else:
+            # Normalize common Kekule benzene patterns to aromatic notation
+            s = p.replace("BrC1=CC=CC=C1", "Brc1ccccc1").replace("C1=CC=CC=C1", "c1ccccc1")
+            resolved.append(s)
+    return "".join(resolved)
+
 def format_reactiont5_input(query: str) -> str:
     """Format input according to ReactionT5's standard: REACTANT:<reactants>REAGENT:<reagents>"""
-    query = query.strip()
+    query = resolve_names_to_smiles(query.strip())
     if "REACTANT:" in query:
         return query
     
@@ -180,6 +221,7 @@ def predict(req: PredictRequest):
     predicted_equation = f"{query} → {cleaned}" if cleaned else query
     
     latency_ms = round((time.time() - t0) * 1000, 2)
+    print(f"[ReactionT5v2] Input: {query!r} -> Formatted: {formatted_input!r} -> Output: {cleaned!r} ({latency_ms}ms)", flush=True)
     
     return PredictResponse(
         input=query,
