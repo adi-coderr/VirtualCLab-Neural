@@ -89,7 +89,8 @@ CREATE TABLE molecule_bonds (
   atom_index_1 INTEGER NOT NULL,
   atom_index_2 INTEGER NOT NULL,
   bond_order INTEGER NOT NULL DEFAULT 1,
-  bond_type TEXT NOT NULL DEFAULT 'covalent'
+  bond_type TEXT NOT NULL DEFAULT 'covalent',
+  UNIQUE (chemical_id, atom_index_1, atom_index_2)
 );
 CREATE INDEX idx_molecule_bonds_chemical ON molecule_bonds (chemical_id);
 

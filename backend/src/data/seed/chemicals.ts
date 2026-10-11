@@ -208,9 +208,6 @@ function sulfateFragmentWithCation(cationElement: string, cationCharge: number, 
     { element: "S", x2d: 0, y2d: 0, x3d: 0, y3d: 0, z3d: 0 },
     { element: "O", x2d: 40, y2d: -40, x3d: 0.86, y3d: 0.86, z3d: 0.86 },
     { element: "O", x2d: 40, y2d: 40, x3d: 0.86, y3d: -0.86, z3d: -0.86 },
-    // The two singly-bonded oxygens carry the ion's -2 formal charge (standard
-    // Lewis-structure convention); real sulfate is a symmetric resonance
-    // hybrid with the charge delocalized over all four oxygens equally.
     { element: "O", x2d: -40, y2d: -40, x3d: -0.86, y3d: 0.86, z3d: -0.86, formalCharge: -1 },
     { element: "O", x2d: -40, y2d: 40, x3d: -0.86, y3d: -0.86, z3d: 0.86, formalCharge: -1 },
   ];
@@ -220,9 +217,16 @@ function sulfateFragmentWithCation(cationElement: string, cationCharge: number, 
     { a: 0, b: 3, order: 1 },
     { a: 0, b: 4, order: 1 },
   ];
-  for (let i = 0; i < cationCount; i++) {
-    atoms.push({ element: cationElement, x2d: -110 - i * 55, y2d: 0, x3d: -2.6 - i * 1.4, y3d: 0, z3d: 0, formalCharge: cationCharge });
-    bonds.push({ a: 0, b: atoms.length - 1, order: 1, type: "ionic" });
+  if (cationCount === 1) {
+    atoms.push({ element: cationElement, x2d: -110, y2d: 0, x3d: -2.35, y3d: 0, z3d: 0, formalCharge: cationCharge });
+    bonds.push({ a: 3, b: 5, order: 1, type: "ionic" });
+    bonds.push({ a: 4, b: 5, order: 1, type: "ionic" });
+  } else {
+    // Symmetrically position cations near the negatively charged oxygens
+    atoms.push({ element: cationElement, x2d: -100, y2d: -40, x3d: -2.2, y3d: 1.4, z3d: -1.4, formalCharge: cationCharge });
+    atoms.push({ element: cationElement, x2d: -100, y2d: 40, x3d: -2.2, y3d: -1.4, z3d: 1.4, formalCharge: cationCharge });
+    bonds.push({ a: 3, b: 5, order: 1, type: "ionic" });
+    bonds.push({ a: 4, b: 6, order: 1, type: "ionic" });
   }
   return { atoms, bonds };
 }

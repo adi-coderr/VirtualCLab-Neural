@@ -10,6 +10,9 @@ import type {
   PhysicalState,
 } from "../../chemistry-engine/types.js";
 import { generateMoleculeStructure } from "../../chemistry-engine/moleculeStructureGenerator.js";
+import { parseFormula } from "../../chemistry-engine/formulaParser.js";
+import { computeMolarMass } from "../../chemistry-engine/molarMass.js";
+import { normalizeFormulaCasing } from "../../chemistry-engine/reactionAudit.js";
 
 
 interface ChemicalRow {
@@ -244,6 +247,46 @@ export class ChemicalRepository {
       const chem = this.rowToChemical(byNormalized);
       return { ...chem, id };
     }
+
+    // 4. Direct formula match (e.g. C6H8, C4H6, C2H2, H2O)
+    const byFormula = this.db
+      .prepare("SELECT * FROM chemicals WHERE LOWER(formula) = LOWER(?) LIMIT 1")
+      .get(id) as ChemicalRow | undefined;
+    if (byFormula) {
+      const chem = this.rowToChemical(byFormula);
+      return { ...chem, id };
+    }
+
+    // 5. Dynamic chemical synthesis from valid formula with 3D structure
+    const norm = normalizeFormulaCasing(id);
+    try {
+      const parsed = parseFormula(norm);
+      if (Object.keys(parsed.composition).length > 0) {
+        const molarMass = computeMolarMass(parsed.composition);
+        const struct = generateMoleculeStructure(id, norm, parsed.composition, id);
+        return {
+          id,
+          commonName: id,
+          formula: norm,
+          composition: parsed.composition,
+          charge: parsed.charge,
+          molarMass,
+          physicalState: "liquid",
+          isAcid: false,
+          isBase: false,
+          acidBaseStrength: "none",
+          chemicalClass: "organic",
+          aliases: [],
+          hazards: [],
+          structure: struct,
+          provenance: {
+            source: "virtual_chem_lab_dynamic",
+            confidence: "medium",
+            dataVersion: "0.1",
+          },
+        };
+      }
+    } catch {}
 
     return undefined;
   }

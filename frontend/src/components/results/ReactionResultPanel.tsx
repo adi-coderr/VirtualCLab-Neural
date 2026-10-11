@@ -1,7 +1,6 @@
-import { useEffect, useState } from "react";
-import type { SimulationResult } from "../../types/chemistry";
+import { useEffect, useState, useMemo } from "react";
+import type { SimulationResult, Chemical, ResolvedSpecies } from "../../types/chemistry";
 import { chemicalsApi } from "../../api/chemicals";
-import type { Chemical } from "../../types/chemistry";
 import { ConfidenceBadge } from "./ConfidenceBadge";
 import { EquationDisplay } from "./EquationDisplay";
 import { ObservableEffectsPanel } from "./ObservableEffectsPanel";
@@ -21,25 +20,55 @@ export function ReactionResultPanel({ result }: { result: SimulationResult }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const openSettings = useSettingsStore((s) => s.openSettings);
 
-
-  const registeredSpecies = [...resolution.reactants, ...resolution.products].filter((s) => s.isRegistered);
+  // Deduplicate reactants and products so all reaction substances can be inspected in 3D
+  const allSpecies: ResolvedSpecies[] = useMemo(() => {
+    const map = new Map<string, ResolvedSpecies>();
+    for (const s of [...resolution.reactants, ...resolution.products]) {
+      const key = s.chemicalId || s.formula;
+      if (!map.has(key)) map.set(key, s);
+    }
+    return Array.from(map.values());
+  }, [resolution]);
 
   useEffect(() => {
-    const first = registeredSpecies[0];
-    if (first && !selectedId) setSelectedId(first.chemicalId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolution]);
+    const first = allSpecies[0];
+    if (first) setSelectedId(first.chemicalId || first.formula);
+  }, [allSpecies]);
 
   useEffect(() => {
     if (!selectedId) return;
     let cancelled = false;
-    chemicalsApi.getById(selectedId).then((c) => {
-      if (!cancelled) setSelectedChemical(c);
-    });
+    chemicalsApi
+      .getById(selectedId)
+      .then((c) => {
+        if (!cancelled && c) setSelectedChemical(c);
+      })
+      .catch(() => {
+        // Fallback: build chemical object from species info
+        const found = allSpecies.find((s) => s.chemicalId === selectedId || s.formula === selectedId);
+        if (!cancelled && found) {
+          setSelectedChemical({
+            id: found.chemicalId || found.formula,
+            commonName: found.commonName || found.formula,
+            formula: found.formula,
+            composition: {},
+            charge: 0,
+            molarMass: 0,
+            physicalState: "liquid",
+            isAcid: false,
+            isBase: false,
+            acidBaseStrength: "none",
+            chemicalClass: "organic",
+            aliases: [],
+            hazards: [],
+            provenance: { source: "virtual_chem_lab", confidence: "medium", dataVersion: "0.1" },
+          });
+        }
+      });
     return () => {
       cancelled = true;
     };
-  }, [selectedId]);
+  }, [selectedId, allSpecies]);
 
   // Filter out redundant AI engine notes from warnings if already displayed in AI banner
   const displayWarnings = resolution.warnings.filter(
@@ -178,23 +207,26 @@ export function ReactionResultPanel({ result }: { result: SimulationResult }) {
         </div>
       )}
 
-      {/* 8. Species Selector (if registered chemicals are in reaction) */}
-      {registeredSpecies.length > 0 && (
+      {/* 8. Species Selector (for all chemicals involved in reaction) */}
+      {allSpecies.length > 0 && (
         <div className="reaction-result__species-picker-wrapper">
           <span className="reaction-result__species-picker-title">Substance Details:</span>
           <div className="reaction-result__species-picker">
-            {registeredSpecies.map((s) => (
-              <button
-                key={s.chemicalId}
-                type="button"
-                className={`reaction-result__species-chip ${s.chemicalId === selectedId ? "is-selected" : ""}`}
-                onClick={() => setSelectedId(s.chemicalId)}
-                title={s.commonName}
-              >
-                <span className="formula">{formatFormula(s.formula)}</span>
-                <span className="reaction-result__species-chip-name">{s.commonName}</span>
-              </button>
-            ))}
+            {allSpecies.map((s) => {
+              const key = s.chemicalId || s.formula;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  className={`reaction-result__species-chip ${key === selectedId ? "is-selected" : ""}`}
+                  onClick={() => setSelectedId(key)}
+                  title={s.commonName || s.formula}
+                >
+                  <span className="formula">{formatFormula(s.formula)}</span>
+                  <span className="reaction-result__species-chip-name">{s.commonName || s.formula}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
