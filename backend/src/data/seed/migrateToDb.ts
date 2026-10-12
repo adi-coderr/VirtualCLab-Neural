@@ -4,11 +4,15 @@ import { REACTIONS_BATCH_5 } from "./reactionsBatch5.js";
 import { REACTIONS_BATCH_6 } from "./reactionsBatch6.js";
 import { REACTIONS_BATCH_7 } from "./reactionsBatch7.js";
 import { REACTIONS_BATCH_8 } from "./reactionsBatch8.js";
+import { REACTIONS_BATCH_9 } from "./reactionsBatch9.js";
+import { REACTIONS_BATCH_10 } from "./reactionsBatch10.js";
 import { SEED_CHEMICALS, type SeedChemical } from "./chemicals.js";
 import { CHEMICALS_BATCH_5 } from "./chemicalsBatch5.js";
 import { CHEMICALS_BATCH_6 } from "./chemicalsBatch6.js";
 import { CHEMICALS_BATCH_7 } from "./chemicalsBatch7.js";
 import { CHEMICALS_BATCH_8 } from "./chemicalsBatch8.js";
+import { CHEMICALS_BATCH_9 } from "./chemicalsBatch9.js";
+import { CHEMICALS_BATCH_10 } from "./chemicalsBatch10.js";
 import { parseFormula } from "../../chemistry-engine/formulaParser.js";
 
 const prisma = new PrismaClient();
@@ -20,6 +24,8 @@ for (const c of CHEMICALS_BATCH_5) allChemicals.set(c.id, c);
 for (const c of CHEMICALS_BATCH_6) allChemicals.set(c.id, c);
 for (const c of CHEMICALS_BATCH_7) allChemicals.set(c.id, c);
 for (const c of CHEMICALS_BATCH_8) allChemicals.set(c.id, c);
+for (const c of CHEMICALS_BATCH_9) allChemicals.set(c.id, c);
+for (const c of CHEMICALS_BATCH_10) allChemicals.set(c.id, c);
 
 /**
  * Normalizes a list of reactant chemical IDs into a sorted, deterministic key.
@@ -102,13 +108,17 @@ async function migrate() {
     ...REACTIONS_BATCH_6,
     ...REACTIONS_BATCH_7,
     ...REACTIONS_BATCH_8,
+    ...REACTIONS_BATCH_9,
+    ...REACTIONS_BATCH_10,
   ];
   console.log(`Total candidate reactions to process: ${combinedReactions.length}`);
   console.log(`  - SEED_REACTIONS: ${SEED_REACTIONS.length}`);
   console.log(`  - REACTIONS_BATCH_5: ${REACTIONS_BATCH_5.length}`);
   console.log(`  - REACTIONS_BATCH_6: ${REACTIONS_BATCH_6.length}`);
   console.log(`  - REACTIONS_BATCH_7: ${REACTIONS_BATCH_7.length}`);
-  console.log(`  - REACTIONS_BATCH_8: ${REACTIONS_BATCH_8.length}\n`);
+  console.log(`  - REACTIONS_BATCH_8: ${REACTIONS_BATCH_8.length}`);
+  console.log(`  - REACTIONS_BATCH_9: ${REACTIONS_BATCH_9.length}`);
+  console.log(`  - REACTIONS_BATCH_10: ${REACTIONS_BATCH_10.length}\n`);
 
   // Query existing records in database to ensure full idempotency (safe to re-run anytime)
   const existingRows = await prisma.reaction.findMany({
