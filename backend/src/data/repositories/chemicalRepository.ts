@@ -321,6 +321,14 @@ export class ChemicalRepository {
     return undefined;
   }
 
+  getByFormula(formula: string): Chemical | undefined {
+    const row = this.db
+      .prepare("SELECT * FROM chemicals WHERE LOWER(formula) = LOWER(?) LIMIT 1")
+      .get(formula.trim()) as ChemicalRow | undefined;
+    if (row) return this.rowToChemical(row);
+    return this.getById(formula);
+  }
+
   getByIds(ids: string[]): Chemical[] {
     return ids.map((id) => this.getById(id)).filter((c): c is Chemical => c !== undefined);
   }

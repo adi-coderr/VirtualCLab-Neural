@@ -133,6 +133,7 @@ export interface ResolvedSpecies {
   coefficient: number;
   isByproduct?: boolean;
   isRegistered: boolean;
+  substanceColor?: string;
 }
 
 export interface ProcessChangeDimension {

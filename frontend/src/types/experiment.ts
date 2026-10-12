@@ -37,6 +37,7 @@ export interface Container {
   equipmentType: EquipmentType;
   contents: ContainerContent[];
   temperatureC: number;
+  appearanceColor?: string;
 }
 
 export type EquipmentType = "beaker" | "test_tube" | "erlenmeyer_flask" | "graduated_cylinder" | "burette";

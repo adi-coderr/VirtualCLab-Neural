@@ -43,15 +43,31 @@ export class ReactionRepository {
   private getEffects(reactionId: string): ObservableEffect[] {
     return (
       this.db
-        .prepare("SELECT effect_type, description, related_chemical_id, color_from, color_to FROM reaction_observable_effects WHERE reaction_id = ?")
-        .all(reactionId) as { effect_type: string; description: string; related_chemical_id: string | null; color_from: string | null; color_to: string | null }[]
-    ).map((e) => ({
-      type: e.effect_type as ObservableEffect["type"],
-      description: e.description,
-      relatedChemicalId: e.related_chemical_id ?? undefined,
-      colorFrom: e.color_from ?? undefined,
-      colorTo: e.color_to ?? undefined,
-    }));
+        .prepare(`
+          SELECT e.effect_type, e.description, e.related_chemical_id, e.color_from, e.color_to, c.substance_color
+          FROM reaction_observable_effects e
+          LEFT JOIN chemicals c ON c.id = e.related_chemical_id
+          WHERE e.reaction_id = ?
+        `)
+        .all(reactionId) as {
+          effect_type: string;
+          description: string;
+          related_chemical_id: string | null;
+          color_from: string | null;
+          color_to: string | null;
+          substance_color: string | null;
+        }[]
+    ).map((e) => {
+      const colorTo = e.color_to || e.substance_color || undefined;
+      const colorFrom = e.color_from || (colorTo ? "#F5F5F5" : undefined);
+      return {
+        type: e.effect_type as ObservableEffect["type"],
+        description: e.description,
+        relatedChemicalId: e.related_chemical_id ?? undefined,
+        colorFrom,
+        colorTo,
+      };
+    });
   }
 
   private rowToReaction(row: ReactionRow): CuratedReaction {

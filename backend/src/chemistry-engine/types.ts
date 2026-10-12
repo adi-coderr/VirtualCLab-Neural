@@ -186,6 +186,7 @@ export interface ResolvedSpecies {
   isByproduct?: boolean;
   /** False when this species was predicted (e.g. via solubility rules) but is not yet a curated chemical record. */
   isRegistered: boolean;
+  substanceColor?: string;
 }
 
 export interface IonChargeSpec {

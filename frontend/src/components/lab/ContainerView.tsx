@@ -5,6 +5,9 @@ import { GlasswareVessel } from "./GlasswareVessel";
 import "./ContainerView.css";
 
 function mixLiquidColor(container: Container): string {
+  if (container.appearanceColor) {
+    return container.appearanceColor;
+  }
   return calculateMixtureColor(container.contents);
 }
 

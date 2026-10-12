@@ -4,7 +4,7 @@ import { reactionsApi } from "../api/reactions";
 import { useSettingsStore } from "./settingsStore";
 import type { ChemicalSummary, ReactionConditions, SimulationResult, Unit } from "../types/chemistry";
 import type { Container, ContainerContent, EquipmentType, TimelineEntry } from "../types/experiment";
-import { getChemicalColor } from "../utils/chemicalColorMixer";
+import { getChemicalColor, calculateMixtureColor } from "../utils/chemicalColorMixer";
 
 function makeId(): string {
   return Math.random().toString(36).slice(2, 10);
@@ -253,7 +253,9 @@ export const useLabStore = create<LabState>((set, get) => ({
           concentrationMolar,
         };
         const containers = s.containers.map((c) =>
-          c.id === s.activeContainerId ? { ...c, contents: consolidateContents([...c.contents, content]) } : c
+          c.id === s.activeContainerId
+            ? { ...c, contents: consolidateContents([...c.contents, content]), appearanceColor: undefined }
+            : c
         );
         const entry: TimelineEntry = {
           id: makeId(),
@@ -272,7 +274,11 @@ export const useLabStore = create<LabState>((set, get) => ({
     set((s) => {
       const container = s.containers.find((c) => c.id === containerId);
       const removed = container?.contents.find((c) => c.chemicalId === chemicalId);
-      const containers = s.containers.map((c) => (c.id === containerId ? { ...c, contents: c.contents.filter((x) => x.chemicalId !== chemicalId) } : c));
+      const containers = s.containers.map((c) =>
+        c.id === containerId
+          ? { ...c, contents: c.contents.filter((x) => x.chemicalId !== chemicalId), appearanceColor: undefined }
+          : c
+      );
       const entry: TimelineEntry | null = removed
         ? { id: makeId(), timeLabel: timeLabel(s.experimentStartedAt), description: `Removed ${removed.commonName}`, actionType: "REMOVE" }
         : null;
@@ -287,8 +293,8 @@ export const useLabStore = create<LabState>((set, get) => ({
       const target = s.containers.find((c) => c.id === targetId);
       const mergedContents = target ? consolidateContents([...target.contents, ...source.contents]) : source.contents;
       const containers = s.containers.map((c) => {
-        if (c.id === sourceId) return { ...c, contents: [] };
-        if (c.id === targetId) return { ...c, contents: mergedContents };
+        if (c.id === sourceId) return { ...c, contents: [], appearanceColor: undefined };
+        if (c.id === targetId) return { ...c, contents: mergedContents, appearanceColor: undefined };
         return c;
       });
       const entry: TimelineEntry = {
@@ -380,9 +386,13 @@ export const useLabStore = create<LabState>((set, get) => ({
               const line = stoichByChemicalId.get(p.chemicalId);
               const mass = line?.theoreticalYieldMass ?? 0;
               // Real chemical color lookup
-              let color = getChemicalColor(p.chemicalId, p.formula, p.commonName);
-              // If reaction explicitly produces an observable precipitate/color and this is the main product
-              if (!color && idx === 0 && primaryColorEffect?.colorTo) {
+              let color = (p as any).substanceColor || getChemicalColor(p.chemicalId, p.formula, p.commonName);
+              // If reaction explicitly produces an observable precipitate/color, apply to target product
+              const isTargetSpecies = primaryColorEffect?.relatedChemicalId
+                ? primaryColorEffect.relatedChemicalId.toLowerCase() === p.chemicalId.toLowerCase() ||
+                  primaryColorEffect.relatedChemicalId.toLowerCase() === p.formula.toLowerCase()
+                : !p.isByproduct && !["h2o", "water", "nacl", "kno3", "nano3", "kcl"].includes(p.chemicalId.toLowerCase());
+              if (primaryColorEffect?.colorTo && isTargetSpecies) {
                 color = primaryColorEffect.colorTo;
               }
               return {
@@ -416,9 +426,12 @@ export const useLabStore = create<LabState>((set, get) => ({
           const spectators = container.contents.filter((c) => !activeIds.has(c.chemicalId));
 
           const newContents = consolidateContents([...productContents, ...excessReactants, ...spectators]);
+          const appearanceColor = primaryColorEffect?.colorTo || calculateMixtureColor(newContents);
           const calorimetry = simulationResult.calorimetry ?? resolution.calorimetry;
           const nextTemp = calorimetry ? calorimetry.finalTemperatureC : container.temperatureC;
-          containers = s.containers.map((c) => (c.id === container.id ? { ...c, contents: newContents, temperatureC: nextTemp } : c));
+          containers = s.containers.map((c) =>
+            c.id === container.id ? { ...c, contents: newContents, temperatureC: nextTemp, appearanceColor } : c
+          );
         }
         const calorimetry = simulationResult.calorimetry ?? resolution.calorimetry;
         const tempNote = calorimetry && calorimetry.temperatureDeltaC !== 0
@@ -488,8 +501,12 @@ export const useLabStore = create<LabState>((set, get) => ({
             .map((p, idx) => {
               const line = stoichByChemicalId.get(p.chemicalId);
               const mass = line?.theoreticalYieldMass ?? 0;
-              let color = getChemicalColor(p.chemicalId, p.formula, p.commonName);
-              if (!color && idx === 0 && primaryColorEffect?.colorTo) {
+              let color = (p as any).substanceColor || getChemicalColor(p.chemicalId, p.formula, p.commonName);
+              const isTargetSpecies = primaryColorEffect?.relatedChemicalId
+                ? primaryColorEffect.relatedChemicalId.toLowerCase() === p.chemicalId.toLowerCase() ||
+                  primaryColorEffect.relatedChemicalId.toLowerCase() === p.formula.toLowerCase()
+                : !p.isByproduct && !["h2o", "water", "nacl", "kno3", "nano3", "kcl"].includes(p.chemicalId.toLowerCase());
+              if (primaryColorEffect?.colorTo && isTargetSpecies) {
                 color = primaryColorEffect.colorTo;
               }
               return {
@@ -505,9 +522,11 @@ export const useLabStore = create<LabState>((set, get) => ({
 
           const calorimetry = simulationResult.calorimetry ?? resolution.calorimetry;
           const nextTemp = calorimetry ? calorimetry.finalTemperatureC : activeContainer.temperatureC;
+          const consolidatedProducts = consolidateContents(productContents);
+          const appearanceColor = primaryColorEffect?.colorTo || calculateMixtureColor(consolidatedProducts);
           containers = s.containers.map((c) =>
             c.id === activeContainer.id
-              ? { ...c, contents: consolidateContents(productContents), temperatureC: nextTemp }
+              ? { ...c, contents: consolidatedProducts, temperatureC: nextTemp, appearanceColor }
               : c
           );
         }

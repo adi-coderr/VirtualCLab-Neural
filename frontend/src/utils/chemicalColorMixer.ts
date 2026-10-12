@@ -9,6 +9,108 @@ export interface ColorInfo {
 
 const colorDatabase = chemicalColorsData as Record<string, ColorInfo>;
 
+const EXTRA_CHEMICAL_COLORS: Record<string, string> = {
+  // Iconic coordination complexes & deep pigments
+  "prussian blue": "#003153",
+  "prussian-blue": "#003153",
+  "fe4[fe(cn)6]3": "#003153",
+  "fe4(fe(cn)6)3": "#003153",
+  "fe4-fe-cn-6-3": "#003153",
+  "kfe[fe(cn)6]": "#003153",
+  "tetraamminecopper": "#0047AB",
+  "[cu(nh3)4]2+": "#0047AB",
+  "[cu(nh3)4](oh)2": "#0047AB",
+  "[cu(nh3)4]so4": "#0047AB",
+  "schweizer's reagent": "#0047AB",
+
+  // Transition metal hydroxides & insoluble oxides
+  "cu(oh)2": "#1E88E5",
+  "fe(oh)3": "#8B4513",
+  "fe(oh)2": "#2E5834",
+  "ni(oh)2": "#98FB98",
+  "co(oh)2": "#FF69B4",
+  "mn(oh)2": "#F5F5DC",
+  "cr(oh)3": "#4A704A",
+  "al(oh)3": "#F5F5F0",
+  "zn(oh)2": "#FFFFFF",
+  "fe2o3": "#8B0000",
+  "fe3o4": "#1C1C1C",
+  "cu2o": "#B22222",
+  "cuo": "#1C1C1C",
+  "mno2": "#1C1C1C",
+  "cro3": "#8B0000",
+  "cr2o3": "#2E8B57",
+
+  // Chromates & dichromates
+  "pbcro4": "#FFA500",
+  "ag2cro4": "#8B0000",
+  "bacro4": "#FFFF00",
+  "k2cro4": "#FFD700",
+  "k2cr2o7": "#FF4500",
+  "na2cr2o7": "#FF4500",
+  "na2cro4": "#FFD700",
+  "cro4": "#FFD700",
+  "cr2o7": "#FF4500",
+
+  // Halides, sulfates, carbonates & classic precipitates
+  "pbi2": "#F7D046",
+  "agcl": "#F5F5F0",
+  "agbr": "#FAFAD2",
+  "agi": "#FFF9A6",
+  "ag3po4": "#FFD700",
+  "ag2co3": "#E6D770",
+  "baso4": "#FFFFFF",
+  "caso4": "#FFFFFF",
+  "caco3": "#FFFFFF",
+  "mg(oh)2": "#FFFFFF",
+
+  // Sulfides (insoluble dark & colored precipitates)
+  "cus": "#0A0A0A",
+  "fes": "#1C1C1C",
+  "pbs": "#1C1C1C",
+  "nis": "#1A1A1A",
+  "cos": "#1A1A1A",
+  "ag2s": "#1C1C1C",
+  "cds": "#FFD700",
+  "sns": "#5B3A29",
+  "as2s3": "#FFD700",
+  "sb2s3": "#FF4500",
+  "bi2s3": "#4A3B32",
+  "zns": "#FFFFFF",
+  "mns": "#FA8072",
+
+  // Soluble colored transition metal salts & ions
+  "kmno4": "#4B0082",
+  "mno4": "#4B0082",
+  "cuso4": "#2E7DA6",
+  "cucl2": "#1B8A70",
+  "cuno32": "#0077BE",
+  "cu(no3)2": "#0077BE",
+  "fecl3": "#804A00",
+  "fecl2": "#E0F2E9",
+  "feso4": "#C7DFC1",
+  "fe2(so4)3": "#C87D2E",
+  "niso4": "#00FF7F",
+  "nicl2": "#2ECC71",
+  "cocl2": "#4169E1",
+  "coso4": "#FF69B4",
+  "crcl3": "#4B0082",
+
+  // Elemental halogens & nonmetals
+  "i2": "#4B0082",
+  "br2": "#D35400",
+  "cl2": "#D4E157",
+  "s8": "#FFFF33",
+  "s": "#FFFF33",
+  "p4": "#FFFFFF",
+
+  // Indicators & special colored organics
+  "phenolphthalein": "#FF1493",
+  "methyl orange": "#E67E22",
+  "bromothymol blue": "#2980B9",
+  "litmus": "#800080",
+};
+
 // Normalized lookup map by id, formula, and commonName (case-insensitive)
 const lookupMap = new Map<string, string>();
 for (const [id, info] of Object.entries(colorDatabase)) {
@@ -18,21 +120,29 @@ for (const [id, info] of Object.entries(colorDatabase)) {
     if (info.name) lookupMap.set(info.name.toLowerCase(), info.color);
   }
 }
+for (const [key, color] of Object.entries(EXTRA_CHEMICAL_COLORS)) {
+  lookupMap.set(key.toLowerCase(), color);
+}
 
 /**
  * Returns the realistic real-life hex color of a chemical by its id, formula, or common name.
  */
 export function getChemicalColor(chemicalId?: string, formula?: string, commonName?: string): string | undefined {
+  const normalize = (s: string) => s.toLowerCase().replace(/[\s\-_\[\]\(\)]/g, "");
+
   if (chemicalId) {
-    const byId = lookupMap.get(chemicalId.toLowerCase());
+    const raw = chemicalId.toLowerCase();
+    const byId = lookupMap.get(raw) || lookupMap.get(normalize(raw));
     if (byId) return byId;
   }
   if (formula) {
-    const byFormula = lookupMap.get(formula.toLowerCase());
+    const raw = formula.toLowerCase();
+    const byFormula = lookupMap.get(raw) || lookupMap.get(normalize(raw));
     if (byFormula) return byFormula;
   }
   if (commonName) {
-    const byName = lookupMap.get(commonName.toLowerCase());
+    const raw = commonName.toLowerCase();
+    const byName = lookupMap.get(raw) || lookupMap.get(normalize(raw));
     if (byName) return byName;
   }
   return undefined;

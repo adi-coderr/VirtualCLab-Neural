@@ -10,6 +10,7 @@ import { MoleculeViewer } from "../molecule/MoleculeViewer";
 import { ProcessBreakdownPanel } from "./ProcessBreakdownPanel";
 import { Tabs } from "../common/Tabs";
 import { formatFormula } from "../../utils/formatFormula";
+import { getChemicalColor } from "../../utils/chemicalColorMixer";
 import { useSettingsStore } from "../../state/settingsStore";
 import "./ReactionResultPanel.css";
 
@@ -214,14 +215,23 @@ export function ReactionResultPanel({ result }: { result: SimulationResult }) {
           <div className="reaction-result__species-picker">
             {allSpecies.map((s) => {
               const key = s.chemicalId || s.formula;
+              const chemColor =
+                (s as any).substanceColor ||
+                getChemicalColor(s.chemicalId, s.formula, s.commonName);
               return (
                 <button
                   key={key}
                   type="button"
                   className={`reaction-result__species-chip ${key === selectedId ? "is-selected" : ""}`}
                   onClick={() => setSelectedId(key)}
-                  title={s.commonName || s.formula}
+                  title={`${s.commonName || s.formula}${chemColor ? ` (IRL Color: ${chemColor})` : ""}`}
                 >
+                  {chemColor && chemColor.toLowerCase() !== "#ffffff" && (
+                    <span
+                      className="reaction-result__species-color-dot"
+                      style={{ background: chemColor }}
+                    />
+                  )}
                   <span className="formula">{formatFormula(s.formula)}</span>
                   <span className="reaction-result__species-chip-name">{s.commonName || s.formula}</span>
                 </button>

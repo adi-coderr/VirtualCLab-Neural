@@ -267,34 +267,69 @@ export class SimulationService {
         // Ignore sqlite insert errors
       }
 
+      const existingChem = this.chemicalRepo.getById(chemId) || this.chemicalRepo.getByFormula(formula);
+      const subColor = (p as any).substanceColor || existingChem?.substanceColor || undefined;
+
       return {
         chemicalId: chemId,
         formula,
         commonName: name,
         coefficient,
         isRegistered: true,
+        substanceColor: subColor,
       };
     });
 
+    const rColors = reactants
+      .map((r) => this.chemicalRepo.getById(r.chemicalId)?.substanceColor || this.chemicalRepo.getByFormula(r.formula)?.substanceColor)
+      .filter((c): c is string => Boolean(c) && c !== "#FFFFFF" && c !== "#CFE8F3");
+    const defaultColorFrom = rColors[0] || "#F5F5F5";
+
     const observableEffects: ObservableEffect[] = [];
     for (const p of mlRes.productAnalyses || []) {
+      const chemId = p.formula ? p.formula.toLowerCase().replace(/[^a-z0-9]/g, "_") : undefined;
+      const matchedProd = products.find((prod) => prod.formula === p.formula || prod.chemicalId === chemId);
+      const prodColor = (matchedProd as any)?.substanceColor;
+
       if (p.physicalState === "gas") {
         observableEffects.push({
           type: "gas_evolution",
           description: `Vigorous effervescence and gas evolution observed (${p.name || p.formula}).`,
+          relatedChemicalId: chemId,
         });
       } else if (p.physicalState === "solid") {
         observableEffects.push({
           type: "precipitation",
           description: `Formation of precipitate: ${p.appearance || p.name || p.formula}.`,
+          relatedChemicalId: chemId,
+          colorFrom: defaultColorFrom,
+          colorTo: prodColor || "#FFFFFF",
         });
       } else if (p.appearance && p.appearance !== "clear liquid") {
         observableEffects.push({
           type: "color_change",
           description: `Solution appearance changes: ${p.appearance}.`,
+          relatedChemicalId: chemId,
+          colorFrom: defaultColorFrom,
+          colorTo: prodColor,
         });
       }
     }
+
+    const coloredProd = products.find((prod) => {
+      const c = (prod as any).substanceColor;
+      return c && c !== "#FFFFFF" && c !== "#CFE8F3";
+    });
+    if (coloredProd && !observableEffects.some((e) => e.colorTo)) {
+      observableEffects.unshift({
+        type: "color_change",
+        description: `Solution undergoes a distinct color transformation yielding ${coloredProd.commonName}.`,
+        relatedChemicalId: coloredProd.chemicalId,
+        colorFrom: defaultColorFrom,
+        colorTo: (coloredProd as any).substanceColor,
+      });
+    }
+
     if (observableEffects.length === 0) {
       observableEffects.push({
         type: "phase_change",

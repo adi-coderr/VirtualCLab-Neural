@@ -140,6 +140,8 @@ COMMON_NAME_TO_SMILES = {
     "c4h6": "C=CC=C",
     "1,3-butadiene": "C=CC=C",
     "butadiene": "C=CC=C",
+    "c6h8": "C1=CC=CCC1",
+    "cyclohexadiene": "C1=CC=CCC1",
     "c2h2": "C#C",
     "acetylene": "C#C",
     "ethyne": "C#C",
@@ -398,7 +400,7 @@ def resolve_names_to_smiles(query: str) -> str:
         elif char == ']':
             in_bracket = False
             current.append(char)
-        elif not in_bracket and char in ['+', '>', ',']:
+        elif not in_bracket and char in ['+', '>', ',', '.']:
             if current:
                 tokens.append("".join(current))
                 current = []
@@ -412,6 +414,8 @@ def resolve_names_to_smiles(query: str) -> str:
     for t in tokens:
         if t in ['+', '>', ',']:
             resolved.append(f" {t} ")
+        elif t == '.':
+            resolved.append(".")
         else:
             resolved.append(resolve_single_species_to_smiles(t))
     return "".join(resolved)

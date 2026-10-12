@@ -35,6 +35,7 @@ function toSpecies(chem: Chemical, coefficient: number, isByproduct = false): Re
     coefficient,
     isByproduct,
     isRegistered: true,
+    substanceColor: chem.substanceColor,
   };
 }
 
@@ -405,6 +406,8 @@ function trySingleDisplacement(a: Chemical, b: Chemical, lookup: ChemicalLookupP
         type: "color_change",
         description: `${displacedMetalChem.commonName} deposits out of solution as ${metal.commonName} dissolves.`,
         relatedChemicalId: displacedMetalChem.id,
+        colorFrom: salt.substanceColor || "#F5F5F5",
+        colorTo: displacedMetalChem.substanceColor || "#C0C0C0",
       },
     ],
     energyClassification: "exothermic",
@@ -497,6 +500,8 @@ function tryPrecipitation(a: Chemical, b: Chemical, lookup: ChemicalLookupPort):
         type: "precipitation",
         description: `${precipitateChem?.commonName ?? precipitateIon.formula} forms as a ${precipitateTier === "slightly_soluble" ? "faint" : ""} precipitate.`.replace("  ", " "),
         relatedChemicalId: precipitateChem?.id,
+        colorFrom: a.substanceColor || b.substanceColor || "#F5F5F5",
+        colorTo: precipitateChem?.substanceColor || "#FFFFFF",
       },
     ],
     energyClassification: "unknown",
