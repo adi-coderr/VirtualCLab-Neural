@@ -24,12 +24,10 @@ export function ReactionControls({ pendingChemical, onAdded }: { pendingChemical
 
   const addChemical = useLabStore((s) => s.addChemical);
   const isLoading = useLabStore((s) => s.isLoading);
-  const isAiAnalyzing = useLabStore((s) => s.isAiAnalyzing);
   const conditions = useLabStore((s) => s.conditions);
   const setConditions = useLabStore((s) => s.setConditions);
   const runReaction = useLabStore((s) => s.runReaction);
   const runReactionByEquation = useLabStore((s) => s.runReactionByEquation);
-  const previewReaction = useLabStore((s) => s.previewReaction);
   const activeContainer = useLabStore((s) => s.containers.find((c) => c.id === s.activeContainerId));
 
   useEffect(() => {
@@ -60,13 +58,6 @@ export function ReactionControls({ pendingChemical, onAdded }: { pendingChemical
     };
   }, [reactionSearchQuery]);
 
-  useEffect(() => {
-    if (!activeContainer || activeContainer.contents.length < 2) return;
-    const timer = setTimeout(() => {
-      previewReaction();
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [activeContainer?.contents, conditions, previewReaction]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -182,11 +173,11 @@ export function ReactionControls({ pendingChemical, onAdded }: { pendingChemical
               <button
                 type="button"
                 className="reaction-controls__react-now-btn"
-                disabled={isLoading || isAiAnalyzing || !reactionSearchQuery.trim()}
+                disabled={isLoading || !reactionSearchQuery.trim()}
                 onClick={() => handleReactCustomEquation()}
                 title="React equation via 3-tier pipeline: Curated DB → ReactionT5v2 Neural Model → Groq AI"
               >
-                {isAiAnalyzing ? "Reacting…" : "React"}
+                {isLoading ? "Reacting…" : "React"}
               </button>
             </div>
 
@@ -357,12 +348,6 @@ export function ReactionControls({ pendingChemical, onAdded }: { pendingChemical
           <input type="text" value={conditions.solvent ?? ""} onChange={(e) => setConditions({ solvent: e.target.value })} placeholder="water" />
         </label>
       </div>
-      {isAiAnalyzing && (
-        <div className="reaction-controls__ai-analyzing-status">
-          <span className="reaction-controls__ai-sparkle">✨</span>
-          <span>AI agent analyzing mixture in background…</span>
-        </div>
-      )}
 
       <Button
         variant="primary"

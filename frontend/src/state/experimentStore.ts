@@ -263,7 +263,13 @@ export const useLabStore = create<LabState>((set, get) => ({
           description: `Added ${amount} ${unit} of ${chemical.commonName} (${chemical.formula})`,
           actionType: "ADD_CHEMICAL",
         };
-        return { history: [...s.history, snapshot(s)], containers, timeline: [...s.timeline, entry], isLoading: false };
+        return {
+          history: [...s.history, snapshot(s)],
+          containers,
+          timeline: [...s.timeline, entry],
+          isLoading: false,
+          lastSimulationResult: null,
+        };
       });
     } catch (err) {
       set({ isLoading: false, error: err instanceof Error ? err.message : "Failed to add chemical" });
@@ -282,7 +288,12 @@ export const useLabStore = create<LabState>((set, get) => ({
       const entry: TimelineEntry | null = removed
         ? { id: makeId(), timeLabel: timeLabel(s.experimentStartedAt), description: `Removed ${removed.commonName}`, actionType: "REMOVE" }
         : null;
-      return { history: [...s.history, snapshot(s)], containers, timeline: entry ? [...s.timeline, entry] : s.timeline };
+      return {
+        history: [...s.history, snapshot(s)],
+        containers,
+        timeline: entry ? [...s.timeline, entry] : s.timeline,
+        lastSimulationResult: null,
+      };
     });
   },
 
@@ -303,7 +314,13 @@ export const useLabStore = create<LabState>((set, get) => ({
         description: `Poured ${source.name} into ${target?.name ?? "container"}`,
         actionType: "MIX",
       };
-      return { history: [...s.history, snapshot(s)], containers, timeline: [...s.timeline, entry], activeContainerId: targetId };
+      return {
+        history: [...s.history, snapshot(s)],
+        containers,
+        timeline: [...s.timeline, entry],
+        activeContainerId: targetId,
+        lastSimulationResult: null,
+      };
     });
   },
 
@@ -563,29 +580,7 @@ export const useLabStore = create<LabState>((set, get) => ({
   },
 
   previewReaction: async () => {
-    const state = get();
-    const container = state.containers.find((c) => c.id === state.activeContainerId);
-    if (!container || container.contents.length < 2) return;
-
-    const consolidated = consolidateContents(container.contents);
-    const reactants = consolidated.map((c) => ({
-      chemicalId: c.chemicalId,
-      formula: c.formula,
-      amount: c.amount,
-      unit: c.unit,
-      concentrationMolar: c.concentrationMolar,
-    }));
-
-    set({ isAiAnalyzing: true });
-    try {
-      const simResult = await reactionsApi.simulate(reactants, state.conditions);
-      set({
-        lastSimulationResult: simResult,
-        isAiAnalyzing: false,
-      });
-    } catch {
-      set({ isAiAnalyzing: false });
-    }
+    // Reactions are only triggered explicitly when the user clicks "React"
   },
 
   resetExperiment: async () => {

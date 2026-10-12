@@ -83,7 +83,7 @@ export default function App() {
                   <ReactionResultPanel result={lastSimulationResult} />
                 ) : (
                   <p className="app-right-placeholder">
-                    Select chemicals into a container to run or preview the reaction.
+                    Select chemicals into a container and click &ldquo;React&rdquo; to run the reaction.
                   </p>
                 ),
               },
