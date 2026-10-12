@@ -122,25 +122,55 @@ export class ChemicalRepository {
         bond_type: string;
       }[];
 
-      return {
-        curated: true,
-        atoms: atoms.map((a) => ({
-          atomIndex: a.atom_index,
-          element: a.element_symbol,
-          x2d: a.x2d,
-          y2d: a.y2d,
-          x3d: a.x3d,
-          y3d: a.y3d,
-          z3d: a.z3d,
-          formalCharge: a.formal_charge,
-        })),
-        bonds: bonds.map((b) => ({
-          atomIndex1: b.atom_index_1,
-          atomIndex2: b.atom_index_2,
-          order: b.bond_order as 1 | 2 | 3,
-          type: b.bond_type as "covalent" | "ionic",
-        })),
-      };
+      let hasUnphysicalBond = false;
+      for (const b of bonds) {
+        const a1 = atoms.find((a) => a.atom_index === b.atom_index_1);
+        const a2 = atoms.find((a) => a.atom_index === b.atom_index_2);
+        if (a1 && a2) {
+          const d = Math.hypot(a1.x3d - a2.x3d, a1.y3d - a2.y3d, a1.z3d - a2.z3d);
+          if (d > 2.65 || (b.bond_type === "covalent" && d < 0.70)) {
+            hasUnphysicalBond = true;
+            break;
+          }
+        }
+      }
+
+      if (!hasUnphysicalBond) {
+        for (let i = 0; i < atoms.length; i++) {
+          for (let j = i + 1; j < atoms.length; j++) {
+            const a1 = atoms[i]!;
+            const a2 = atoms[j]!;
+            const d = Math.hypot(a1.x3d - a2.x3d, a1.y3d - a2.y3d, a1.z3d - a2.z3d);
+            if (d < 0.65) {
+              hasUnphysicalBond = true;
+              break;
+            }
+          }
+          if (hasUnphysicalBond) break;
+        }
+      }
+
+      if (!hasUnphysicalBond) {
+        return {
+          curated: true,
+          atoms: atoms.map((a) => ({
+            atomIndex: a.atom_index,
+            element: a.element_symbol,
+            x2d: a.x2d,
+            y2d: a.y2d,
+            x3d: a.x3d,
+            y3d: a.y3d,
+            z3d: a.z3d,
+            formalCharge: a.formal_charge,
+          })),
+          bonds: bonds.map((b) => ({
+            atomIndex1: b.atom_index_1,
+            atomIndex2: b.atom_index_2,
+            order: b.bond_order as 1 | 2 | 3,
+            type: b.bond_type as "covalent" | "ionic",
+          })),
+        };
+      }
     }
 
     // Dynamic 3D molecular structure generation for all compounds

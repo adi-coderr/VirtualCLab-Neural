@@ -65,7 +65,6 @@ export function AiSettingsModal() {
       <div className="ai-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="ai-modal-title">
         <div className="ai-modal__header">
           <div className="ai-modal__title-row">
-            <span className="ai-modal__sparkle-icon">✨</span>
             <h3 id="ai-modal-title" className="ai-modal__title">AI Chemical Predictor Settings</h3>
           </div>
           <button className="ai-modal__close-btn" onClick={closeSettings} aria-label="Close settings">

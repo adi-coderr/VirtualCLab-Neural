@@ -91,6 +91,35 @@ export function isSaturatedAlkane(comp: ElementComposition): boolean {
   return h === 2 * c + 2;
 }
 
+export const COMMON_STOICHIOMETRIC_BYPRODUCTS: Array<{
+  chemicalId: string;
+  formula: string;
+  commonName: string;
+  composition: ElementComposition;
+  charge: number;
+}> = [
+  { chemicalId: "water", formula: "H2O", commonName: "Water", composition: { H: 2, O: 1 }, charge: 0 },
+  { chemicalId: "hcl", formula: "HCl", commonName: "Hydrochloric acid", composition: { H: 1, Cl: 1 }, charge: 0 },
+  { chemicalId: "hbr", formula: "HBr", commonName: "Hydrobromic acid", composition: { H: 1, Br: 1 }, charge: 0 },
+  { chemicalId: "hi", formula: "HI", commonName: "Hydroiodic acid", composition: { H: 1, I: 1 }, charge: 0 },
+  { chemicalId: "hf", formula: "HF", commonName: "Hydrofluoric acid", composition: { H: 1, F: 1 }, charge: 0 },
+  { chemicalId: "nacl", formula: "NaCl", commonName: "Sodium chloride", composition: { Na: 1, Cl: 1 }, charge: 0 },
+  { chemicalId: "kcl", formula: "KCl", commonName: "Potassium chloride", composition: { K: 1, Cl: 1 }, charge: 0 },
+  { chemicalId: "nabr", formula: "NaBr", commonName: "Sodium bromide", composition: { Na: 1, Br: 1 }, charge: 0 },
+  { chemicalId: "kbr", formula: "KBr", commonName: "Potassium bromide", composition: { K: 1, Br: 1 }, charge: 0 },
+  { chemicalId: "nai", formula: "NaI", commonName: "Sodium iodide", composition: { Na: 1, I: 1 }, charge: 0 },
+  { chemicalId: "ki", formula: "KI", commonName: "Potassium iodide", composition: { K: 1, I: 1 }, charge: 0 },
+  { chemicalId: "co2", formula: "CO2", commonName: "Carbon dioxide", composition: { C: 1, O: 2 }, charge: 0 },
+  { chemicalId: "co", formula: "CO", commonName: "Carbon monoxide", composition: { C: 1, O: 1 }, charge: 0 },
+  { chemicalId: "h2", formula: "H2", commonName: "Hydrogen gas", composition: { H: 2 }, charge: 0 },
+  { chemicalId: "nh3", formula: "NH3", commonName: "Ammonia", composition: { N: 1, H: 3 }, charge: 0 },
+  { chemicalId: "khco3", formula: "KHCO3", commonName: "Potassium bicarbonate", composition: { K: 1, H: 1, C: 1, O: 3 }, charge: 0 },
+  { chemicalId: "nahco3", formula: "NaHCO3", commonName: "Sodium bicarbonate", composition: { Na: 1, H: 1, C: 1, O: 3 }, charge: 0 },
+  { chemicalId: "methanol", formula: "CH3OH", commonName: "Methanol", composition: { C: 1, H: 4, O: 1 }, charge: 0 },
+  { chemicalId: "ethanol", formula: "C2H5OH", commonName: "Ethanol", composition: { C: 2, H: 6, O: 1 }, charge: 0 },
+  { chemicalId: "acetic_acid", formula: "CH3COOH", commonName: "Acetic acid", composition: { C: 2, H: 4, O: 2 }, charge: 0 },
+];
+
 /**
  * Rigorously audits any proposed reaction against the fundamental principles of chemistry:
  * 1. Conservation of Mass & Elements (no alien elements in products, no vanished elements).
@@ -158,20 +187,7 @@ export function auditReactionChemistry(
     };
   }
 
-  // Principle: Conservation of Atoms. Every element in reactants MUST appear in products!
-  const missingElements = [...rElements].filter((el) => !pElements.has(el));
-  if (missingElements.length > 0) {
-    return {
-      passed: false,
-      isInertAlkanes: false,
-      failureReason: `Conservation of atoms failed: Reactant element(s) [${missingElements.join(
-        ", "
-      )}] completely vanished from products.`,
-    };
-  }
-
   // 3. Chemical Plausibility Audit: Saturated Alkanes (e.g. Ethane + Propane)
-  // If all reactants are saturated alkanes and there is no oxidizer/halogen/catalyst present, they are chemically inert.
   const allReactantsAreAlkanes = rComps.every((r) => isSaturatedAlkane(r.composition));
   if (allReactantsAreAlkanes && rComps.length >= 2) {
     return {
@@ -182,48 +198,208 @@ export function auditReactionChemistry(
   }
 
   // 4. Stoichiometric Atom Balance Audit (Gaussian linear algebra)
-  try {
-    const rBal: BalancerSpecies[] = rComps.map((r) => ({
-      label: r.formula,
-      formula: r.formula,
-      composition: r.composition,
-      charge: r.charge,
-    }));
-    const pBal: BalancerSpecies[] = pComps.map((p) => ({
-      label: p.formula,
-      formula: p.formula,
-      composition: p.composition,
-      charge: p.charge,
-    }));
+  const missingElements = [...rElements].filter((el) => !pElements.has(el));
 
-    const balanceRes = balanceEquation(rBal, pBal);
+  // First attempt: direct balance if all reactant elements are present in candidate products
+  if (missingElements.length === 0) {
+    try {
+      const rBal: BalancerSpecies[] = rComps.map((r) => ({
+        label: r.formula,
+        formula: r.formula,
+        composition: r.composition,
+        charge: r.charge,
+      }));
+      const pBal: BalancerSpecies[] = pComps.map((p) => ({
+        label: p.formula,
+        formula: p.formula,
+        composition: p.composition,
+        charge: p.charge,
+      }));
 
-    const balancedReactants = reactants.map((r, i) => ({
-      ...r,
-      formula: rComps[i]?.formula || r.formula,
-      coefficient: balanceRes.reactantCoefficients[i] || r.coefficient || 1,
-    }));
+      const balanceRes = balanceEquation(rBal, pBal);
 
-    const balancedProducts = products.map((p, i) => ({
-      ...p,
-      formula: pComps[i]?.formula || p.formula,
-      coefficient: balanceRes.productCoefficients[i] || p.coefficient || 1,
-    }));
+      const balancedReactants = reactants.map((r, i) => ({
+        ...r,
+        formula: rComps[i]?.formula || r.formula,
+        coefficient: balanceRes.reactantCoefficients[i] || r.coefficient || 1,
+      }));
 
-    return {
-      passed: true,
-      isInertAlkanes: false,
-      balancedEquation: balanceRes.balancedEquationText,
-      balancedReactants,
-      balancedProducts,
-    };
-  } catch (err: any) {
+      const balancedProducts = products.map((p, i) => ({
+        ...p,
+        formula: pComps[i]?.formula || p.formula,
+        coefficient: balanceRes.productCoefficients[i] || p.coefficient || 1,
+      }));
+
+      return {
+        passed: true,
+        isInertAlkanes: false,
+        balancedEquation: balanceRes.balancedEquationText,
+        balancedReactants,
+        balancedProducts,
+      };
+    } catch {
+      // Direct balance failed, attempt byproduct inference below
+    }
+  }
+
+  // Second attempt: Infer standard stoichiometric byproducts (single byproducts)
+  // Candidate byproducts must only contain elements present in reactants
+  const compatibleByproducts = COMMON_STOICHIOMETRIC_BYPRODUCTS.filter((bp) =>
+    Object.keys(bp.composition).every((el) => rElements.has(el))
+  );
+
+  for (const bp of compatibleByproducts) {
+    const bpElements = Object.keys(bp.composition);
+    if (missingElements.length > 0 && !missingElements.every((el) => bpElements.includes(el))) {
+      continue;
+    }
+
+    try {
+      const rBal: BalancerSpecies[] = rComps.map((r) => ({
+        label: r.formula,
+        formula: r.formula,
+        composition: r.composition,
+        charge: r.charge,
+      }));
+      const bpSpecies: BalancerSpecies = {
+        label: bp.formula,
+        formula: bp.formula,
+        composition: bp.composition,
+        charge: bp.charge,
+      };
+      const pBal: BalancerSpecies[] = [
+        ...pComps.map((p) => ({
+          label: p.formula,
+          formula: p.formula,
+          composition: p.composition,
+          charge: p.charge,
+        })),
+        bpSpecies,
+      ];
+
+      const balanceRes = balanceEquation(rBal, pBal);
+
+      const balancedReactants = reactants.map((r, i) => ({
+        ...r,
+        formula: rComps[i]?.formula || r.formula,
+        coefficient: balanceRes.reactantCoefficients[i] || r.coefficient || 1,
+      }));
+
+      const balancedProducts: ResolvedSpecies[] = [
+        ...products.map((p, i) => ({
+          ...p,
+          formula: pComps[i]?.formula || p.formula,
+          coefficient: balanceRes.productCoefficients[i] || p.coefficient || 1,
+        })),
+        {
+          chemicalId: bp.chemicalId,
+          formula: bp.formula,
+          commonName: bp.commonName,
+          coefficient: balanceRes.productCoefficients[products.length] || 1,
+          isRegistered: true,
+        },
+      ];
+
+      return {
+        passed: true,
+        isInertAlkanes: false,
+        balancedEquation: balanceRes.balancedEquationText,
+        balancedReactants,
+        balancedProducts,
+      };
+    } catch {
+      // Byproduct did not balance, continue
+    }
+  }
+
+  // Third attempt: Infer byproduct pairs (e.g. KBr + KHCO3, NaCl + H2O, KBr + H2O, NaCl + NaHCO3, H2O + CO2)
+  for (let i = 0; i < compatibleByproducts.length; i++) {
+    for (let j = i + 1; j < compatibleByproducts.length; j++) {
+      const bp1 = compatibleByproducts[i]!;
+      const bp2 = compatibleByproducts[j]!;
+      const combinedElements = new Set([...Object.keys(bp1.composition), ...Object.keys(bp2.composition)]);
+
+      if (missingElements.length > 0 && !missingElements.every((el) => combinedElements.has(el))) {
+        continue;
+      }
+
+      try {
+        const rBal: BalancerSpecies[] = rComps.map((r) => ({
+          label: r.formula,
+          formula: r.formula,
+          composition: r.composition,
+          charge: r.charge,
+        }));
+        const pBal: BalancerSpecies[] = [
+          ...pComps.map((p) => ({
+            label: p.formula,
+            formula: p.formula,
+            composition: p.composition,
+            charge: p.charge,
+          })),
+          { label: bp1.formula, formula: bp1.formula, composition: bp1.composition, charge: bp1.charge },
+          { label: bp2.formula, formula: bp2.formula, composition: bp2.composition, charge: bp2.charge },
+        ];
+
+        const balanceRes = balanceEquation(rBal, pBal);
+
+        const balancedReactants = reactants.map((r, idx) => ({
+          ...r,
+          formula: rComps[idx]?.formula || r.formula,
+          coefficient: balanceRes.reactantCoefficients[idx] || r.coefficient || 1,
+        }));
+
+        const balancedProducts: ResolvedSpecies[] = [
+          ...products.map((p, idx) => ({
+            ...p,
+            formula: pComps[idx]?.formula || p.formula,
+            coefficient: balanceRes.productCoefficients[idx] || p.coefficient || 1,
+          })),
+          {
+            chemicalId: bp1.chemicalId,
+            formula: bp1.formula,
+            commonName: bp1.commonName,
+            coefficient: balanceRes.productCoefficients[products.length] || 1,
+            isRegistered: true,
+          },
+          {
+            chemicalId: bp2.chemicalId,
+            formula: bp2.formula,
+            commonName: bp2.commonName,
+            coefficient: balanceRes.productCoefficients[products.length + 1] || 1,
+            isRegistered: true,
+          },
+        ];
+
+        return {
+          passed: true,
+          isInertAlkanes: false,
+          balancedEquation: balanceRes.balancedEquationText,
+          balancedReactants,
+          balancedProducts,
+        };
+      } catch {
+        // Pair did not balance
+      }
+    }
+  }
+
+  // If all attempts failed, report actionable violation
+  if (missingElements.length > 0) {
     return {
       passed: false,
       isInertAlkanes: false,
-      failureReason: `Atom balance failed: Equation cannot be balanced (${err.message}).`,
+      failureReason: `Conservation of atoms failed: Reactant element(s) [${missingElements.join(
+        ", "
+      )}] completely vanished from products.`,
     };
   }
+
+  return {
+    passed: false,
+    isInertAlkanes: false,
+    failureReason: "Atom balance failed: Equation cannot be balanced even with byproduct inference.",
+  };
 }
 
 /**

@@ -149,11 +149,11 @@ const H2_STRUCTURE: SeedStructure = {
 };
 
 const NAOH_STRUCTURE: SeedStructure = {
-  // Na+ ionically bonded to the hydroxide ion; O-H itself is covalent.
+  // Na+ ionically bonded to the hydroxide ion; O-H itself is covalent (bent ~110 deg).
   atoms: [
-    { element: "Na", x2d: -70, y2d: 0, x3d: -2.2, y3d: 0, z3d: 0, formalCharge: 1 },
+    { element: "Na", x2d: -70, y2d: 0, x3d: -2.15, y3d: 0, z3d: 0, formalCharge: 1 },
     { element: "O", x2d: 20, y2d: 0, x3d: 0, y3d: 0, z3d: 0, formalCharge: -1 },
-    { element: "H", x2d: 60, y2d: -25, x3d: 0.96, y3d: 0, z3d: 0 },
+    { element: "H", x2d: 60, y2d: -25, x3d: 0.35, y3d: 0.89, z3d: 0 },
   ],
   bonds: [
     { a: 0, b: 1, order: 1, type: "ionic" },
@@ -201,8 +201,7 @@ const ACETIC_ACID_STRUCTURE: SeedStructure = {
 
 // Reusable tetrahedral sulfate and trigonal-planar nitrate fragments, used by
 // several salts below. The cation is attached with an ionic (dashed) bond to
-// the fragment's central atom -- a simplified but clearly-labeled schematic,
-// not a literal claim about where electron density sits.
+// the fragment's coordinating oxygen atom.
 function sulfateFragmentWithCation(cationElement: string, cationCharge: number, cationCount: number): SeedStructure {
   const atoms: SeedAtom[] = [
     { element: "S", x2d: 0, y2d: 0, x3d: 0, y3d: 0, z3d: 0 },
@@ -232,32 +231,80 @@ function sulfateFragmentWithCation(cationElement: string, cationCharge: number, 
 }
 
 /**
- * Builds `nitrateCount` nitrate groups, each ionically bonded to a single
- * shared cation atom. Used both for 1:1 nitrate salts (nitrateCount=1) and
- * for divalent-cation salts with two nitrates (nitrateCount=2, e.g.
- * Pb(NO3)2) -- note the multiplicity is on the ANION side here, the mirror
- * image of sulfateFragmentWithCation where it is on the cation side.
+ * Builds `nitrateCount` nitrate groups, each ionically bonded through oxygen
+ * to a shared cation atom in rich 3D geometry.
  */
 function nitrateFragmentWithCation(cationElement: string, cationCharge: number, nitrateCount: number): SeedStructure {
   const atoms: SeedAtom[] = [{ element: cationElement, x2d: 0, y2d: 0, x3d: 0, y3d: 0, z3d: 0, formalCharge: cationCharge }];
   const bonds: SeedBond[] = [];
   for (let i = 0; i < nitrateCount; i++) {
-    const dirSign = i % 2 === 0 ? 1 : -1;
-    const cx2d = dirSign * (100 + Math.floor(i / 2) * 90);
-    const cy2d = Math.floor(i / 2) * 90 + 40;
-    const cx3d = dirSign * (2.6 + Math.floor(i / 2) * 1.6);
-    const cy3d = Math.floor(i / 2) * 1.8 + 1.2;
+    const angle = nitrateCount === 1 ? 0 : (i === 0 ? Math.PI / 4 : (5 * Math.PI) / 4);
+    const zTilt = nitrateCount > 1 ? (i % 2 === 0 ? 0.45 : -0.45) : 0.4;
+    const distCationToN = 3.25;
+    const distNtoO = 1.24;
+
+    const nx = Math.cos(angle) * distCationToN;
+    const ny = Math.sin(angle) * distCationToN;
+    const nz = zTilt;
+
+    // Coordinating oxygen faces the cation at (0, 0, 0) with distance ~2.01 Å
+    const o1x = Math.cos(angle) * (distCationToN - distNtoO);
+    const o1y = Math.sin(angle) * (distCationToN - distNtoO);
+    const o1z = nz;
+
+    // The other two oxygens fan out at 120 deg
+    const perpX = -Math.sin(angle);
+    const perpY = Math.cos(angle);
+    const o2x = nx + Math.cos(angle) * (distNtoO * 0.5) + perpX * (distNtoO * 0.866);
+    const o2y = ny + Math.sin(angle) * (distNtoO * 0.5) + perpY * (distNtoO * 0.866);
+    const o2z = nz;
+
+    const o3x = nx + Math.cos(angle) * (distNtoO * 0.5) - perpX * (distNtoO * 0.866);
+    const o3y = ny + Math.sin(angle) * (distNtoO * 0.5) - perpY * (distNtoO * 0.866);
+    const o3z = nz;
+
     const nIndex = atoms.length;
-    atoms.push({ element: "N", x2d: cx2d, y2d: cy2d, x3d: cx3d, y3d: cy3d, z3d: 0 });
-    atoms.push({ element: "O", x2d: cx2d + 45, y2d: cy2d, x3d: cx3d + 1.24, y3d: cy3d, z3d: 0 });
-    atoms.push({ element: "O", x2d: cx2d - 22, y2d: cy2d + 39, x3d: cx3d - 0.62, y3d: cy3d + 1.07, z3d: 0 });
-    // As with sulfate, the -1 formal charge is placed on one representative
-    // singly-bonded oxygen; real nitrate delocalizes it symmetrically.
-    atoms.push({ element: "O", x2d: cx2d - 22, y2d: cy2d - 39, x3d: cx3d - 0.62, y3d: cy3d - 1.07, z3d: 0, formalCharge: -1 });
+    atoms.push({
+      element: "N",
+      x2d: Math.round(nx * 32),
+      y2d: Math.round(ny * 32),
+      x3d: Number(nx.toFixed(3)),
+      y3d: Number(ny.toFixed(3)),
+      z3d: Number(nz.toFixed(3)),
+    });
+    // Double bonded oxygen
+    atoms.push({
+      element: "O",
+      x2d: Math.round(o2x * 32),
+      y2d: Math.round(o2y * 32),
+      x3d: Number(o2x.toFixed(3)),
+      y3d: Number(o2y.toFixed(3)),
+      z3d: Number(o2z.toFixed(3)),
+    });
+    // Single bonded non-coordinating oxygen
+    atoms.push({
+      element: "O",
+      x2d: Math.round(o3x * 32),
+      y2d: Math.round(o3y * 32),
+      x3d: Number(o3x.toFixed(3)),
+      y3d: Number(o3y.toFixed(3)),
+      z3d: Number(o3z.toFixed(3)),
+    });
+    // Coordinating oxygen with formalCharge -1
+    atoms.push({
+      element: "O",
+      x2d: Math.round(o1x * 32),
+      y2d: Math.round(o1y * 32),
+      x3d: Number(o1x.toFixed(3)),
+      y3d: Number(o1y.toFixed(3)),
+      z3d: Number(o1z.toFixed(3)),
+      formalCharge: -1,
+    });
+
     bonds.push({ a: nIndex, b: nIndex + 1, order: 2 });
     bonds.push({ a: nIndex, b: nIndex + 2, order: 1 });
     bonds.push({ a: nIndex, b: nIndex + 3, order: 1 });
-    bonds.push({ a: 0, b: nIndex, order: 1, type: "ionic" });
+    bonds.push({ a: 0, b: nIndex + 3, order: 1, type: "ionic" });
   }
   return { atoms, bonds };
 }

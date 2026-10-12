@@ -37,17 +37,45 @@ const ELEMENT_MAX_VALENCE: Record<string, number> = {
   Li: 1,
   Na: 1,
   K: 1,
+  Rb: 1,
+  Cs: 1,
   Mg: 2,
   Ca: 2,
+  Sr: 2,
+  Ba: 2,
   Al: 3,
+  Ga: 3,
+  In: 3,
+  Tl: 3,
   Fe: 3,
   Cu: 2,
   Zn: 2,
+  Cd: 2,
+  Ni: 2,
+  Co: 3,
   Mn: 7,
   Cr: 6,
   Ti: 4,
-  Ba: 2,
+  Zr: 4,
+  Sn: 4,
+  Pb: 4,
+  Bi: 3,
+  Ag: 1,
+  Pt: 4,
+  Pd: 4,
 };
+
+/** Complete periodic table two-letter elements set for accurate SMILES parsing */
+const ALL_TWO_LETTER_ELEMENTS = new Set([
+  "He", "Li", "Be", "Ne", "Na", "Mg", "Al", "Si", "Cl", "Ar",
+  "Ca", "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu",
+  "Zn", "Ga", "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Zr",
+  "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn",
+  "Sb", "Te", "Xe", "Cs", "Ba", "La", "Ce", "Pr", "Nd", "Pm",
+  "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb", "Lu",
+  "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au", "Hg", "Tl",
+  "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th", "Pa", "U",
+]);
 
 /** Accurate covalent bond lengths (in Angstroms) based on experimental crystallographic data */
 const BOND_LENGTHS: Record<string, number> = {
@@ -91,6 +119,29 @@ const BOND_LENGTHS: Record<string, number> = {
   "N-N": 1.45,
   "N=N": 1.25,
   "N#N": 1.10,
+  "Fe-O": 1.98,
+  "Al-O": 1.85,
+  "Zn-O": 1.95,
+  "Ti-O": 1.82,
+  "Mn-O": 1.90,
+  "Cr-O": 1.88,
+  "Pb-O": 2.15,
+  "Bi-O": 2.10,
+  "Ag-O": 2.05,
+  "Sn-O": 2.05,
+  "Cu-Cl": 2.15,
+  "Pb-Cl": 2.45,
+  "Pb-I": 2.55,
+  "Bi-Cl": 2.48,
+  "Sn-Cl": 2.30,
+  "Ti-Cl": 2.18,
+  "Zn-Cl": 2.05,
+  "Ag-Cl": 2.35,
+  "Fe-S": 2.20,
+  "Cu-S": 2.15,
+  "Zn-S": 2.25,
+  "Pb-S": 2.50,
+  "Ag-S": 2.45,
 };
 
 function getBondDistance(e1: string, e2: string, order: 1 | 2 | 3 | 1.5 = 1): number {
@@ -268,26 +319,27 @@ function parseSmilesToGraph(smiles: string): SmilesNode[] {
       continue;
     }
 
-    // Bracketed atom: [Na+], [OH-], [N+](=O)[O-], [nH]
+    // Bracketed atom: [Na+], [OH-], [N+](=O)[O-], [nH], [NH4+], [BH4-], etc.
     if (ch === "[") {
       const end = smiles.indexOf("]", i);
       if (end !== -1) {
         const inner = smiles.slice(i + 1, end);
-        const match = inner.match(/^([A-Za-z]+)(?:@+)?(?:H([0-9]*))?([+-][0-9]*|[0-9]*[+-])?/);
-        const raw = match ? match[1]! : "C";
+        const match = inner.match(/^(?:([0-9]+))?([A-Z][a-z]?|[a-z])(@+)?(?:H([0-9]*))?([+-][0-9]*|[0-9]*[+-])?$/);
+        const raw = match ? match[2]! : "C";
         const isAromatic = raw === raw.toLowerCase() && raw.length === 1;
         const elem = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
         let charge = 0;
-        if (match && match[3]) {
-          if (match[3] === "+") charge = 1;
-          else if (match[3] === "-") charge = -1;
-          else if (match[3].endsWith("+")) charge = parseInt(match[3], 10) || 1;
-          else if (match[3].endsWith("-")) charge = -(parseInt(match[3], 10) || 1);
-          else charge = parseInt(match[3], 10) || 0;
+        if (match && match[5]) {
+          const c = match[5];
+          if (c === "+") charge = 1;
+          else if (c === "-") charge = -1;
+          else if (c.endsWith("+")) charge = parseInt(c, 10) || 1;
+          else if (c.endsWith("-")) charge = -(parseInt(c, 10) || 1);
+          else charge = parseInt(c, 10) || 0;
         }
         let explicitH: number | null = null;
-        if (match && match[2] !== undefined) {
-          explicitH = match[2] === "" ? 1 : parseInt(match[2], 10) || 0;
+        if (match && match[4] !== undefined) {
+          explicitH = match[4] === "" ? 1 : parseInt(match[4], 10) || 0;
         } else {
           // OpenSMILES standard: Bracketed atoms without explicit H have 0 implicit hydrogens
           explicitH = 0;
@@ -313,7 +365,7 @@ function parseSmilesToGraph(smiles: string): SmilesNode[] {
     let elem = "";
     let isAromatic = false;
     const two = smiles.slice(i, i + 2);
-    if (["Cl", "Br", "Si", "Na", "Ca", "Fe", "Cu", "Al", "Zn", "Ba", "Mg"].includes(two)) {
+    if (ALL_TWO_LETTER_ELEMENTS.has(two)) {
       elem = two;
       i += 2;
     } else if (/[a-z]/.test(ch)) {
@@ -913,7 +965,28 @@ function generateFromSmiles(smiles: string, rng: () => number): MoleculeStructur
     }
   }
 
+  // If multiple components, sort so the anchor / primary component is laid out first
+  if (components.length > 1) {
+    components.sort((a, b) => {
+      // 1. Largest component first (e.g. polyatomic ion or main organic molecule)
+      if (a.length !== b.length) return b.length - a.length;
+      // 2. Higher absolute charge first (e.g. Mg+2 before Cl-)
+      const aCharge = Math.abs(a.reduce((s, idx) => s + graph[idx]!.charge, 0));
+      const bCharge = Math.abs(b.reduce((s, idx) => s + graph[idx]!.charge, 0));
+      if (aCharge !== bCharge) return bCharge - aCharge;
+      // 3. Metal before non-metal (e.g. Na+ before Cl-)
+      const aHasMetal = a.some((idx) => !["C", "H", "N", "O", "P", "S", "F", "Cl", "Br", "I", "B", "Si"].includes(graph[idx]!.elem));
+      const bHasMetal = b.some((idx) => !["C", "H", "N", "O", "P", "S", "F", "Cl", "Br", "I", "B", "Si"].includes(graph[idx]!.elem));
+      if (aHasMetal && !bHasMetal) return -1;
+      if (!aHasMetal && bHasMetal) return 1;
+      return 0;
+    });
+  }
+
   // 3. Lay out each component via BFS with hybridization-guided bond vectors
+  const ionicCoordCount: Record<number, number> = {};
+  const pendingIonicBonds: [number, number][] = [];
+
   components.forEach((comp, compIdx) => {
     const alreadyPlaced = comp.filter((idx) => placed.has(idx));
     if (alreadyPlaced.length === 0) {
@@ -1038,24 +1111,170 @@ function generateFromSmiles(smiles: string, rng: () => number): MoleculeStructur
     }
 
     if (compIdx > 0) {
-      let maxX = -Infinity;
-      for (let k = 0; k < graph.length; k++) {
-        if (placed.has(k) && !comp.includes(k) && coords[k]) {
-          maxX = Math.max(maxX, coords[k]!.x);
+      // Find best coordinating atom in already placed components to pair with an atom in comp
+      let bestTarget = -1;
+      let bestCoordInComp = -1;
+      let bestScore = -Infinity;
+
+      for (const b of comp) {
+        const nodeB = graph[b]!;
+        const isB_Metal = !["C", "H", "N", "O", "P", "S", "F", "Cl", "Br", "I", "B", "Si"].includes(nodeB.elem);
+
+        for (let a = 0; a < graph.length; a++) {
+          if (!placed.has(a) || comp.includes(a)) continue;
+          const nodeA = graph[a]!;
+          const isA_Metal = !["C", "H", "N", "O", "P", "S", "F", "Cl", "Br", "I", "B", "Si"].includes(nodeA.elem);
+          const isOppositeCharge = (nodeA.charge > 0 && nodeB.charge < 0) || (nodeA.charge < 0 && nodeB.charge > 0);
+          const isMetalNonmetal = (isA_Metal && !isB_Metal) || (isB_Metal && !isA_Metal);
+
+          if (!isOppositeCharge && !isMetalNonmetal) continue;
+
+          const aCoordsCount = ionicCoordCount[a] ?? 0;
+          const maxCapacity = Math.max(1, Math.abs(nodeA.charge) || (isA_Metal ? 2 : 1));
+          if (aCoordsCount >= maxCapacity) continue;
+
+          let score = 0;
+          if (isOppositeCharge) score += 10;
+          if (isMetalNonmetal) score += 5;
+          if (nodeA.charge < 0 || nodeB.charge < 0) score += 5;
+          score -= aCoordsCount * 3;
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestTarget = a;
+            bestCoordInComp = b;
+          }
         }
       }
-      if (!Number.isFinite(maxX)) maxX = 0;
 
-      let currMinX = Infinity;
-      for (const idx of comp) {
-        if (coords[idx]) currMinX = Math.min(currMinX, coords[idx]!.x);
-      }
-      if (!Number.isFinite(currMinX)) currMinX = 0;
+      if (bestTarget !== -1 && bestCoordInComp !== -1) {
+        const targetPos = coords[bestTarget]!;
+        let outDir: Vec3;
+        const targetNeighbors = graph[bestTarget]!.edges
+          .filter((e) => placed.has(e.target) && !comp.includes(e.target) && coords[e.target])
+          .map((e) => coords[e.target]!);
 
-      const shift = maxX + 2.8 - currMinX;
-      for (const idx of comp) {
-        if (coords[idx]) {
-          coords[idx]!.x += shift;
+        if (targetNeighbors.length > 0) {
+          let sumAway = { x: 0, y: 0, z: 0 };
+          for (const n of targetNeighbors) {
+            sumAway.x += targetPos.x - n.x;
+            sumAway.y += targetPos.y - n.y;
+            sumAway.z += targetPos.z - n.z;
+          }
+          const len = Math.hypot(sumAway.x, sumAway.y, sumAway.z);
+          if (len > 0.1) {
+            outDir = { x: sumAway.x / len, y: sumAway.y / len, z: sumAway.z / len };
+          } else {
+            outDir = { x: 1, y: 0, z: 0 };
+          }
+        } else {
+          const k = ionicCoordCount[bestTarget] ?? 0;
+          if (k === 0) outDir = { x: 1, y: 0, z: 0 };
+          else if (k === 1) outDir = { x: -1, y: 0, z: 0.1 };
+          else if (k === 2) outDir = { x: -0.5, y: 0.866, z: -0.1 };
+          else if (k === 3) outDir = { x: -0.5, y: -0.866, z: 0.1 };
+          else if (k === 4) outDir = { x: 0, y: 0, z: 1 };
+          else outDir = { x: 0, y: 0, z: -1 };
+        }
+        outDir = vNormalize(outDir);
+
+        const dBond = Math.min(2.45, Math.max(2.05, getBondDistance(graph[bestTarget]!.elem, graph[bestCoordInComp]!.elem)));
+
+        // Multi-direction clash avoidance
+        const candDirs: Vec3[] = [
+          outDir,
+          { x: -outDir.x, y: -outDir.y, z: outDir.z },
+          { x: outDir.y, y: -outDir.x, z: outDir.z },
+          { x: -outDir.y, y: outDir.x, z: outDir.z },
+          { x: outDir.x, y: outDir.y, z: -outDir.z },
+        ];
+
+        let bestDelta: Vec3 | null = null;
+        for (const dir of candDirs) {
+          const normDir = vNormalize(dir);
+          const tPos = {
+            x: targetPos.x + normDir.x * dBond,
+            y: targetPos.y + normDir.y * dBond,
+            z: targetPos.z + normDir.z * dBond,
+          };
+          const curPos = coords[bestCoordInComp]!;
+          const dShift = { x: tPos.x - curPos.x, y: tPos.y - curPos.y, z: tPos.z - curPos.z };
+
+          let clashes = false;
+          for (const b of comp) {
+            const bx = coords[b]!.x + dShift.x;
+            const by = coords[b]!.y + dShift.y;
+            const bz = coords[b]!.z + dShift.z;
+            for (let a = 0; a < graph.length; a++) {
+              if (!placed.has(a) || comp.includes(a)) continue;
+              const pa = coords[a]!;
+              const dist = Math.hypot(bx - pa.x, by - pa.y, bz - pa.z);
+              if (dist < 0.80) {
+                clashes = true;
+                break;
+              }
+            }
+            if (clashes) break;
+          }
+          if (!clashes) {
+            bestDelta = dShift;
+            break;
+          }
+        }
+
+        if (bestDelta) {
+          for (const idx of comp) {
+            if (coords[idx]) {
+              coords[idx]!.x += bestDelta.x;
+              coords[idx]!.y += bestDelta.y;
+              coords[idx]!.z += bestDelta.z;
+            }
+          }
+          ionicCoordCount[bestTarget] = (ionicCoordCount[bestTarget] ?? 0) + 1;
+          pendingIonicBonds.push([Math.min(bestTarget, bestCoordInComp), Math.max(bestTarget, bestCoordInComp)]);
+        } else {
+          // If all candidate coordination directions clash, shift component safely along X
+          let maxX = -Infinity;
+          for (let k = 0; k < graph.length; k++) {
+            if (placed.has(k) && !comp.includes(k) && coords[k]) {
+              maxX = Math.max(maxX, coords[k]!.x);
+            }
+          }
+          if (!Number.isFinite(maxX)) maxX = 0;
+
+          let currMinX = Infinity;
+          for (const idx of comp) {
+            if (coords[idx]) currMinX = Math.min(currMinX, coords[idx]!.x);
+          }
+          if (!Number.isFinite(currMinX)) currMinX = 0;
+
+          const shift = maxX + 2.8 - currMinX;
+          for (const idx of comp) {
+            if (coords[idx]) {
+              coords[idx]!.x += shift;
+            }
+          }
+        }
+      } else {
+        let maxX = -Infinity;
+        for (let k = 0; k < graph.length; k++) {
+          if (placed.has(k) && !comp.includes(k) && coords[k]) {
+            maxX = Math.max(maxX, coords[k]!.x);
+          }
+        }
+        if (!Number.isFinite(maxX)) maxX = 0;
+
+        let currMinX = Infinity;
+        for (const idx of comp) {
+          if (coords[idx]) currMinX = Math.min(currMinX, coords[idx]!.x);
+        }
+        if (!Number.isFinite(currMinX)) currMinX = 0;
+
+        const shift = maxX + 2.8 - currMinX;
+        for (const idx of comp) {
+          if (coords[idx]) {
+            coords[idx]!.x += shift;
+          }
         }
       }
     }
@@ -1100,31 +1319,59 @@ function generateFromSmiles(smiles: string, rng: () => number): MoleculeStructur
     }
   }
 
-  // Connect disconnected salt ions (e.g. Na+ and Cl-) with ionic bonds
-  if (components.length > 1) {
-    for (let c = 0; c < components.length - 1; c++) {
-      const compA = components[c]!;
-      const compB = components[c + 1]!;
-      let minD = Infinity;
-      let pair: [number, number] = [compA[0]!, compB[0]!];
-      for (const a of compA) {
-        for (const b of compB) {
-          const d = vDist(
-            { x: atoms[a]!.x3d, y: atoms[a]!.y3d, z: atoms[a]!.z3d },
-            { x: atoms[b]!.x3d, y: atoms[b]!.y3d, z: atoms[b]!.z3d }
-          );
-          if (d < minD) {
-            minD = d;
-            pair = [a, b];
-          }
-        }
-      }
+  // Assemble coordinated ionic bonds
+  for (const [a, b] of pendingIonicBonds) {
+    const key = `${Math.min(a, b)}-${Math.max(a, b)}`;
+    if (!bondKeySet.has(key)) {
+      bondKeySet.add(key);
       bonds.push({
-        atomIndex1: pair[0],
-        atomIndex2: pair[1],
+        atomIndex1: Math.min(a, b),
+        atomIndex2: Math.max(a, b),
         order: 1,
         type: "ionic",
       });
+    }
+  }
+
+  // Connect any remaining salt ions with ionic bonds if physical and charged
+  if (components.length > 1) {
+    for (let c = 0; c < components.length; c++) {
+      const compA = components[c]!;
+      for (let c2 = c + 1; c2 < components.length; c2++) {
+        const compB = components[c2]!;
+        let minD = Infinity;
+        let pair: [number, number] | null = null;
+        for (const a of compA) {
+          const nodeA = graph[a]!;
+          for (const b of compB) {
+            const nodeB = graph[b]!;
+            const isA_Metal = !["C", "H", "N", "O", "P", "S", "F", "Cl", "Br", "I", "B", "Si"].includes(nodeA.elem);
+            const isB_Metal = !["C", "H", "N", "O", "P", "S", "F", "Cl", "Br", "I", "B", "Si"].includes(nodeB.elem);
+            const isOppositeCharge = (nodeA.charge > 0 && nodeB.charge < 0) || (nodeA.charge < 0 && nodeB.charge > 0);
+            const isMetalNonmetal = (isA_Metal && !isB_Metal) || (isB_Metal && !isA_Metal);
+
+            if (!isOppositeCharge && !isMetalNonmetal) continue;
+
+            const d = vDist(
+              { x: atoms[a]!.x3d, y: atoms[a]!.y3d, z: atoms[a]!.z3d },
+              { x: atoms[b]!.x3d, y: atoms[b]!.y3d, z: atoms[b]!.z3d }
+            );
+            if (d <= 2.65 && d >= 1.60 && d < minD) {
+              minD = d;
+              pair = [Math.min(a, b), Math.max(a, b)];
+            }
+          }
+        }
+        if (pair && !bondKeySet.has(`${pair[0]}-${pair[1]}`)) {
+          bondKeySet.add(`${pair[0]}-${pair[1]}`);
+          bonds.push({
+            atomIndex1: pair[0],
+            atomIndex2: pair[1],
+            order: 1,
+            type: "ionic",
+          });
+        }
+      }
     }
   }
 
@@ -1351,7 +1598,16 @@ function generateFromSmiles(smiles: string, rng: () => number): MoleculeStructur
   // 6. Force Field Minimization
   relaxGeometry(atoms, bonds, rng, aromaticRingAtoms);
 
-  return { curated: true, atoms, bonds };
+  // 7. Physical bond integrity filter
+  const validBonds = bonds.filter((b) => {
+    const a1 = atoms[b.atomIndex1];
+    const a2 = atoms[b.atomIndex2];
+    if (!a1 || !a2) return false;
+    const d = Math.hypot(a1.x3d - a2.x3d, a1.y3d - a2.y3d, a1.z3d - a2.z3d);
+    return d <= 2.65 && (b.type !== "covalent" || d >= 0.70);
+  });
+
+  return { curated: true, atoms, bonds: validBonds };
 }
 
 // -----------------------------------------------------------------------------
@@ -1441,10 +1697,18 @@ function generateInorganicVsepr(
         const ang = (i === 0 ? 1 : -1) * (104.5 * Math.PI / 360);
         vx = Math.sin(ang);
         vy = Math.cos(ang);
+        vz = i === 0 ? 0.35 : -0.35;
       } else if (oCount === 3) {
+        const isPyramidal = ["Cl", "Br", "I", "P", "As", "Sb", "N", "Se"].includes(central);
         const ang = i * trigAngle - Math.PI / 2;
-        vx = Math.cos(ang);
-        vy = Math.sin(ang);
+        if (isPyramidal) {
+          vx = Math.cos(ang) * 0.89;
+          vy = Math.sin(ang) * 0.89;
+          vz = -0.45;
+        } else {
+          vx = Math.cos(ang);
+          vy = Math.sin(ang);
+        }
       } else {
         const signX = (i === 0 || i === 1) ? 1 : -1;
         const signY = (i === 0 || i === 2) ? 1 : -1;
@@ -1489,8 +1753,8 @@ function generateInorganicVsepr(
       const uy = oAtom.y3d / oDist;
       const uz = oAtom.z3d / oDist;
 
-      // Perpendicular vector for bent O-H bond (~107°)
-      const p1 = Math.abs(ux) < 0.8 ? { x: 1, y: 0, z: 0 } : { x: 0, y: 1, z: 0 };
+      // Perpendicular vector for bent O-H bond (~107°) in 3D
+      const p1 = Math.abs(uz) < 0.8 ? { x: 0, y: 0.35, z: 0.94 } : { x: 1, y: 0, z: 0 };
       const dot = p1.x * ux + p1.y * uy + p1.z * uz;
       const px = p1.x - dot * ux;
       const py = p1.y - dot * uy;
@@ -1698,7 +1962,6 @@ function generateOrganicStructure(
 
   const heavyKeys = [
     ...["C", "Si", "B"].filter((k) => (comp[k] ?? 0) > 0),
-    ...metalKeys,
     ...["N", "P", "S", "As", "Se", "Te"].filter((k) => (comp[k] ?? 0) > 0),
     ...((comp["O"] ?? 0) > 0 ? ["O"] : []),
     ...halogens.filter((k) => (comp[k] ?? 0) > 0),
@@ -1715,13 +1978,14 @@ function generateOrganicStructure(
 
   const has6Ring =
     cCount >= 6 &&
+    metalKeys.length === 0 &&
     (name.includes("phenyl") ||
       name.includes("benzen") ||
       name.includes("tolu") ||
       name.includes("pyridin") ||
       name.includes("pyrimid") ||
       name.includes("benzo") ||
-      (hCount > 0 && hCount <= cCount * 1.4));
+      (hCount > 0 && hCount <= cCount * 1.4 && !name.includes("citrat")));
 
   const has5Ring =
     cCount >= 4 &&
@@ -1920,10 +2184,7 @@ function generateOrganicStructure(
 
   while (placedH < hTotal && eligibleParents.length > 0) {
     const { a: parent, idx: parentIdx } = eligibleParents[placedH % eligibleParents.length]!;
-    const maxV = ELEMENT_MAX_VALENCE[parent.element] ?? 4;
-    const isOvercoordinated = (valenceUsed[parentIdx] ?? 0) >= maxV;
-    const shell = Math.floor(placedH / (eligibleParents.length * 6));
-    const rDist = (isOvercoordinated ? 2.35 : 1.2) + shell * 1.2;
+    const rDist = getBondDistance(parent.element, "H", 1);
     const phi = ((placedH * 137.5) * Math.PI) / 180;
     const zOffset = (1 - ((placedH % 6) / 3)) * (rDist * 0.7);
     const rInPlane = Math.sqrt(Math.max(0, rDist * rDist - zOffset * zOffset));
@@ -1932,12 +2193,29 @@ function generateOrganicStructure(
     const z = parent.z3d + zOffset;
 
     const hIdx = addAtom("H", x, y, z);
-    if (!isOvercoordinated) {
-      addBond(parentIdx, hIdx, 1, "covalent");
-    } else {
-      addBond(parentIdx, hIdx, 1, "ionic");
-    }
+    addBond(parentIdx, hIdx, 1, "covalent");
     placedH++;
+  }
+
+  // Coordinate metal cations in organic salts (e.g. Na+ in sodium citrate C6H5O7Na3 or sodium acetate)
+  if (metalKeys.length > 0 && atoms.length > 0) {
+    const oxygens = atoms.filter((a) => a.element === "O");
+    const targets = oxygens.length > 0 ? oxygens : atoms.filter((a) => a.element !== "H");
+    if (targets.length > 0) {
+      for (const mKey of metalKeys) {
+        const mCount = comp[mKey] ?? 0;
+        for (let m = 0; m < mCount; m++) {
+          const target = targets[(m * 2) % targets.length]!;
+          const phi = (m * 2 * Math.PI) / mCount + Math.PI / 4;
+          const dMO = 2.15;
+          const mx = target.x3d + Math.cos(phi) * dMO;
+          const my = target.y3d + Math.sin(phi) * dMO;
+          const mz = target.z3d + 0.6 * (m % 2 === 0 ? 1 : -1);
+          const mIdx = addAtom(mKey, mx, my, mz);
+          addBond(target.atomIndex, mIdx, 1, "ionic");
+        }
+      }
+    }
   }
 
   relaxGeometry(atoms, bonds, rng, aromaticRingAtoms);
@@ -2198,6 +2476,170 @@ function relaxGeometry(
   }
 }
 
+function parseHydrateFormula(formula: string, commonName = ""): { baseFormula: string; waterCount: number } | null {
+  const normName = commonName.trim();
+  const normForm = formula.trim();
+
+  // 1. Check common name for dot / hyphen notation: e.g. "MgCl2.6H2O", "CuSO4·5H2O", "NiCl2-6H2O", "Fe(NO3)3.9H2O"
+  const nameMatch = normName.match(/^(.+?)[.·\-]\s*(\d*(?:\.\d+)?)\s*H2O$/i);
+  if (nameMatch) {
+    const base = nameMatch[1]!.trim();
+    const wStr = nameMatch[2]!.trim();
+    const wCount = wStr ? Math.round(parseFloat(wStr)) : 1;
+    return { baseFormula: base, waterCount: wCount };
+  }
+
+  // 2. Check formula for parenthesis: e.g. "CuSO4(H2O)5", "Fe(NO3)3(H2O)9"
+  const parenMatch = normForm.match(/^(.+?)\(H2O\)(\d*)$/i);
+  if (parenMatch) {
+    const base = parenMatch[1]!.trim();
+    const wCount = parenMatch[2] ? parseInt(parenMatch[2], 10) : 1;
+    return { baseFormula: base, waterCount: wCount };
+  }
+
+  // 3. Check formula ending with nH2O: e.g. "MgCl26H2O", "ZnSO47H2O", "CuSO45H2O", "FeCl36H2O", "Na2SO410H2O"
+  if (!/^C\d*H\d*O\d*$/.test(normForm)) {
+    const endMatch = normForm.match(/^([A-Z][A-Za-z0-9\(\)]*?)(\d+)H2O$/i);
+    if (endMatch) {
+      const base = endMatch[1]!.trim();
+      const wCount = parseInt(endMatch[2]!, 10);
+      return { baseFormula: base, waterCount: wCount };
+    }
+    const singleH2OMatch = normForm.match(/^([A-Z][A-Za-z0-9\(\)]*?)H2O$/i);
+    if (singleH2OMatch && singleH2OMatch[1] !== "H2") {
+      return { baseFormula: singleH2OMatch[1]!.trim(), waterCount: 1 };
+    }
+  }
+
+  return null;
+}
+
+function attachHydrateWaters(
+  struct: MoleculeStructure,
+  waterCount: number
+): MoleculeStructure {
+  if (waterCount <= 0 || struct.atoms.length === 0) return struct;
+
+  // Find central cation or atom with highest valence
+  let centerIdx = 0;
+  for (let i = 0; i < struct.atoms.length; i++) {
+    const el = struct.atoms[i]!.element;
+    const curEl = struct.atoms[centerIdx]!.element;
+    if ((ELEMENT_MAX_VALENCE[el] ?? 0) > (ELEMENT_MAX_VALENCE[curEl] ?? 0)) {
+      centerIdx = i;
+    }
+  }
+  const centerAtom = struct.atoms[centerIdx]!;
+
+  const numWatersToAttach = Math.min(Math.max(1, waterCount), 2);
+  const atoms = [...struct.atoms];
+  const bonds = [...struct.bonds];
+
+  for (let w = 0; w < numWatersToAttach; w++) {
+    const sign = w === 0 ? 1 : -1;
+    let bestDir = { x: 0, y: sign * 0.8, z: sign * 0.6 };
+    let maxMinDist = 0;
+    for (let t = 0; t < 12; t++) {
+      const theta = (t * 2 * Math.PI) / 12;
+      const testDir = {
+        x: Math.cos(theta) * 0.8,
+        y: Math.sin(theta) * 0.8,
+        z: sign * 0.6,
+      };
+      const len = Math.hypot(testDir.x, testDir.y, testDir.z) || 1;
+      const ux = testDir.x / len;
+      const uy = testDir.y / len;
+      const uz = testDir.z / len;
+      const testOx = centerAtom.x3d + ux * 2.15;
+      const testOy = centerAtom.y3d + uy * 2.15;
+      const testOz = centerAtom.z3d + uz * 2.15;
+      let minDist = 999;
+      for (const a of atoms) {
+        const dist = Math.hypot(testOx - a.x3d, testOy - a.y3d, testOz - a.z3d);
+        if (dist < minDist) minDist = dist;
+      }
+      if (minDist > maxMinDist) {
+        maxMinDist = minDist;
+        bestDir = { x: ux, y: uy, z: uz };
+      }
+    }
+
+    const ox = centerAtom.x3d + bestDir.x * 2.15;
+    const oy = centerAtom.y3d + bestDir.y * 2.15;
+    const oz = centerAtom.z3d + bestDir.z * 2.15;
+    const oIdx = atoms.length;
+    atoms.push({
+      atomIndex: oIdx,
+      element: "O",
+      x3d: Number(ox.toFixed(3)),
+      y3d: Number(oy.toFixed(3)),
+      z3d: Number(oz.toFixed(3)),
+      x2d: Math.round(ox * 35),
+      y2d: Math.round(oy * 35),
+    });
+    bonds.push({ atomIndex1: centerIdx, atomIndex2: oIdx, order: 1, type: "ionic" });
+
+    // Hydrogens point radially outward away from centerAtom
+    const ref = Math.abs(bestDir.z) < 0.8 ? { x: 0, y: 0, z: 1 } : { x: 1, y: 0, z: 0 };
+    const px = bestDir.y * ref.z - bestDir.z * ref.y;
+    const py = bestDir.z * ref.x - bestDir.x * ref.z;
+    const pz = bestDir.x * ref.y - bestDir.y * ref.x;
+    const pLen = Math.hypot(px, py, pz) || 1;
+    const pNorm = { x: px / pLen, y: py / pLen, z: pz / pLen };
+
+    const cosH = Math.cos((52.25 * Math.PI) / 180);
+    const sinH = Math.sin((52.25 * Math.PI) / 180);
+    const dOH = 0.96;
+
+    const h1x = ox + dOH * (cosH * bestDir.x + sinH * pNorm.x);
+    const h1y = oy + dOH * (cosH * bestDir.y + sinH * pNorm.y);
+    const h1z = oz + dOH * (cosH * bestDir.z + sinH * pNorm.z);
+    const h1Idx = atoms.length;
+    atoms.push({
+      atomIndex: h1Idx,
+      element: "H",
+      x3d: Number(h1x.toFixed(3)),
+      y3d: Number(h1y.toFixed(3)),
+      z3d: Number(h1z.toFixed(3)),
+      x2d: Math.round(h1x * 35),
+      y2d: Math.round(h1y * 35),
+    });
+    bonds.push({ atomIndex1: oIdx, atomIndex2: h1Idx, order: 1, type: "covalent" });
+
+    const h2x = ox + dOH * (cosH * bestDir.x - sinH * pNorm.x);
+    const h2y = oy + dOH * (cosH * bestDir.y - sinH * pNorm.y);
+    const h2z = oz + dOH * (cosH * bestDir.z - sinH * pNorm.z);
+    const h2Idx = atoms.length;
+    atoms.push({
+      atomIndex: h2Idx,
+      element: "H",
+      x3d: Number(h2x.toFixed(3)),
+      y3d: Number(h2y.toFixed(3)),
+      z3d: Number(h2z.toFixed(3)),
+      x2d: Math.round(h2x * 35),
+      y2d: Math.round(h2y * 35),
+    });
+    bonds.push({ atomIndex1: oIdx, atomIndex2: h2Idx, order: 1, type: "covalent" });
+  }
+
+  return { curated: struct.curated, atoms, bonds };
+}
+
+const SOLVENT_ABBREVIATIONS: Record<string, string> = {
+  EtOH: "CCO",
+  MeOH: "CO",
+  EtOAc: "CCOC(=O)C",
+  AcOH: "CC(=O)O",
+  THF: "C1CCOC1",
+  DMF: "CN(C)C=O",
+  MeCN: "CC#N",
+  CH3CN: "CC#N",
+  CH3OH: "CO",
+  CH2Cl2: "ClCCl",
+  HCl: "Cl",
+  N2H4: "NN",
+};
+
 // -----------------------------------------------------------------------------
 // Main Generator Entrypoint
 // -----------------------------------------------------------------------------
@@ -2223,13 +2665,48 @@ export function generateMoleculeStructure(
     }
   }
 
+  const normFormula = (formula || "").trim();
+  const normName = (commonName || "").trim();
+
+  // If formula or common name matches a solvent abbreviation or solvent mixture (e.g. EtOHH2O, EtOH-H2O)
+  if (!smiles) {
+    if (SOLVENT_ABBREVIATIONS[normFormula]) {
+      return generateMoleculeStructure(chemicalId, "", undefined, commonName, SOLVENT_ABBREVIATIONS[normFormula]);
+    }
+    const solvPrefix = normFormula.replace(/H2O$/i, "").replace(/[-—_]/g, "");
+    if (SOLVENT_ABBREVIATIONS[solvPrefix]) {
+      return generateMoleculeStructure(chemicalId, "", undefined, commonName, SOLVENT_ABBREVIATIONS[solvPrefix]);
+    }
+  }
+
+  // Hydrate parsing (e.g. MgCl26H2O, CuSO45H2O, Fe(NO3)3.9H2O, Ba(OH)2.8H2O)
+  const hydrateInfo = !smiles ? parseHydrateFormula(normFormula, normName) : null;
+  let activeFormula = hydrateInfo ? hydrateInfo.baseFormula : normFormula;
+
+  // Clean formulas where parentheses were stripped in DB (e.g. PbNO32 -> Pb(NO3)2, NH42SO4 -> (NH4)2SO4, CaCO3 for caco3-2)
+  if (!smiles && normName && /^[A-Z][A-Za-z0-9\(\)]+$/.test(normName) && !normName.includes(" ")) {
+    try {
+      const parsedCommon = parseFormula(normName);
+      if (Object.keys(parsedCommon.composition).length > 1) {
+        activeFormula = normName;
+      }
+    } catch {}
+  }
+
+  const finalize = (res: MoleculeStructure): MoleculeStructure => {
+    if (hydrateInfo && hydrateInfo.waterCount > 0) {
+      return attachHydrateWaters(res, hydrateInfo.waterCount);
+    }
+    return res;
+  };
+
   // Determine composition
   let comp: ElementComposition = {};
   if (composition && Object.keys(composition).length > 0) {
     comp = { ...composition };
-  } else if (formula && formula.trim().length > 0) {
+  } else if (activeFormula && activeFormula.length > 0) {
     try {
-      comp = parseFormula(formula.trim()).composition;
+      comp = parseFormula(activeFormula).composition;
     } catch {
       comp = {};
     }
@@ -2410,15 +2887,30 @@ function generateCoordinationComplex(
       }
     });
 
-    // Halogen counterions (e.g. Cl3)
+    // Halogen ligands / counterions (e.g. Pt(NH3)2Cl2 or [Co(NH3)6]Cl3)
     const halogens = ["Cl", "Br", "I", "F"];
+    const remainingDirs = octDirections.slice(nCount);
+    let remDirIdx = 0;
     for (const hal of halogens) {
       const cnt = comp[hal] ?? 0;
+      const isInnerSphere = nCount + cnt <= 6;
+      const dBond = getBondDistance(metal, hal) || 2.30;
       for (let c = 0; c < cnt; c++) {
-        const phi = (c * 2 * Math.PI) / cnt + Math.PI / 4;
-        const cx = 3.6 * Math.cos(phi);
-        const cy = 3.6 * Math.sin(phi);
-        const cz = 1.2 * (c % 2 === 0 ? 1 : -1);
+        let cx = 0, cy = 0, cz = 0;
+        let isBonded = false;
+        if (isInnerSphere && remDirIdx < remainingDirs.length) {
+          const dir = remainingDirs[remDirIdx++]!;
+          cx = dir.x * dBond;
+          cy = dir.y * dBond;
+          cz = dir.z * dBond;
+          isBonded = true;
+        } else {
+          const phi = (c * 2 * Math.PI) / cnt + Math.PI / 4;
+          cx = 3.6 * Math.cos(phi);
+          cy = 3.6 * Math.sin(phi);
+          cz = 1.2 * (c % 2 === 0 ? 1 : -1);
+          isBonded = false;
+        }
         const cIdx = atoms.length;
         atoms.push({
           atomIndex: cIdx,
@@ -2428,8 +2920,11 @@ function generateCoordinationComplex(
           z3d: Number(cz.toFixed(3)),
           x2d: Math.round(cx * 35),
           y2d: Math.round(cy * 35),
+          formalCharge: isBonded ? 0 : -1,
         });
-        bonds.push({ atomIndex1: 0, atomIndex2: cIdx, order: 1, type: "ionic" });
+        if (isBonded) {
+          bonds.push({ atomIndex1: 0, atomIndex2: cIdx, order: 1, type: "covalent" });
+        }
       }
     }
 
@@ -2503,13 +2998,33 @@ function generatePolyOxoanionSalt(
     oxoIndices.push(oGroup);
   }
 
-  // Place metal cations above and below
+  // Collect all coordinating single-bonded oxygens from the oxoanion groups
+  const coordinatingOxygens: { oIdx: number; sx: number; sy: number; sz: number }[] = [];
+  for (let s = 0; s < sCount; s++) {
+    const sx = (s - (sCount - 1) / 2) * 3.4;
+    const group = oxoIndices[s]!;
+    coordinatingOxygens.push({ oIdx: group[2]!, sx, sy: 0, sz: 0 });
+    coordinatingOxygens.push({ oIdx: group[3]!, sx, sy: 0, sz: 0 });
+  }
+
+  // Place metal cations coordinated to oxygens at physical distance ~2.10 Å
   for (const m of metals) {
     const mCount = comp[m] ?? 0;
     for (let j = 0; j < mCount; j++) {
-      const mx = (j - (mCount - 1) / 2) * 2.8;
-      const my = j % 2 === 0 ? 2.3 : -2.3;
-      const mz = 0.5;
+      const coordTarget = coordinatingOxygens[j % coordinatingOxygens.length]!;
+      const oAtom = atoms[coordTarget.oIdx]!;
+      const vx = oAtom.x3d - coordTarget.sx;
+      const vy = oAtom.y3d - coordTarget.sy;
+      const vz = oAtom.z3d - coordTarget.sz;
+      const vLen = Math.hypot(vx, vy, vz) || 1;
+      const ux = vx / vLen;
+      const uy = vy / vLen;
+      const uz = vz / vLen;
+
+      const dMO = 2.10;
+      const mx = oAtom.x3d + ux * dMO;
+      const my = oAtom.y3d + uy * dMO;
+      const mz = oAtom.z3d + uz * dMO;
       const mIdx = atoms.length;
       atoms.push({
         atomIndex: mIdx,
@@ -2521,12 +3036,374 @@ function generatePolyOxoanionSalt(
         y2d: Math.round(my * 35),
       });
 
-      // Connect ionic bonds to nearest oxygens
-      const targetGroup = oxoIndices[j % oxoIndices.length]!;
-      for (let k = 0; k < 2; k++) {
-        bonds.push({ atomIndex1: targetGroup[k]!, atomIndex2: mIdx, order: 1, type: "ionic" });
+      // Connect ionic bond to primary coordinating oxygen
+      bonds.push({ atomIndex1: coordTarget.oIdx, atomIndex2: mIdx, order: 1, type: "ionic" });
+
+      // And to any other nearby coordinating oxygen within physical ionic range [1.70, 2.35] Å
+      for (const other of coordinatingOxygens) {
+        if (other.oIdx === coordTarget.oIdx) continue;
+        const otherAtom = atoms[other.oIdx]!;
+        const d = Math.hypot(mx - otherAtom.x3d, my - otherAtom.y3d, mz - otherAtom.z3d);
+        if (d >= 1.70 && d <= 2.35) {
+          bonds.push({ atomIndex1: other.oIdx, atomIndex2: mIdx, order: 1, type: "ionic" });
+        }
       }
     }
+  }
+
+  return { curated: true, atoms, bonds };
+}
+
+function generateMultiNitrate(
+  comp: ElementComposition,
+  formula: string,
+  commonName: string
+): MoleculeStructure | null {
+  const cCount = comp["C"] ?? 0;
+  if (cCount > 0) return null; // strictly inorganic
+  const nCount = comp["N"] ?? 0;
+  const oCount = comp["O"] ?? 0;
+  if (nCount < 1 || oCount < nCount * 3) return null;
+
+  // Identify metal cation
+  const metalKeys = Object.keys(comp).filter((k) => k !== "N" && k !== "O" && k !== "H");
+  if (metalKeys.length !== 1) return null;
+  const metal = metalKeys[0]!;
+  if ((comp[metal] ?? 0) !== 1) return null;
+
+  const n = nCount; // Number of nitrate groups
+  const atoms: MoleculeStructure["atoms"] = [];
+  const bonds: MoleculeStructure["bonds"] = [];
+
+  // Metal cation at origin
+  atoms.push({ atomIndex: 0, element: metal, x3d: 0, y3d: 0, z3d: 0, x2d: 0, y2d: 0, formalCharge: n });
+
+  const rNitrate = 3.35; // N distance from origin
+  const dNO = 1.24;      // N-O bond distance
+
+  for (let k = 0; k < n; k++) {
+    const phi = (k * 2 * Math.PI) / n;
+    const zTilt = n > 1 ? 0.6 * (k % 2 === 0 ? 1 : -1) : 0.45;
+    const nx = rNitrate * Math.cos(phi);
+    const ny = rNitrate * Math.sin(phi);
+    const nz = zTilt;
+
+    const nIdx = atoms.length;
+    atoms.push({
+      atomIndex: nIdx,
+      element: "N",
+      x3d: Number(nx.toFixed(3)),
+      y3d: Number(ny.toFixed(3)),
+      z3d: Number(nz.toFixed(3)),
+      x2d: Math.round(nx * 35),
+      y2d: Math.round(ny * 35),
+      formalCharge: 1,
+    });
+
+    // Inward unit vector from N towards metal
+    const uToM = vNormalize({ x: -nx, y: -ny, z: -nz });
+    const pRef = Math.abs(uToM.z) < 0.9 ? { x: 0, y: 0, z: 1 } : { x: 1, y: 0, z: 0 };
+    const side = vNormalize(vCross(uToM, pRef));
+
+    // O1: Coordinating oxygen pointing inward towards metal (~2.11 A from metal)
+    const o1x = nx + uToM.x * dNO;
+    const o1y = ny + uToM.y * dNO;
+    const o1z = nz + uToM.z * dNO;
+    const o1Idx = atoms.length;
+    atoms.push({
+      atomIndex: o1Idx,
+      element: "O",
+      x3d: Number(o1x.toFixed(3)),
+      y3d: Number(o1y.toFixed(3)),
+      z3d: Number(o1z.toFixed(3)),
+      x2d: Math.round(o1x * 35),
+      y2d: Math.round(o1y * 35),
+      formalCharge: -1,
+    });
+    bonds.push({ atomIndex1: nIdx, atomIndex2: o1Idx, order: 1, type: "covalent" });
+    bonds.push({ atomIndex1: 0, atomIndex2: o1Idx, order: 1, type: "ionic" });
+
+    // O2 and O3: outward pointing oxygens at 120 deg
+    const cos120 = 0.5;
+    const sin120 = 0.866;
+    for (const s of [-1, 1]) {
+      const ox = nx - uToM.x * (dNO * cos120) + side.x * (dNO * sin120 * s);
+      const oy = ny - uToM.y * (dNO * cos120) + side.y * (dNO * sin120 * s);
+      const oz = nz - uToM.z * (dNO * cos120) + side.z * (dNO * sin120 * s);
+      const oIdx = atoms.length;
+      atoms.push({
+        atomIndex: oIdx,
+        element: "O",
+        x3d: Number(ox.toFixed(3)),
+        y3d: Number(oy.toFixed(3)),
+        z3d: Number(oz.toFixed(3)),
+        x2d: Math.round(ox * 35),
+        y2d: Math.round(oy * 35),
+        formalCharge: s === 1 ? -1 : 0,
+      });
+      bonds.push({ atomIndex1: nIdx, atomIndex2: oIdx, order: s === 1 ? 1 : 2, type: "covalent" });
+    }
+  }
+
+  return { curated: true, atoms, bonds };
+}
+
+function generateMetalHydroxide(
+  comp: ElementComposition,
+  formula: string,
+  commonName: string
+): MoleculeStructure | null {
+  const cCount = comp["C"] ?? 0;
+  if (cCount > 0) return null;
+  const oCount = comp["O"] ?? 0;
+  const hCount = comp["H"] ?? 0;
+  if (oCount === 0 || oCount !== hCount) return null;
+
+  const metalKeys = Object.keys(comp).filter((k) => k !== "O" && k !== "H");
+  if (metalKeys.length !== 1) return null;
+  const metal = metalKeys[0]!;
+  if ((comp[metal] ?? 0) !== 1) return null;
+
+  const n = oCount;
+  const atoms: MoleculeStructure["atoms"] = [];
+  const bonds: MoleculeStructure["bonds"] = [];
+
+  atoms.push({ atomIndex: 0, element: metal, x3d: 0, y3d: 0, z3d: 0, x2d: 0, y2d: 0, formalCharge: n });
+  const m_o_dist = Math.max(1.85, getBondDistance(metal, "O"));
+  const h_dist = 0.96;
+
+  const dirs: Vec3[] = [];
+  if (n === 1) {
+    dirs.push({ x: 1, y: 0, z: 0 });
+  } else if (n === 2) {
+    const ang = (110 * Math.PI) / 360;
+    dirs.push({ x: Math.sin(ang), y: Math.cos(ang), z: 0.25 });
+    dirs.push({ x: -Math.sin(ang), y: Math.cos(ang), z: -0.25 });
+  } else if (n === 3) {
+    for (let k = 0; k < 3; k++) {
+      const phi = (k * 2 * Math.PI) / 3;
+      dirs.push({ x: 0.94 * Math.cos(phi), y: 0.94 * Math.sin(phi), z: -0.34 });
+    }
+  } else if (n === 4) {
+    dirs.push({ x: 0.577, y: 0.577, z: 0.577 });
+    dirs.push({ x: 0.577, y: -0.577, z: -0.577 });
+    dirs.push({ x: -0.577, y: 0.577, z: -0.577 });
+    dirs.push({ x: -0.577, y: -0.577, z: 0.577 });
+  } else {
+    dirs.push(
+      { x: 1, y: 0, z: 0 }, { x: -1, y: 0, z: 0 },
+      { x: 0, y: 1, z: 0 }, { x: 0, y: -1, z: 0 },
+      { x: 0, y: 0, z: 1 }, { x: 0, y: 0, z: -1 }
+    );
+  }
+
+  for (let i = 0; i < n; i++) {
+    const dir = vNormalize(dirs[i % dirs.length]!);
+    const ox = dir.x * m_o_dist;
+    const oy = dir.y * m_o_dist;
+    const oz = dir.z * m_o_dist;
+    const oIdx = atoms.length;
+    atoms.push({
+      atomIndex: oIdx,
+      element: "O",
+      x3d: Number(ox.toFixed(3)),
+      y3d: Number(oy.toFixed(3)),
+      z3d: Number(oz.toFixed(3)),
+      x2d: Math.round(ox * 40),
+      y2d: Math.round(oy * 40),
+      formalCharge: -1,
+    });
+    bonds.push({ atomIndex1: 0, atomIndex2: oIdx, order: 1, type: "ionic" });
+
+    // Bent O-H bond at ~105 deg
+    const p1 = Math.abs(dir.z) < 0.9 ? { x: 0, y: 0, z: 1 } : { x: 1, y: 0, z: 0 };
+    const perp = vNormalize(vCross(dir, p1));
+    const hDir = vNormalize({
+      x: dir.x * 0.35 + perp.x * 0.94,
+      y: dir.y * 0.35 + perp.y * 0.94,
+      z: dir.z * 0.35 + perp.z * 0.94,
+    });
+    const hx = ox + hDir.x * h_dist;
+    const hy = oy + hDir.y * h_dist;
+    const hz = oz + hDir.z * h_dist;
+    const hIdx = atoms.length;
+    atoms.push({
+      atomIndex: hIdx,
+      element: "H",
+      x3d: Number(hx.toFixed(3)),
+      y3d: Number(hy.toFixed(3)),
+      z3d: Number(hz.toFixed(3)),
+      x2d: Math.round(hx * 40),
+      y2d: Math.round(hy * 40),
+    });
+    bonds.push({ atomIndex1: oIdx, atomIndex2: hIdx, order: 1, type: "covalent" });
+  }
+
+  return { curated: true, atoms, bonds };
+}
+
+function generateBinaryInorganicOxideOrSulfide(
+  comp: ElementComposition,
+  formula: string,
+  commonName: string
+): MoleculeStructure | null {
+  const cCount = comp["C"] ?? 0;
+  const hCount = comp["H"] ?? 0;
+  if (cCount > 0 || hCount > 0) return null;
+
+  const chalkogen = (comp["O"] ?? 0) > 0 ? "O" : (comp["S"] ?? 0) > 0 ? "S" : null;
+  if (!chalkogen) return null;
+
+  const otherKeys = Object.keys(comp).filter((k) => k !== chalkogen);
+  if (otherKeys.length !== 1) return null;
+  const metal = otherKeys[0]!;
+
+  const mCount = comp[metal] ?? 0;
+  const cCountTotal = comp[chalkogen] ?? 0;
+  const dBond = getBondDistance(metal, chalkogen);
+
+  const atoms: MoleculeStructure["atoms"] = [];
+  const bonds: MoleculeStructure["bonds"] = [];
+
+  // M2O3 / M2S3 (Fe2O3, Al2O3, Cr2O3, Bi2O3, etc.)
+  if (mCount === 2 && cCountTotal === 3) {
+    const mDist = 1.6;
+    atoms.push({ atomIndex: 0, element: metal, x3d: -mDist, y3d: 0, z3d: 0, x2d: -60, y2d: 0 });
+    atoms.push({ atomIndex: 1, element: metal, x3d: mDist, y3d: 0, z3d: 0, x2d: 60, y2d: 0 });
+
+    const rRing = Math.sqrt(Math.max(0.5, dBond * dBond - mDist * mDist * 0.4)) || 1.35;
+    for (let k = 0; k < 3; k++) {
+      const phi = (k * 2 * Math.PI) / 3;
+      const ox = 0;
+      const oy = rRing * Math.cos(phi);
+      const oz = rRing * Math.sin(phi);
+      const oIdx = atoms.length;
+      atoms.push({
+        atomIndex: oIdx,
+        element: chalkogen,
+        x3d: Number(ox.toFixed(3)),
+        y3d: Number(oy.toFixed(3)),
+        z3d: Number(oz.toFixed(3)),
+        x2d: Math.round(oy * 30),
+        y2d: Math.round(oz * 30),
+      });
+      bonds.push({ atomIndex1: 0, atomIndex2: oIdx, order: 1, type: "covalent" });
+      bonds.push({ atomIndex1: 1, atomIndex2: oIdx, order: 1, type: "covalent" });
+    }
+    return { curated: true, atoms, bonds };
+  }
+
+  // MO2 / MS2 (MnO2, TiO2, SnO2, PbO2, FeS2)
+  if (mCount === 1 && cCountTotal === 2) {
+    atoms.push({ atomIndex: 0, element: metal, x3d: 0, y3d: 0, z3d: 0, x2d: 0, y2d: 0 });
+    const ang = (120 * Math.PI) / 360;
+    const ox1 = dBond * Math.cos(ang);
+    const oy1 = dBond * Math.sin(ang);
+    const ox2 = dBond * Math.cos(-ang);
+    const oy2 = dBond * Math.sin(-ang);
+    atoms.push({ atomIndex: 1, element: chalkogen, x3d: Number(ox1.toFixed(3)), y3d: Number(oy1.toFixed(3)), z3d: 0.15, x2d: Math.round(ox1 * 35), y2d: Math.round(oy1 * 35) });
+    atoms.push({ atomIndex: 2, element: chalkogen, x3d: Number(ox2.toFixed(3)), y3d: Number(oy2.toFixed(3)), z3d: -0.15, x2d: Math.round(ox2 * 35), y2d: Math.round(oy2 * 35) });
+    bonds.push({ atomIndex1: 0, atomIndex2: 1, order: 2, type: "covalent" });
+    bonds.push({ atomIndex1: 0, atomIndex2: 2, order: 2, type: "covalent" });
+    return { curated: true, atoms, bonds };
+  }
+
+  // M2O / M2S (Ag2O, Cu2O, Na2O, K2O, Ag2S)
+  if (mCount === 2 && cCountTotal === 1) {
+    atoms.push({ atomIndex: 0, element: chalkogen, x3d: 0, y3d: 0, z3d: 0, x2d: 0, y2d: 0 });
+    const ang = (110 * Math.PI) / 360;
+    const mx1 = dBond * Math.sin(ang);
+    const my1 = dBond * Math.cos(ang);
+    const mx2 = -dBond * Math.sin(ang);
+    const my2 = dBond * Math.cos(ang);
+    atoms.push({ atomIndex: 1, element: metal, x3d: Number(mx1.toFixed(3)), y3d: Number(my1.toFixed(3)), z3d: 0, x2d: Math.round(mx1 * 35), y2d: Math.round(my1 * 35) });
+    atoms.push({ atomIndex: 2, element: metal, x3d: Number(mx2.toFixed(3)), y3d: Number(my2.toFixed(3)), z3d: 0, x2d: Math.round(mx2 * 35), y2d: Math.round(my2 * 35) });
+    bonds.push({ atomIndex1: 0, atomIndex2: 1, order: 1, type: "covalent" });
+    bonds.push({ atomIndex1: 0, atomIndex2: 2, order: 1, type: "covalent" });
+    return { curated: true, atoms, bonds };
+  }
+
+  // MO / MS (ZnO, CuO, PbO, FeO, CuS, FeS, ZnS, PbS)
+  if (mCount === 1 && cCountTotal === 1) {
+    atoms.push({ atomIndex: 0, element: metal, x3d: Number((-dBond / 2).toFixed(3)), y3d: 0, z3d: 0, x2d: -30, y2d: 0 });
+    atoms.push({ atomIndex: 1, element: chalkogen, x3d: Number((dBond / 2).toFixed(3)), y3d: 0, z3d: 0, x2d: 30, y2d: 0 });
+    bonds.push({ atomIndex1: 0, atomIndex2: 1, order: 2, type: "covalent" });
+    return { curated: true, atoms, bonds };
+  }
+
+  return null;
+}
+
+function generateMetalHalide(
+  comp: ElementComposition,
+  formula: string,
+  commonName: string
+): MoleculeStructure | null {
+  const cCount = comp["C"] ?? 0;
+  const hCount = comp["H"] ?? 0;
+  const oCount = comp["O"] ?? 0;
+  if (cCount > 0 || hCount > 0 || oCount > 0) return null;
+
+  const halogens = ["F", "Cl", "Br", "I"];
+  const halKey = halogens.find((h) => (comp[h] ?? 0) > 0);
+  if (!halKey) return null;
+
+  const otherKeys = Object.keys(comp).filter((k) => !halogens.includes(k));
+  if (otherKeys.length !== 1) return null;
+  const metal = otherKeys[0]!;
+  if ((comp[metal] ?? 0) !== 1) return null;
+
+  const n = comp[halKey] ?? 0;
+  if (n < 1 || n > 6) return null;
+
+  const dBond = getBondDistance(metal, halKey);
+  const atoms: MoleculeStructure["atoms"] = [];
+  const bonds: MoleculeStructure["bonds"] = [];
+
+  atoms.push({ atomIndex: 0, element: metal, x3d: 0, y3d: 0, z3d: 0, x2d: 0, y2d: 0, formalCharge: n });
+
+  const dirs: Vec3[] = [];
+  if (n === 1) {
+    dirs.push({ x: 1, y: 0, z: 0 });
+  } else if (n === 2) {
+    dirs.push({ x: 1, y: 0, z: 0 }, { x: -1, y: 0, z: 0 });
+  } else if (n === 3) {
+    for (let k = 0; k < 3; k++) {
+      const phi = (k * 2 * Math.PI) / 3;
+      dirs.push({ x: 0.94 * Math.cos(phi), y: 0.94 * Math.sin(phi), z: 0.34 * (k % 2 === 0 ? 1 : -1) });
+    }
+  } else if (n === 4) {
+    dirs.push(
+      { x: 0.577, y: 0.577, z: 0.577 },
+      { x: 0.577, y: -0.577, z: -0.577 },
+      { x: -0.577, y: 0.577, z: -0.577 },
+      { x: -0.577, y: -0.577, z: 0.577 }
+    );
+  } else {
+    dirs.push(
+      { x: 1, y: 0, z: 0 }, { x: -1, y: 0, z: 0 },
+      { x: 0, y: 1, z: 0 }, { x: 0, y: -1, z: 0 },
+      { x: 0, y: 0, z: 1 }, { x: 0, y: 0, z: -1 }
+    );
+  }
+
+  for (let i = 0; i < n; i++) {
+    const dir = vNormalize(dirs[i]!);
+    const x = dir.x * dBond;
+    const y = dir.y * dBond;
+    const z = dir.z * dBond;
+    const idx = atoms.length;
+    atoms.push({
+      atomIndex: idx,
+      element: halKey,
+      x3d: Number(x.toFixed(3)),
+      y3d: Number(y.toFixed(3)),
+      z3d: Number(z.toFixed(3)),
+      x2d: Math.round(x * 35),
+      y2d: Math.round(y * 35),
+      formalCharge: -1,
+    });
+    bonds.push({ atomIndex1: 0, atomIndex2: idx, order: 1, type: "ionic" });
   }
 
   return { curated: true, atoms, bonds };
@@ -2535,19 +3412,39 @@ function generatePolyOxoanionSalt(
   // 3. Inorganic & Oxoacid / Small Molecule VSEPR Generator
   const complex = generateCoordinationComplex(comp, formula, commonName);
   if (complex && complex.atoms.length > 0) {
-    return complex;
+    return finalize(complex);
   }
 
   const polySalt = generatePolyOxoanionSalt(comp, formula, commonName);
   if (polySalt && polySalt.atoms.length > 0) {
-    return polySalt;
+    return finalize(polySalt);
+  }
+
+  const multiNitrate = generateMultiNitrate(comp, formula, commonName);
+  if (multiNitrate && multiNitrate.atoms.length > 0) {
+    return finalize(multiNitrate);
+  }
+
+  const hydroxide = generateMetalHydroxide(comp, formula, commonName);
+  if (hydroxide && hydroxide.atoms.length > 0) {
+    return finalize(hydroxide);
+  }
+
+  const binaryOxideOrSulfide = generateBinaryInorganicOxideOrSulfide(comp, formula, commonName);
+  if (binaryOxideOrSulfide && binaryOxideOrSulfide.atoms.length > 0) {
+    return finalize(binaryOxideOrSulfide);
+  }
+
+  const metalHalide = generateMetalHalide(comp, formula, commonName);
+  if (metalHalide && metalHalide.atoms.length > 0) {
+    return finalize(metalHalide);
   }
 
   const vsepr = generateInorganicVsepr(comp, formula, commonName, rng);
   if (vsepr && vsepr.atoms.length > 0) {
-    return vsepr;
+    return finalize(vsepr);
   }
 
   // 4. Organic Structure Generator with proper continuous zigzag chains & rings
-  return generateOrganicStructure(chemicalId, formula, comp, commonName, rng);
+  return finalize(generateOrganicStructure(chemicalId, activeFormula, comp, commonName, rng));
 }

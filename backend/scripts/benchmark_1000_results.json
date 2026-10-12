@@ -1,0 +1,393 @@
+{
+  "totalReactions": 1000,
+  "totalTimeSec": "184.9",
+  "avgLatencyMs": 184.5,
+  "validSmilesRate": 97.39999999999999,
+  "massConservationRate": 97.1,
+  "stoichiometricBalanceRate": 30.5,
+  "groundTruthMatchRate": 10.9,
+  "sampleFailures": [
+    {
+      "id": "chemrxn-us03931177-1143",
+      "input": "O.NN.C(C=C)C1=C(C=C(C(=O)CCC(=O)OC)C=C1)O",
+      "predictedProducts": [
+        "C=C(C)c1cc(C(=O)CCC(=O)OC)cc(C(=C)CCC(=O)OC)c1O"
+      ],
+      "groundTruthProducts": [
+        "C(C=C)C1=C(C=C(C=C1)C=1CCC(NN1)=O)O"
+      ],
+      "validSmiles": true,
+      "massConservationPassed": true,
+      "stoichiometricBalancePassed": false,
+      "groundTruthMatched": false,
+      "isInertHandledCorrectly": true,
+      "failureReasons": [
+        "Conservation of atoms failed: Reactant element(s) [N] completely vanished from products."
+      ],
+      "latencyMs": 140.9
+    },
+    {
+      "id": "chemrxn-us03931177-1368",
+      "input": "O1C(COC2=C(C=C(C=C2)C=2CCC(NN2)=O)OC)C1.C(C)(C)(C)N",
+      "predictedProducts": [
+        "NC(COC1=C(C=C2C=CC(O)C=C2)C=C2CCC(NS2)C1)CO"
+      ],
+      "groundTruthProducts": [
+        "C(C)(C)(C)NCC(COC1=C(C=C(C=C1)C=1CCC(NN1)=O)OC)O"
+      ],
+      "validSmiles": true,
+      "massConservationPassed": false,
+      "stoichiometricBalancePassed": false,
+      "groundTruthMatched": false,
+      "isInertHandledCorrectly": true,
+      "failureReasons": [
+        "Conservation of mass failed: Product contains element(s) [S], but no reactant supplies this element."
+      ],
+      "latencyMs": 140.9
+    },
+    {
+      "id": "chemrxn-us03931195-1377",
+      "input": "C(=O)NC1=C(CCC2=NC=CC=C2)C=C(C=C1)OC.C(=O)NC1=C(CCC2=NC=CC=C2)C=CC=C1.CI.[I-].[NH+]1=CC=CC=C1",
+      "predictedProducts": [
+        "CN1C=CC=C1CCC1=C(NC(=O)C=C2C=CC=CC2)C=CC=C1"
+      ],
+      "groundTruthProducts": [
+        "[I-].C(=O)NC1=C(CCC2=[N+](C=CC=C2)C)C=C(C=C1)OC"
+      ],
+      "validSmiles": true,
+      "massConservationPassed": true,
+      "stoichiometricBalancePassed": false,
+      "groundTruthMatched": false,
+      "isInertHandledCorrectly": true,
+      "failureReasons": [
+        "Conservation of atoms failed: Reactant element(s) [I] completely vanished from products."
+      ],
+      "latencyMs": 140.9
+    },
+    {
+      "id": "chemrxn-us03931195-1716",
+      "input": "N1=C(C=CC=C1)CC1=C(NC(C2=CC=C(C=C2)OC)=O)C=CC=C1.CI",
+      "predictedProducts": [
+        "CN1C=CC=CC1C1=C(NC(C2=CC=C(C=C2)OC)=O)C=CC=C1"
+      ],
+      "groundTruthProducts": [
+        "[I-].COC1=CC=C(C(=O)NC2=C(CC3=[N+](C=CC=C3)C)C=CC=C2)C=C1"
+      ],
+      "validSmiles": true,
+      "massConservationPassed": true,
+      "stoichiometricBalancePassed": false,
+      "groundTruthMatched": false,
+      "isInertHandledCorrectly": true,
+      "failureReasons": [
+        "Conservation of atoms failed: Reactant element(s) [I] completely vanished from products."
+      ],
+      "latencyMs": 140.9
+    },
+    {
+      "id": "chemrxn-us03931196-792",
+      "input": "[Cl-].[NH4+].C(=C)P(C1=CC=CC=C1)(C=C)=O.CN",
+      "predictedProducts": [
+        "C=C(C)P(=O)(C=C)C=C"
+      ],
+      "groundTruthProducts": [
+        "CN1CCP(CC1)(C1=CC=CC=C1)=O"
+      ],
+      "validSmiles": true,
+      "massConservationPassed": true,
+      "stoichiometricBalancePassed": false,
+      "groundTruthMatched": false,
+      "isInertHandledCorrectly": true,
+      "failureReasons": [
+        "Conservation of atoms failed: Reactant element(s) [N, Cl] completely vanished from products."
+      ],
+      "latencyMs": 140.9
+    },
+    {
+      "id": "chemrxn-us03931202-1332",
+      "input": "N1=CC(=CC=C1)CO.CSC1=CC=C(C=C1)N=C=O",
+      "predictedProducts": [
+        "CSC1=CC=C(CO)C=C1",
+        "CSC1=CC=CC=C1"
+      ],
+      "groundTruthProducts": [
+        "CSC1=CC=C(C=C1)NC(OCC=1C=NC=CC1)=O"
+      ],
+      "validSmiles": true,
+      "massConservationPassed": true,
+      "stoichiometricBalancePassed": false,
+      "groundTruthMatched": false,
+      "isInertHandledCorrectly": true,
+      "failureReasons": [
+        "Conservation of atoms failed: Reactant element(s) [N] completely vanished from products."
+      ],
+      "latencyMs": 140.9
+    },
+    {
+      "id": "chemrxn-us03931202-1694",
+      "input": "N1=CC(=CC=C1)CO.FC(C1=CC=C(C=C1)N=C=O)(F)F",
+      "predictedProducts": [
+        "O=C(NC1=CC=C(CO)C=C1)NC1=CC=C(C(F)F)C=C1"
+      ],
+      "groundTruthProducts": [
+        "FC(C1=CC=C(C=C1)NC(OCC=1C=NC=CC1)=O)(F)F"
+      ],
+      "validSmiles": true,
+      "massConservationPassed": true,
+      "stoichiometricBalancePassed": false,
+      "groundTruthMatched": false,
+      "isInertHandledCorrectly": true,
+      "failureReasons": [
+        "Atom balance failed: Equation cannot be balanced even with byproduct inference."
+      ],
+      "latencyMs": 140.9
+    },
+    {
+      "id": "chemrxn-us03931203-711",
+      "input": "NCC=1C=NC=CC1.[N+](=O)([O-])C1=CC=C(C=C1)N=C=O",
+      "predictedProducts": [
+        "O=[N+]([O-])C1=CC=C(NC(=O)NCC=C2C=NC=CC2)C=C1"
+      ],
+      "groundTruthProducts": [
+        "N1=CC(=CC=C1)CNC(=O)NC1=CC=C(C=C1)[N+](=O)[O-]"
+      ],
+      "validSmiles": true,
+      "massConservationPassed": true,
+      "stoichiometricBalancePassed": false,
+      "groundTruthMatched": false,
+      "isInertHandledCorrectly": true,
+      "failureReasons": [
+        "Atom balance failed: Equation cannot be balanced even with byproduct inference."
+      ],
+      "latencyMs": 140.9
+    },
+    {
+      "id": "chemrxn-us03931235-523",
+      "input": "OC1=CC(OC(=C1)C)=O.C1(=CC=CC=C1)SCl.Cl",
+      "predictedProducts": [
+        "O=C1Cc2cc(O)ccc2O1"
+      ],
+      "groundTruthProducts": [
+        "OC1=C(C(OC(=C1)C)=O)SC1=CC=CC=C1"
+      ],
+      "validSmiles": true,
+      "massConservationPassed": true,
+      "stoichiometricBalancePassed": false,
+      "groundTruthMatched": false,
+      "isInertHandledCorrectly": true,
+      "failureReasons": [
+        "Conservation of atoms failed: Reactant element(s) [Cl, S] completely vanished from products."
+      ],
+      "latencyMs": 140.9
+    },
+    {
+      "id": "chemrxn-us03931247-301",
+      "input": "[N+](=O)([O-])C1=CC=C(C=C1)C1=CC=C(O1)C(=O)C.[BH4-].[Na+]",
+      "predictedProducts": [
+        "O=[N+]([O-])C1=CC=C(C2=CC=C(O)C(CO)O2)C=C1"
+      ],
+      "groundTruthProducts": [
+        "CC(C1=CC=C(O1)C1=CC=C(C=C1)[N+](=O)[O-])O"
+      ],
+      "validSmiles": true,
+      "massConservationPassed": true,
+      "stoichiometricBalancePassed": false,
+      "groundTruthMatched": false,
+      "isInertHandledCorrectly": true,
+      "failureReasons": [
+        "Conservation of atoms failed: Reactant element(s) [B] completely vanished from products."
+      ],
+      "latencyMs": 140.9
+    },
+    {
+      "id": "chemrxn-us03931247-324",
+      "input": "[N+](=O)([O-])C1=CC=C(C=C1)C1=CC=C(O1)C(=O)CCl.Cl.[BH4-].[Na+].O",
+      "predictedProducts": [
+        "O=[N+]([O-])C1=CC=C(C2=CC=C(O)C(O)C2)C=C1"
+      ],
+      "groundTruthProducts": [
+        "ClCC(C1=CC=C(O1)C1=CC=C(C=C1)[N+](=O)[O-])O"
+      ],
+      "validSmiles": true,
+      "massConservationPassed": true,
+      "stoichiometricBalancePassed": false,
+      "groundTruthMatched": false,
+      "isInertHandledCorrectly": true,
+      "failureReasons": [
+        "Conservation of atoms failed: Reactant element(s) [Cl, B] completely vanished from products."
+      ],
+      "latencyMs": 140.9
+    },
+    {
+      "id": "chemrxn-us03931311-300",
+      "input": "ClCN(C(=O)N(C)C)C1=CC=CC=C1.C(CO)O.C(C)N(CC)CC",
+      "predictedProducts": [
+        "CN(C)C(=O)N(COCCO)c1ccccc1"
+      ],
+      "groundTruthProducts": [
+        "OCCOCN(C(=O)N(C)C)C1=CC=CC=C1"
+      ],
+      "validSmiles": true,
+      "massConservationPassed": true,
+      "stoichiometricBalancePassed": false,
+      "groundTruthMatched": true,
+      "isInertHandledCorrectly": true,
+      "failureReasons": [
+        "Conservation of atoms failed: Reactant element(s) [Cl] completely vanished from products."
+      ],
+      "latencyMs": 140.9
+    },
+    {
+      "id": "chemrxn-us03931326-2302",
+      "input": "C1=CC=CC=C1.CC1=C(C(CCC1)(C)C)C(\\C=C/C)=O.C1(=CC=C(C=C1)S(=O)(=O)O)C",
+      "predictedProducts": [
+        "CC1=C(C(C)(C)C)C(C)C(=O)C1"
+      ],
+      "groundTruthProducts": [
+        "CC1=C(C(CCC1)(C)C)C(\\C=C\\C)=O"
+      ],
+      "validSmiles": true,
+      "massConservationPassed": true,
+      "stoichiometricBalancePassed": false,
+      "groundTruthMatched": false,
+      "isInertHandledCorrectly": true,
+      "failureReasons": [
+        "Conservation of atoms failed: Reactant element(s) [S] completely vanished from products."
+      ],
+      "latencyMs": 140.9
+    },
+    {
+      "id": "chemrxn-us04001003-963",
+      "input": "CS(=O)(=O)OC=1C=CC2=C(C(C(O2)O)(C)C)C1.N1=CC=CC=C1.S(=O)(Cl)Cl",
+      "predictedProducts": [
+        "CC(C)(C)c1cc2c(cc1Cl)CC(=C1C=CC=CN1)O2"
+      ],
+      "groundTruthProducts": [
+        "CS(=O)(=O)OC=1C=CC2=C(C(C(O2)Cl)(C)C)C1"
+      ],
+      "validSmiles": true,
+      "massConservationPassed": true,
+      "stoichiometricBalancePassed": false,
+      "groundTruthMatched": false,
+      "isInertHandledCorrectly": true,
+      "failureReasons": [
+        "Conservation of atoms failed: Reactant element(s) [S] completely vanished from products."
+      ],
+      "latencyMs": 140.9
+    },
+    {
+      "id": "chemrxn-us04001219-2182",
+      "input": "C(C1=CC=CC=C1)N1N=C(C2=CC=CC=C12)OCC(=O)O.S(=O)(Cl)Cl",
+      "predictedProducts": [
+        "O=C(O)COC1=NN(C(c2ccccc2)c2ccccc2)C=C1"
+      ],
+      "groundTruthProducts": [
+        "C(C1=CC=CC=C1)N1N=C(C2=CC=CC=C12)OCC(=O)Cl"
+      ],
+      "validSmiles": true,
+      "massConservationPassed": true,
+      "stoichiometricBalancePassed": false,
+      "groundTruthMatched": false,
+      "isInertHandledCorrectly": true,
+      "failureReasons": [
+        "Conservation of atoms failed: Reactant element(s) [Cl, S] completely vanished from products."
+      ],
+      "latencyMs": 140.9
+    },
+    {
+      "id": "chemrxn-us04001223-2063",
+      "input": "C(=O)C1=CC=C(C=C1)C=CC(=O)OC.C12(CC3CC(CC(C1)C3)C2)CO.N1C=C(C2=CC=CC=C12)CCNCC1=CC=C(C=C1)C=CC(=O)OC.Br.Cl",
+      "predictedProducts": [
+        "O=C(O)C=CC1=CC=CC2=CNC(=O)C(=O)C12"
+      ],
+      "groundTruthProducts": [
+        "C12(CC3CC(CC(C1)C3)C2)CCl"
+      ],
+      "validSmiles": true,
+      "massConservationPassed": true,
+      "stoichiometricBalancePassed": false,
+      "groundTruthMatched": false,
+      "isInertHandledCorrectly": true,
+      "failureReasons": [
+        "Conservation of atoms failed: Reactant element(s) [Br, Cl] completely vanished from products."
+      ],
+      "latencyMs": 140.9
+    },
+    {
+      "id": "chemrxn-us04001229-1211",
+      "input": "CCN(CC)CCCl.C(C1=CC=CC=C1)(=O)C1=CC=C(NS(=O)(=O)C)C=C1.C([O-])([O-])=O.[K+].[K+]",
+      "predictedProducts": [
+        "CCN(CC)CCN(C1=CC=C(C(=O)c2ccccc2)C=C1)S(=O)(=O)C"
+      ],
+      "groundTruthProducts": [
+        "C(C1=CC=CC=C1)(=O)C1=CC=C(N(S(=O)(=O)C)CCN(CC)CC)C=C1"
+      ],
+      "validSmiles": true,
+      "massConservationPassed": true,
+      "stoichiometricBalancePassed": false,
+      "groundTruthMatched": true,
+      "isInertHandledCorrectly": true,
+      "failureReasons": [
+        "Conservation of atoms failed: Reactant element(s) [Cl] completely vanished from products."
+      ],
+      "latencyMs": 140.9
+    },
+    {
+      "id": "chemrxn-us04001237-1535",
+      "input": "NC1=NC(=NC2=CC(=C(C=C12)OC)OC)N1CCNCC1.O1N=CC=C1C(=O)Cl",
+      "predictedProducts": [
+        "COC1=C2C=C(N=C3N=C(N)C(C(=O)C4=CC=NO4)=CC=C32)C(=O)C=C1"
+      ],
+      "groundTruthProducts": [
+        "Cl.NC1=NC(=NC2=CC(=C(C=C12)OC)OC)N1CCN(CC1)C(=O)C1=CC=NO1"
+      ],
+      "validSmiles": true,
+      "massConservationPassed": true,
+      "stoichiometricBalancePassed": false,
+      "groundTruthMatched": false,
+      "isInertHandledCorrectly": true,
+      "failureReasons": [
+        "Conservation of atoms failed: Reactant element(s) [Cl] completely vanished from products."
+      ],
+      "latencyMs": 140.9
+    },
+    {
+      "id": "chemrxn-us04066438-1360",
+      "input": "NC1=C(C(=NC=C1Cl)OCCO)Cl",
+      "predictedProducts": [
+        "Cl",
+        "Nc1c(Cl)cnc(OCCO)c1Cl"
+      ],
+      "groundTruthProducts": [
+        "Cl.NC1=C(C(=NC=C1Cl)OCCO)Cl"
+      ],
+      "validSmiles": true,
+      "massConservationPassed": true,
+      "stoichiometricBalancePassed": false,
+      "groundTruthMatched": false,
+      "isInertHandledCorrectly": true,
+      "failureReasons": [
+        "Atom balance failed: Equation cannot be balanced even with byproduct inference."
+      ],
+      "latencyMs": 140.9
+    },
+    {
+      "id": "chemrxn-us04066655-1681",
+      "input": "ClC=1C=CC2=C(C(C(=CO2)NC=C(C(=O)OCC)C(=O)OCC)=O)C1",
+      "predictedProducts": [
+        "CCOC(=O)c1cnc(C(=O)OCC)c2c1CCc1ccccc1-2"
+      ],
+      "groundTruthProducts": [
+        "ClC=1C=CC2=C(C(C=3NC=C(C(C3O2)=O)C(=O)OCC)=O)C1"
+      ],
+      "validSmiles": true,
+      "massConservationPassed": true,
+      "stoichiometricBalancePassed": false,
+      "groundTruthMatched": false,
+      "isInertHandledCorrectly": true,
+      "failureReasons": [
+        "Conservation of atoms failed: Reactant element(s) [Cl] completely vanished from products."
+      ],
+      "latencyMs": 170.9
+    }
+  ]
+}

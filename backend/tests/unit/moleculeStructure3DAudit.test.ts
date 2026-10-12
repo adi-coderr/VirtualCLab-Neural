@@ -142,4 +142,50 @@ describe("3D Molecule Structure Audit", () => {
       }
     }
   });
+
+  it("handles disconnected SMILES salts with authentic 3D ionic coordination and no floating ions", () => {
+    const testCases = [
+      { id: "nacl", formula: "NaCl", smiles: "[Na+].[Cl-]", name: "Sodium chloride" },
+      { id: "naoh", formula: "NaOH", smiles: "[Na+].[OH-]", name: "Sodium hydroxide" },
+      { id: "agno3", formula: "AgNO3", smiles: "[Ag+].[O-][N+](=O)[O-]", name: "Silver nitrate" },
+      { id: "nano3", formula: "NaNO3", smiles: "[N+](=O)([O-])[O-].[Na+]", name: "Sodium nitrate" },
+      { id: "mgcl2", formula: "MgCl2", smiles: "[Cl-].[Mg+2].[Cl-]", name: "Magnesium chloride" },
+      { id: "cacl2", formula: "CaCl2", smiles: "[Cl-].[Ca+2].[Cl-]", name: "Calcium chloride" },
+      { id: "alcl3", formula: "AlCl3", smiles: "[Cl-].[Al+3].[Cl-].[Cl-]", name: "Aluminium chloride" },
+      { id: "na2so4", formula: "Na2SO4", smiles: "S(=O)(=O)([O-])[O-].[Na+].[Na+]", name: "Sodium sulfate" },
+      { id: "na2co3", formula: "Na2CO3", smiles: "C([O-])([O-])=O.[Na+].[Na+]", name: "Sodium carbonate" },
+      { id: "k3po4", formula: "K3PO4", smiles: "P(=O)([O-])([O-])[O-].[K+].[K+].[K+]", name: "Tripotassium phosphate" },
+      { id: "sodium-acetate", formula: "CH3COONa", smiles: "C(C)(=O)[O-].[Na+]", name: "Sodium acetate" },
+    ];
+
+    for (const tc of testCases) {
+      const comp = parseFormula(tc.formula).composition;
+      const struct = generateMoleculeStructure(tc.id, tc.formula, comp, tc.name, tc.smiles);
+      expect(struct.atoms.length).toBeGreaterThanOrEqual(2);
+
+      const bondedAtoms = new Set<number>();
+      for (const b of struct.bonds) {
+        bondedAtoms.add(b.atomIndex1);
+        bondedAtoms.add(b.atomIndex2);
+        const a1 = struct.atoms[b.atomIndex1]!;
+        const a2 = struct.atoms[b.atomIndex2]!;
+        const d = Math.hypot(a1.x3d - a2.x3d, a1.y3d - a2.y3d, a1.z3d - a2.z3d);
+        expect(d, `Unphysical bond ${b.atomIndex1}-${b.atomIndex2} in ${tc.id}`).toBeLessThanOrEqual(2.65);
+        expect(d, `Unphysical bond ${b.atomIndex1}-${b.atomIndex2} in ${tc.id}`).toBeGreaterThanOrEqual(0.70);
+      }
+      for (const a of struct.atoms) {
+        expect(bondedAtoms.has(a.atomIndex), `Isolated unbonded atom ${a.element}[${a.atomIndex}] in ${tc.id}`).toBe(true);
+      }
+
+      for (let i = 0; i < struct.atoms.length; i++) {
+        for (let j = i + 1; j < struct.atoms.length; j++) {
+          const a1 = struct.atoms[i]!;
+          const a2 = struct.atoms[j]!;
+          const dist = Math.hypot(a1.x3d - a2.x3d, a1.y3d - a2.y3d, a1.z3d - a2.z3d);
+          expect(dist, `Collision between ${a1.element} and ${a2.element} in ${tc.id}`).toBeGreaterThan(0.65);
+        }
+      }
+    }
+  });
 });
+

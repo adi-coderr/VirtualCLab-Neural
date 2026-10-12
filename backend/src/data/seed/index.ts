@@ -120,6 +120,8 @@ function seedChemicals(db: Database.Database): void {
       for (const code of c.hazardCodes ?? []) insertHazardLink.run(c.id, code);
 
       if (c.structure) {
+        db.prepare("DELETE FROM molecule_atoms WHERE chemical_id = ?").run(c.id);
+        db.prepare("DELETE FROM molecule_bonds WHERE chemical_id = ?").run(c.id);
         c.structure.atoms.forEach((atom, index) => {
           insertAtom.run(c.id, index, atom.element, atom.x2d, atom.y2d, atom.x3d, atom.y3d, atom.z3d, atom.formalCharge ?? 0);
         });
