@@ -10,14 +10,6 @@ interface ProcessBreakdownPanelProps {
   resolution: ReactionResolution;
 }
 
-const CATEGORY_ICONS: Record<ProcessChangeDimension["category"], string> = {
-  atomic_bonding: "⚛️",
-  concentrations: "📉",
-  properties: "🧪",
-  observables: "💥",
-  thermodynamics: "🔥",
-  conservation: "⚖️",
-};
 
 export function ProcessBreakdownPanel({ resolution }: ProcessBreakdownPanelProps) {
   const [activeFilter, setActiveFilter] = useState<string>("all");
@@ -134,7 +126,6 @@ export function ProcessBreakdownPanel({ resolution }: ProcessBreakdownPanelProps
         <div className="process-breakdown__quote-bar" />
         <div className="process-breakdown__statement-content">
           <div className="process-breakdown__statement-heading">
-            <span className="process-breakdown__sparkle">✨</span>
             <strong>Comprehensive Transformation Principle</strong>
           </div>
           <p className="process-breakdown__statement-text">{masterText}</p>
@@ -156,7 +147,6 @@ export function ProcessBreakdownPanel({ resolution }: ProcessBreakdownPanelProps
             onClick={() => setActiveFilter(d.category)}
             id={`filter-process-${d.category}`}
           >
-            <span className="chip-icon">{CATEGORY_ICONS[d.category]}</span>
             <span className="chip-label">{d.category.replace(/_/g, " ")}</span>
           </button>
         ))}
@@ -166,7 +156,6 @@ export function ProcessBreakdownPanel({ resolution }: ProcessBreakdownPanelProps
         {filteredDimensions.map((dim) => (
           <div key={dim.category} className={`process-card process-card--${dim.category}`}>
             <div className="process-card__header">
-              <span className="process-card__icon">{CATEGORY_ICONS[dim.category]}</span>
               <div className="process-card__titles">
                 <span className="process-card__category-tag">{dim.category.replace(/_/g, " ")}</span>
                 <h4 className="process-card__title">{dim.title}</h4>
