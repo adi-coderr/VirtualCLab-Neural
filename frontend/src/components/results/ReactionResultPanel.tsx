@@ -71,9 +71,11 @@ export function ReactionResultPanel({ result }: { result: SimulationResult }) {
     };
   }, [selectedId, allSpecies]);
 
-  // Filter out redundant AI engine notes from warnings if already displayed in AI banner
+  // Filter out redundant AI engine notes from warnings
   const displayWarnings = resolution.warnings.filter(
-    (w) => !w.toLowerCase().includes("dynamically predicted by")
+    (w) =>
+      !w.toLowerCase().includes("dynamically predicted by") &&
+      !w.toLowerCase().includes("reaction outcome predicted by")
   );
 
   return (
@@ -91,16 +93,6 @@ export function ReactionResultPanel({ result }: { result: SimulationResult }) {
         )}
       </div>
 
-      {/* 2. Dynamic AI Prediction Banner */}
-      {resolution.isAiPredicted && (
-        <div className="reaction-result__ai-banner">
-          <span className="reaction-result__ai-badge">✨ Dynamic AI Prediction</span>
-          <p className="reaction-result__ai-text">
-            This reaction was computed in real time using <strong>{resolution.aiProvider || "the AI engine"}</strong> after checking our database records.
-          </p>
-        </div>
-      )}
-
       {/* 3. Prompt when AI Key is missing for Unsupported Reactions */}
       {resolution.status === "UNSUPPORTED" && (
         <div className="reaction-result__ai-key-prompt">
@@ -109,7 +101,7 @@ export function ReactionResultPanel({ result }: { result: SimulationResult }) {
             <div className="reaction-result__ai-key-prompt-content">
               <strong>Reaction Not in Database — AI Ready</strong>
               <p className="reaction-result__ai-key-prompt-desc">
-                This combination is not in our database. Configure your Groq, Gemini, OpenAI, or Claude key to automatically predict products and energetics.
+                This combination is not in our database. Configure an AI API key to automatically predict products and energetics.
               </p>
             </div>
           </div>

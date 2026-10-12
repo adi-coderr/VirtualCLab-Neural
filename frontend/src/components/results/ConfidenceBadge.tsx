@@ -11,28 +11,13 @@ const TIER_COPY: Record<ConfidenceTier, { label: string; description: string }> 
 export function ConfidenceBadge({
   tier,
   score,
-  aiProvider,
-  isAiPredicted,
 }: {
   tier: ConfidenceTier;
   score?: number;
   aiProvider?: string;
   isAiPredicted?: boolean;
 }) {
-  const copy = TIER_COPY[tier];
-
-  if (isAiPredicted) {
-    return (
-      <span
-        className="confidence-badge confidence-badge--ai"
-        title={`Dynamically predicted by ${aiProvider || "AI Chemistry Engine"}`}
-      >
-        <span className="confidence-badge__dot confidence-badge__dot--ai" aria-hidden="true" />
-        ✨ AI ({aiProvider || "AI Predicted"})
-        {score !== undefined && <span className="confidence-badge__score">{Math.round(score * 100)}%</span>}
-      </span>
-    );
-  }
+  const copy = TIER_COPY[tier] || TIER_COPY.PREDICTED;
 
   return (
     <span className={`confidence-badge confidence-badge--${tier.toLowerCase()}`} title={copy.description}>

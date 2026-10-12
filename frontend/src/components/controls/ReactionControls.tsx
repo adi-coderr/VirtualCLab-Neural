@@ -175,7 +175,7 @@ export function ReactionControls({ pendingChemical, onAdded }: { pendingChemical
                 className="reaction-controls__react-now-btn"
                 disabled={isLoading || !reactionSearchQuery.trim()}
                 onClick={() => handleReactCustomEquation()}
-                title="React equation via 3-tier pipeline: Curated DB → ReactionT5v2 Neural Model → Groq AI"
+                title="React equation via 3-tier pipeline: Curated DB → ReactionT5v2 Neural Model → AI Predictor"
               >
                 {isLoading ? "Reacting…" : "React"}
               </button>
@@ -196,7 +196,7 @@ export function ReactionControls({ pendingChemical, onAdded }: { pendingChemical
                       <span className="reaction-controls__suggestion-type">3-tier engine</span>
                     </div>
                     <div className="reaction-controls__suggestion-eq">
-                      Search local DB → ReactionT5v2 Neural Model → Groq AI
+                      Search local DB → ReactionT5v2 Neural Model → AI Predictor
                     </div>
                   </button>
                 )}
