@@ -134,7 +134,7 @@ export function AppShell({
             onClick={openSettings}
             title="Configure AI API Key (Google Gemini, OpenAI, Claude)"
           >
-            ✨ AI Settings
+            AI Settings
           </button>
           <button className="app-shell__reset" onClick={onReset}>
             Reset experiment

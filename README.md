@@ -132,3 +132,9 @@ npm run db:reset
 One-Command All-in-One Startup
 cd "/Users/adi/Documents/Github Projects/VirtualCLab"
 ./start.sh
+
+
+
+
+
+
