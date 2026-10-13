@@ -3131,10 +3131,12 @@ const INITIAL_CHEMICALS: SeedChemical[] = [
 ];
 
 import { CHEMICALS_BATCH_4 } from "./chemicalsBatch4.js";
+import { CHEMICALS_CURATED } from "./chemicalsCurated.js";
 
 export const SEED_CHEMICALS: SeedChemical[] = [
   ...INITIAL_CHEMICALS,
   ...CHEMICALS_BATCH_4,
+  ...CHEMICALS_CURATED,
 ];
 
 

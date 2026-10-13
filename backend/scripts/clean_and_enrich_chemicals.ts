@@ -6,30 +6,46 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dbPath = path.resolve(__dirname, "../data/chemlab.db");
 const db = new Database(dbPath);
 
-console.log("=== STARTING CHEMICAL DATABASE CLEANUP AND ENRICHMENT ===");
+console.log("=== STARTING COMPREHENSIVE CHEMICAL DATABASE CLEANUP AND ENRICHMENT ===");
 
-// 1. Identify Noise Chemicals
-const allChems = db.prepare("SELECT id, formula, common_name, smiles FROM chemicals").all() as {
+// ---------------------------------------------------------------------------
+// 1. IDENTIFY NOISE CHEMICALS
+// ---------------------------------------------------------------------------
+const allChems = db.prepare("SELECT id, formula, common_name, smiles, molar_mass FROM chemicals").all() as {
   id: string;
   formula: string;
   common_name: string;
   smiles?: string;
+  molar_mass?: number;
 }[];
 
-function isNoiseChemical(c: { id: string; formula: string; common_name: string }): boolean {
+// Pre-query chemical IDs present in reactions
+const rxnChemicalIds = new Set(
+  (
+    db
+      .prepare(
+        "SELECT DISTINCT chemical_id FROM reaction_reactants UNION SELECT DISTINCT chemical_id FROM reaction_products"
+      )
+      .all() as { chemical_id: string }[]
+  ).map((r) => r.chemical_id)
+);
+
+function isNoiseChemical(c: { id: string; formula: string; common_name: string; molar_mass?: number }): boolean {
   const name = (c.common_name || "").trim();
   const id = (c.id || "").trim().toLowerCase();
   const form = (c.formula || "").trim();
 
   // Keep protected canonical element IDs and formulas
-  const protectedIds = new Set(["p", "i", "h", "s", "c", "v", "w", "b", "f", "k", "n", "o"]);
+  const protectedIds = new Set([
+    "p", "i", "h", "s", "c", "v", "w", "b", "f", "k", "n", "o", "cu", "fe", "zn", "ag", "al", "ca", "mg", "na", "cl", "br",
+  ]);
   if (protectedIds.has(id)) return false;
 
   // 1. Parenthesized/bracketed short codes: ( a ), ( 5-c ), [ 3 ], ( 83 )
   if (/^[\(\[]\s*[0-9a-zA-Z_-]{1,6}\s*[\)\]]$/.test(name)) return true;
 
-  // 2. Pure numbers or alphanumeric patent tags: 16, 32, 1L, 2A, 1c, 2j, 1cx, 2-b, 5-c
-  if (/^[0-9]{1,4}[a-zA-Z]{0,2}$/.test(name)) return true;
+  // 2. Pure numbers or alphanumeric patent tags: 16, 32, 1L, 2A, 1c, 2j, 1cx, 2-b, 5-c, 5.9, 14.4, 5.6X
+  if (/^[0-9]{1,4}(?:\.[0-9]+)?[a-zA-Z]{0,2}$/.test(name)) return true;
   if (/^[0-9]{1,3}-[a-zA-Z]$/.test(name)) return true;
 
   // 3. Weight / volume strings scraped as names: 94g, 81g, 126g, 300g, 50ml
@@ -38,9 +54,25 @@ function isNoiseChemical(c: { id: string; formula: string; common_name: string }
   // 4. Placeholders
   if (/^(product|products|intermediate|example|compound)\b/i.test(name) || /#(?:[0-9]+)/.test(name)) return true;
 
-  // 5. Physical states / crude mixture
+  // 5. Physical states / crude mixture descriptions / baths
   const lowerName = name.toLowerCase();
-  if (["ice", "ice water", "ice hcl", "aqueous solution", "crude mixture", "liquid"].includes(lowerName)) return true;
+  const noiseNames = new Set([
+    "ice", "ice water", "ice hcl", "aqueous solution", "crude mixture", "liquid",
+    "dry ice water calcium chloride", "dry-ice-water-calcium-chloride",
+    "ammonium hydroxide water", "ammonium-hydroxide-water",
+    "sodium hydroxide water", "sodium-hydroxide-water",
+    "concentrated aqueous solution", "water ice", "resultant solution",
+    "ether chloroform", "ethanol-ether", "ether-pentane", "petroleum ether",
+    "hcl-ice", "monohydrate", "disodium", "solution 1", "superphosphate",
+    "indium tin hydroxide", "dicalcium phosphate anhydrous",
+    "sodium azide -ammonium chloride", "sodium azide ammonium chloride",
+    "ammonium chloride ammonium hydroxide", "monohydrochloride", "ammonium hydrochloride",
+    "14n-potassium-hydroxide", "iron-ii", "sodium-amalgam", "oily-nitrated-product",
+    "acid-chloride-2", "peroxide", "hydrobromide-salt", "potassium-dichromate-sulfuric-acid",
+    "bis-4-hydroxyphenyl-methane-bisphenol-f", "bis-tert-butyl-chromate",
+    "sulfide", "zinc-white",
+  ]);
+  if (noiseNames.has(lowerName)) return true;
 
   // 6. Fragment prefixes / isomers
   if (["2,4-", "2,6- isomers", "diazonium salt", "hydrazo", "acetyl"].includes(lowerName)) return true;
@@ -48,38 +80,2055 @@ function isNoiseChemical(c: { id: string; formula: string; common_name: string }
   // 7. Invalid formulas
   if (!form || /^(product|producta|unknown|none|formula|null)$/i.test(form)) return true;
 
+  // 8. Dummy scraped entries with molar_mass = 150 that have zero reactions
+  if (c.molar_mass === 150 && !rxnChemicalIds.has(c.id) && id !== "nabf4") return true;
+
   return false;
 }
 
 const noise = allChems.filter(isNoiseChemical);
 console.log(`Identified ${noise.length} noise chemical entries to purge.`);
-
 const noiseIds = noise.map((c) => c.id);
 
-// 2. Transaction to Purge Noise
-const cleanupTx = db.transaction(() => {
+// ---------------------------------------------------------------------------
+// 2. DUPLICATE ID MERGES (inferior/broken duplicates -> canonical chemical ID)
+// ---------------------------------------------------------------------------
+const DUPLICATE_MERGES: Record<string, string> = {
+  // Sodium hydroxide
+  "sodium-hydroxide": "naoh",
+  "sodium-hyroxide": "naoh",
+  "sodium-hydoxide": "naoh",
+  // Potassium hydroxide
+  "potassium-hydroxide": "koh",
+  "potasium-hydroxide": "koh",
+  // Aluminum chloride
+  "aluminum-chloride": "alcl3",
+  "aluminium-chloride": "alcl3",
+  "aluminum-chloride-2": "alcl3",
+  "aluminium-trichloride": "alcl3",
+  "aluminum-trichloride": "alcl3",
+  // Aluminum bromide
+  "aluminum-bromide": "albr3",
+  // Magnesium sulfate
+  "magnesium-sulfate": "mgso4",
+  // Calcium chloride
+  "calcium-chloride": "cacl2",
+  "calcium-chloride-dihydrate": "cacl2",
+  // Calcium sulfate
+  "calcium-sulfate-dihydrate": "caso4",
+  // Calcium nitrate
+  "calcium-nitrate-tetrahydrate": "ca-no3-2",
+  // Calcium hydroxide
+  "calcium-hydroxide": "caoh2",
+  "calcium-hydroxide-slurry": "caoh2",
+  "slaked-lime": "caoh2",
+  // Barium hydroxide
+  "barium-hydroxide-octahydrate": "ba-oh-2",
+  "barium-hydroxide-hydrate": "ba-oh-2",
+  // Potassium iodide
+  "potassium-iodide": "ki",
+  "potasium-iodide": "ki",
+  "potassiumiodide": "ki",
+  // Sodium iodide
+  "sodium-iodide": "nai",
+  "sodium-iodide-dihydrate": "nai",
+  // Sodium bromide
+  "sodium-bromide": "nabr",
+  "sodium-bromide-trihydrate": "nabr",
+  // Cyanides
+  "sodium-cyanide": "nacn",
+  "potassium-cyanide": "kcn",
+  // Fluorides
+  "potassiumfluoride": "kf",
+  // Iron sulfate
+  "ferrous-sulfate": "feso4",
+  "ferrous-sulphate": "feso4",
+  "ferrous-sulphate-heptahydrate": "feso4",
+  // Sodium dihydrogen phosphate
+  "sodium-dihydrogen-phosphate": "nah2po4",
+  "sodium-dihydrogen-phosphate-2": "nah2po4",
+  "sodium-dihydrogen-phosphate-dihydrate": "nah2po4",
+  "sodium-dihydrogen-phosphate-dihydrate-2": "nah2po4",
+  "sodium-dihydrogen-phosphate-monohydrate": "nah2po4",
+  "sodium-dihydrogenphosphate": "nah2po4",
+  "sodium-dihydrogenphosphate-dihydrate": "nah2po4",
+  "sodium-phosphate-monobasic": "nah2po4",
+  "nah2po4-2": "nah2po4",
+  // Potassium dihydrogen phosphate
+  "potassium-dihydrogen-phosphate": "kh2po4",
+  "potassium-phosphate-monobasic": "kh2po4",
+  // Sodium bisulfate
+  "sodium-bisulfate": "nahso4",
+  "sodium-bisulphate": "nahso4",
+  "sodium-hydrogen-sulfate": "nahso4",
+  "sodium-hydrogen-sulphate": "nahso4",
+  // Potassium bisulfate
+  "potassium-bisulfate": "khso4",
+  "potassium-hydrogen-sulfate": "khso4",
+  // Sodium bisulfite
+  "sodium-bisulfite": "nahso3",
+  "sodium-bisulphite": "nahso3",
+  "sodium-hydrogen-sulfite": "nahso3",
+  "sodium-hydrogen-sulphite": "nahso3",
+  "sodium-hydrogensulfite": "nahso3",
+  "sodium-hydrogensulphite": "nahso3",
+  // Lithium hydroxide
+  "lithium-hydroxide-mono-hydrate": "lioh",
+  "lithium-hydroxide-monohydrate-2": "lioh",
+  "lithium-hydroxide-monohydrate-4": "lioh",
+  // Sodium thiosulfate
+  "sodium-thiosulfate": "na2s2o3",
+  "sodium-thiosulfate-pentahydrate": "na2s2o3",
+  // Sodium dichromate duplicate
+  "na2cr2o7-2": "na2cr2o7",
+  // Amides
+  "sodium-amide": "nanh2",
+  "sodamide": "nanh2",
+  "potassium-amide": "knh2",
+  // Hydrides
+  "sodium-azide": "nan3",
+  "sodium-hydride": "nah",
+  "potassium-hydride": "kh",
+  "lithium-hydride": "lih",
+  "calcium-hydride": "cah2",
+  "lithium-aluminum-hydride": "lialh4",
+  "lithium-aluminium-hydride": "lialh4",
+  "lithium-aluminum-hydride-2": "lialh4",
+  "lithium-aluminium-hydride-2": "lialh4",
+  "sodium-borohydride": "nabh4",
+  "sodium-boron-hydride": "nabh4",
+  "sodium-tetrahydroborate": "nabh4",
+  "sodiumborohydride": "nabh4",
+  "lithiumborohydride": "libh4",
+  // Hypophosphite
+  "sodium-hypophosphite": "nah2po2",
+  "sodium-hypophosphite-monohydrate": "nah2po2",
+  "sodium-hypophosphite-hydrate": "nah2po2",
+  // Hydrosulfide
+  "sodium-sulfhydrate": "nahs",
+  "sodium-hydrosulfide": "nahs",
+  "sodium-hydrogensulfide": "nahs",
+  "sodium-hydrogen-sulfide": "nahs",
+  "sodium-hydrogen-sulfide-dihydrate": "nahs",
+  "sodium-hydrogen-sulfide-monohydrate": "nahs",
+  "sodium-hydrosulfide-hydrate": "nahs",
+  "sodium-hydrogensulphide-hydrate": "nahs",
+  // Double salts & oxides
+  "ferrous-ammonium-sulfate": "fe-nh4-2-so4-2",
+  "ferric-ammonium-sulfate": "nh4fe-so4-2",
+  "chromium-trioxide": "cro3",
+  "chromium-nitrate": "cr-no3-3",
+  "chromium-phosphate": "crpo4",
+  "ammonium-cerium-iv-nitrate": "can",
+  "ammonium-hexafluorophosphate": "nh4pf6",
+  "potassium-hexafluorophosphate": "kpf6",
+  "lithium-hexafluorophosphate": "lipf6",
+  "sodium-tetrafluoroborate": "nabf4",
+  "sodium-fluoroborate": "nabf4",
+  "tetrafluoroboric-acid": "hbf4",
+  "tetrafluoroborate": "hbf4",
+  "hyroxylamine-hydrochloride": "nh2oh-hcl",
+  "hydroxyamine-hydrochloride": "nh2oh-hcl",
+  "hydroxylamine-hydrochloride-2": "nh2oh-hcl",
+  "hydroxylamine-hydrochloride-3": "nh2oh-hcl",
+  "hydroxylamine-hydrogen-chloride": "nh2oh-hcl",
+  // Acetates & salts
+  "sodium-carbonate": "na2co3",
+  "sodium-bicarbonate": "nahco3",
+  // Lithium hydroxide full variants
+  "lithium-hydroxide": "lioh",
+  "lithium-hydroxide-monohydrate": "lioh",
+  "lithium-hydroxide-hydrate": "lioh",
+  "lithium-hydroxide-trihydrate": "lioh",
+  // Cesium hydroxide variants
+  "cesium-hydroxide": "csoh",
+  "cesium-hydroxide-monohydrate": "csoh",
+  // Cobalt oxide & rare earth nitrates
+  "cobalt-oxide": "coo",
+  "gadolinium-nitrate": "gd-no3-3",
+  "europium-nitrate": "eu-no3-3",
+  "iodide": "ki",
+  "hydride": "nah",
+  // Patent duplicates with element formulas / unparsed components
+  "alcl3-2": "alcl3",
+  "alcl3-cfcl3": "alcl3",
+  "naoh-2": "naoh",
+  "naoh-h2o": "naoh",
+  "mes-naoh": "naoh",
+  "koh-2": "koh",
+  "koh-meoh": "koh",
+  "koh-cyclopropylmethanol": "koh",
+  "k2co3-2": "k2co3",
+  "k2co3-et2o": "k2co3",
+  "nahco3-2": "nahco3",
+  "na2co3-2": "na2co3",
+  "cacl2-2": "cacl2",
+  "mgso4-2": "mgso4",
+  "caco3-2": "caco3",
+  "kmno4-2": "kmno4",
+  "kno3-2": "kno3",
+  // Ammonium chloride duplicate (replaces formula ClH with canonical NH4Cl)
+  "nh4cl": "ammonium-chloride",
+};
+
+// ---------------------------------------------------------------------------
+// 3. MASTER CATALOG OF ENRICHED CANONICAL CHEMICALS (FOR WEBPAGE PANELS)
+// ---------------------------------------------------------------------------
+interface EnrichedChemical {
+  id: string;
+  commonName: string;
+  iupacName: string;
+  formula: string;
+  molarMass: number;
+  casNumber: string;
+  physicalState: "solid" | "liquid" | "gas" | "aqueous";
+  density: number;
+  meltingPointC?: number;
+  boilingPointC?: number;
+  solubilityNotes: string;
+  chemicalClass: string;
+  isAcid?: boolean;
+  isBase?: boolean;
+  acidBaseStrength?: "strong" | "weak" | "none";
+  pKa?: number;
+  pKb?: number;
+  charge?: number;
+  substanceColor: string;
+  isElemental?: boolean;
+  notes: string;
+  aliases: string[];
+  hazardCodes: string[];
+  elements: Record<string, number>;
+}
+
+const CANONICAL_CHEMICALS: EnrichedChemical[] = [
+  // --- CHROMIUM FAMILY ---
+  {
+    id: "na2cro4",
+    commonName: "Sodium chromate",
+    iupacName: "Disodium chromate",
+    formula: "Na2CrO4",
+    molarMass: 161.972,
+    casNumber: "7775-11-3",
+    physicalState: "solid",
+    density: 2.73,
+    meltingPointC: 792,
+    solubilityNotes: "Freely soluble in water (87.3 g/100 mL at 20 °C); yellow alkaline solution.",
+    chemicalClass: "salt",
+    substanceColor: "#FFD700",
+    notes: "Yellow crystalline solid; widely used oxidizing agent and corrosion inhibitor.",
+    aliases: ["sodium chromate", "sodiumchromate", "sodium-chromate", "disodium chromate", "chromic acid disodium salt"],
+    hazardCodes: ["TOXIC", "OXIDIZING", "HEALTH_HAZARD", "ENVIRONMENTAL_HAZARD"],
+    elements: { Na: 2, Cr: 1, O: 4 },
+  },
+  {
+    id: "k2cro4",
+    commonName: "Potassium chromate",
+    iupacName: "Dipotassium chromate",
+    formula: "K2CrO4",
+    molarMass: 194.188,
+    casNumber: "7789-00-6",
+    physicalState: "solid",
+    density: 2.73,
+    meltingPointC: 968,
+    solubilityNotes: "Soluble in water (65.3 g/100 mL at 20 °C); indicator in Mohr's argentometric titration.",
+    chemicalClass: "salt",
+    substanceColor: "#FFD700",
+    notes: "Bright yellow crystals; common analytical reagent for precipitation of insoluble chromates.",
+    aliases: ["potassium chromate", "potassiumchromate", "potassium-chromate", "dipotassium chromate"],
+    hazardCodes: ["TOXIC", "OXIDIZING", "HEALTH_HAZARD", "ENVIRONMENTAL_HAZARD"],
+    elements: { K: 2, Cr: 1, O: 4 },
+  },
+  {
+    id: "na2cr2o7",
+    commonName: "Sodium dichromate",
+    iupacName: "Disodium dichromate",
+    formula: "Na2Cr2O7",
+    molarMass: 261.965,
+    casNumber: "10588-01-9",
+    physicalState: "solid",
+    density: 2.52,
+    meltingPointC: 356,
+    boilingPointC: 400,
+    solubilityNotes: "Extremely soluble in water (238 g/100 mL at 20 °C); bright orange acidic solution.",
+    chemicalClass: "salt",
+    substanceColor: "#FF4500",
+    notes: "Bright orange deliquescent crystals; principal industrial source of chromium chemicals and powerful oxidizer.",
+    aliases: ["sodium dichromate", "sodiumdichromate", "sodium-dichromate", "disodium dichromate"],
+    hazardCodes: ["TOXIC", "OXIDIZING", "CORROSIVE", "HEALTH_HAZARD", "ENVIRONMENTAL_HAZARD"],
+    elements: { Na: 2, Cr: 2, O: 7 },
+  },
+  {
+    id: "k2cr2o7",
+    commonName: "Potassium dichromate",
+    iupacName: "Dipotassium dichromate",
+    formula: "K2Cr2O7",
+    molarMass: 294.181,
+    casNumber: "7778-50-9",
+    physicalState: "solid",
+    density: 2.68,
+    meltingPointC: 398,
+    boilingPointC: 500,
+    solubilityNotes: "Moderately soluble in cold water (13 g/100 mL at 20 °C), highly soluble in boiling water (102 g/100 mL).",
+    chemicalClass: "salt",
+    substanceColor: "#FF5500",
+    notes: "Non-deliquescent orange-red crystals; classic primary standard oxidizer in analytical redox titrations.",
+    aliases: ["potassium dichromate", "potassiumdichromate", "potassium-dichromate", "dipotassium dichromate"],
+    hazardCodes: ["TOXIC", "OXIDIZING", "CORROSIVE", "HEALTH_HAZARD", "ENVIRONMENTAL_HAZARD"],
+    elements: { K: 2, Cr: 2, O: 7 },
+  },
+  {
+    id: "nh4-2-cr2o7",
+    commonName: "Ammonium dichromate",
+    iupacName: "Diammonium dichromate",
+    formula: "(NH4)2Cr2O7",
+    molarMass: 252.06,
+    casNumber: "7789-09-5",
+    physicalState: "solid",
+    density: 2.115,
+    meltingPointC: 180,
+    solubilityNotes: "Soluble in water (35.6 g/100 mL at 20 °C).",
+    chemicalClass: "salt",
+    substanceColor: "#FF5722",
+    notes: "Orange-red crystalline solid; famous for the 'chemical volcano' decomposition to Cr2O3, N2, and H2O.",
+    aliases: ["ammonium dichromate", "ammoniumdichromate", "ammonium-dichromate", "vesuvian fire"],
+    hazardCodes: ["TOXIC", "OXIDIZING", "CORROSIVE", "HEALTH_HAZARD", "ENVIRONMENTAL_HAZARD"],
+    elements: { N: 2, H: 8, Cr: 2, O: 7 },
+  },
+  {
+    id: "nh4-2-cro4",
+    commonName: "Ammonium chromate",
+    iupacName: "Diammonium chromate",
+    formula: "(NH4)2CrO4",
+    molarMass: 152.07,
+    casNumber: "7788-98-9",
+    physicalState: "solid",
+    density: 1.91,
+    meltingPointC: 180,
+    solubilityNotes: "Soluble in water (40.5 g/100 mL at 25 °C).",
+    chemicalClass: "salt",
+    substanceColor: "#FFD700",
+    notes: "Yellow needles; used in photographic sensitization and chrome mordants.",
+    aliases: ["ammonium chromate", "ammoniumchromate", "ammonium-chromate"],
+    hazardCodes: ["TOXIC", "OXIDIZING", "HEALTH_HAZARD", "ENVIRONMENTAL_HAZARD"],
+    elements: { N: 2, H: 8, Cr: 1, O: 4 },
+  },
+  {
+    id: "bacro4",
+    commonName: "Barium chromate",
+    iupacName: "Barium chromate",
+    formula: "BaCrO4",
+    molarMass: 253.32,
+    casNumber: "10294-40-3",
+    physicalState: "solid",
+    density: 4.50,
+    meltingPointC: 1400,
+    solubilityNotes: "Extremely insoluble in water (Ksp ≈ 1.2×10⁻¹⁰); soluble in mineral acids (HCl, HNO3).",
+    chemicalClass: "salt",
+    substanceColor: "#FFFF66",
+    notes: "Yellow precipitate formed by mixing barium and chromate ions; pigment known as baryta yellow.",
+    aliases: ["barium chromate", "bariumchromate", "barium-chromate", "lemon yellow", "baryta yellow"],
+    hazardCodes: ["TOXIC", "HEALTH_HAZARD", "ENVIRONMENTAL_HAZARD"],
+    elements: { Ba: 1, Cr: 1, O: 4 },
+  },
+  {
+    id: "pbcro4",
+    commonName: "Lead(II) chromate",
+    iupacName: "Lead(II) chromate",
+    formula: "PbCrO4",
+    molarMass: 323.19,
+    casNumber: "7758-97-6",
+    physicalState: "solid",
+    density: 6.12,
+    meltingPointC: 844,
+    solubilityNotes: "Insoluble in water (Ksp ≈ 2.8×10⁻¹³); dissolves in dilute nitric acid or hot alkali.",
+    chemicalClass: "salt",
+    substanceColor: "#FFA000",
+    notes: "Intense yellow crystalline precipitate widely known historically as 'chrome yellow' pigment.",
+    aliases: ["lead chromate", "leadchromate", "lead-chromate", "chrome yellow", "crocoite"],
+    hazardCodes: ["TOXIC", "HEALTH_HAZARD", "ENVIRONMENTAL_HAZARD"],
+    elements: { Pb: 1, Cr: 1, O: 4 },
+  },
+  {
+    id: "ag2cro4",
+    commonName: "Silver chromate",
+    iupacName: "Disilver(I) chromate",
+    formula: "Ag2CrO4",
+    molarMass: 331.73,
+    casNumber: "7784-01-2",
+    physicalState: "solid",
+    density: 5.63,
+    meltingPointC: 665,
+    solubilityNotes: "Insoluble in water (Ksp ≈ 1.1×10⁻¹²); characteristic reddish-brown precipitate.",
+    chemicalClass: "salt",
+    substanceColor: "#8B0000",
+    notes: "Brick-red precipitate whose appearance marks the endpoint in Mohr's chloride titration.",
+    aliases: ["silver chromate", "silverchromate", "silver-chromate"],
+    hazardCodes: ["IRRITANT", "ENVIRONMENTAL_HAZARD"],
+    elements: { Ag: 2, Cr: 1, O: 4 },
+  },
+  {
+    id: "srcro4",
+    commonName: "Strontium chromate",
+    iupacName: "Strontium chromate",
+    formula: "SrCrO4",
+    molarMass: 203.61,
+    casNumber: "7789-06-2",
+    physicalState: "solid",
+    density: 3.84,
+    meltingPointC: 500,
+    solubilityNotes: "Sparingly soluble in water (0.12 g/100 mL at 15 °C).",
+    chemicalClass: "salt",
+    substanceColor: "#FFFF00",
+    notes: "Light yellow pigment with outstanding anticorrosive properties on aerospace aluminum.",
+    aliases: ["strontium chromate", "strontiumchromate", "strontium-chromate"],
+    hazardCodes: ["TOXIC", "HEALTH_HAZARD", "ENVIRONMENTAL_HAZARD"],
+    elements: { Sr: 1, Cr: 1, O: 4 },
+  },
+  {
+    id: "cro3",
+    commonName: "Chromium trioxide",
+    iupacName: "Chromium(VI) oxide",
+    formula: "CrO3",
+    molarMass: 99.994,
+    casNumber: "1333-82-0",
+    physicalState: "solid",
+    density: 2.70,
+    meltingPointC: 197,
+    boilingPointC: 250,
+    solubilityNotes: "Highly soluble in water (166 g/100 mL at 20 °C) forming chromic acid; violently oxidizing.",
+    chemicalClass: "oxide",
+    isAcid: true,
+    acidBaseStrength: "strong",
+    substanceColor: "#8B0000",
+    notes: "Dark purplish-red flakes; chromic acid anhydride used in Jones reagent and decorative chrome plating.",
+    aliases: ["chromium trioxide", "chromiumtrioxide", "chromium-trioxide", "chromic anhydride", "chromium(vi) oxide"],
+    hazardCodes: ["TOXIC", "OXIDIZING", "CORROSIVE", "HEALTH_HAZARD", "ENVIRONMENTAL_HAZARD"],
+    elements: { Cr: 1, O: 3 },
+  },
+  {
+    id: "cr2o3",
+    commonName: "Chromium(III) oxide",
+    iupacName: "Dichromium trioxide",
+    formula: "Cr2O3",
+    molarMass: 151.99,
+    casNumber: "1308-38-9",
+    physicalState: "solid",
+    density: 5.22,
+    meltingPointC: 2435,
+    solubilityNotes: "Insoluble in water, acids, and alkalis.",
+    chemicalClass: "oxide",
+    substanceColor: "#2E8B57",
+    notes: "Amphoteric green crystalline powder known as chrome green; refractory and abrasive.",
+    aliases: ["chromium(iii) oxide", "chromium oxide", "chromia", "chrome green"],
+    hazardCodes: ["IRRITANT"],
+    elements: { Cr: 2, O: 3 },
+  },
+  {
+    id: "crcl3",
+    commonName: "Chromium(III) chloride",
+    iupacName: "Chromium(III) chloride",
+    formula: "CrCl3",
+    molarMass: 158.35,
+    casNumber: "10025-73-7",
+    physicalState: "solid",
+    density: 2.87,
+    meltingPointC: 1152,
+    solubilityNotes: "Anhydrous form dissolves slowly; hexahydrate CrCl3·6H2O is dark green and freely soluble.",
+    chemicalClass: "salt",
+    substanceColor: "#4B0082",
+    notes: "Violet flakes (anhydrous) or dark green hydrated crystals; central precursor to coordination complexes.",
+    aliases: ["chromium(iii) chloride", "chromium trichloride", "chromic chloride"],
+    hazardCodes: ["IRRITANT", "HEALTH_HAZARD"],
+    elements: { Cr: 1, Cl: 3 },
+  },
+  {
+    id: "cr2-so4-3",
+    commonName: "Chromium(III) sulfate",
+    iupacName: "Dichromium trisulfate",
+    formula: "Cr2(SO4)3",
+    molarMass: 392.18,
+    casNumber: "10101-53-8",
+    physicalState: "solid",
+    density: 3.10,
+    meltingPointC: 90,
+    solubilityNotes: "Soluble in water, forming violet to green solutions depending on temperature and coordination.",
+    chemicalClass: "salt",
+    substanceColor: "#556B2F",
+    notes: "Reddish-brown to green flakes; primary reagent in leather tanning and chrome mordanting.",
+    aliases: ["chromium(iii) sulfate", "chromic sulfate", "chromium sulphate"],
+    hazardCodes: ["IRRITANT"],
+    elements: { Cr: 2, S: 3, O: 12 },
+  },
+  {
+    id: "cr-no3-3",
+    commonName: "Chromium(III) nitrate",
+    iupacName: "Chromium(III) nitrate",
+    formula: "Cr(NO3)3",
+    molarMass: 238.01,
+    casNumber: "13548-38-4",
+    physicalState: "solid",
+    density: 1.85,
+    meltingPointC: 60,
+    solubilityNotes: "Very soluble in water, forming dark purple/violet solution.",
+    chemicalClass: "salt",
+    substanceColor: "#800080",
+    notes: "Dark violet nonahydrate crystals; used in preparation of alkali metal-free chromium catalysts.",
+    aliases: ["chromium(iii) nitrate", "chromic nitrate", "chromium nitrate"],
+    hazardCodes: ["OXIDIZING", "IRRITANT"],
+    elements: { Cr: 1, N: 3, O: 9 },
+  },
+  {
+    id: "kcr-so4-2",
+    commonName: "Potassium chrome alum",
+    iupacName: "Potassium chromium(III) bis(sulfate)",
+    formula: "KCr(SO4)2",
+    molarMass: 283.22,
+    casNumber: "10141-00-1",
+    physicalState: "solid",
+    density: 1.83,
+    meltingPointC: 89,
+    solubilityNotes: "Soluble in water (24 g/100 mL at 20 °C); magnificent deep purple octahedral crystals.",
+    chemicalClass: "salt",
+    substanceColor: "#4B0082",
+    notes: "Double sulfate salt KCr(SO4)2·12H2O; prized in crystallography for growing large deep-violet crystals.",
+    aliases: ["chrome alum", "potassium chrome alum", "potassium chromium sulfate"],
+    hazardCodes: ["IRRITANT"],
+    elements: { K: 1, Cr: 1, S: 2, O: 8 },
+  },
+
+  // --- MANGANESE FAMILY ---
+  {
+    id: "kmno4",
+    commonName: "Potassium permanganate",
+    iupacName: "Potassium manganate(VII)",
+    formula: "KMnO4",
+    molarMass: 158.032,
+    casNumber: "7722-64-7",
+    physicalState: "solid",
+    density: 2.70,
+    meltingPointC: 240,
+    solubilityNotes: "Soluble in water (6.4 g/100 mL at 20 °C); imparts an intense purple color even at ppm concentrations.",
+    chemicalClass: "salt",
+    substanceColor: "#800080",
+    notes: "Deep purple-bronze crystalline solid; quintessential lab oxidizing agent and disinfectant.",
+    aliases: ["potassium permanganate", "potassiumpermanganate", "potassium-permanganate", "permanganate of potash", "condy's crystals"],
+    hazardCodes: ["OXIDIZING", "TOXIC", "ENVIRONMENTAL_HAZARD"],
+    elements: { K: 1, Mn: 1, O: 4 },
+  },
+  {
+    id: "namno4",
+    commonName: "Sodium permanganate",
+    iupacName: "Sodium manganate(VII)",
+    formula: "NaMnO4",
+    molarMass: 141.925,
+    casNumber: "10101-50-5",
+    physicalState: "solid",
+    density: 1.97,
+    meltingPointC: 170,
+    solubilityNotes: "Extremely soluble in water (approx 90 g/100 mL at 20 °C); much more soluble than KMnO4.",
+    chemicalClass: "salt",
+    substanceColor: "#800080",
+    notes: "Dark purple deliquescent solid; chosen over KMnO4 when high permanganate concentrations are needed in solution.",
+    aliases: ["sodium permanganate", "sodiumpermanganate", "sodium-permanganate"],
+    hazardCodes: ["OXIDIZING", "TOXIC", "CORROSIVE"],
+    elements: { Na: 1, Mn: 1, O: 4 },
+  },
+  {
+    id: "k2mno4",
+    commonName: "Potassium manganate",
+    iupacName: "Dipotassium manganate(VI)",
+    formula: "K2MnO4",
+    molarMass: 197.132,
+    casNumber: "10294-64-1",
+    physicalState: "solid",
+    density: 2.78,
+    meltingPointC: 190,
+    solubilityNotes: "Soluble in alkaline water; disproportionates in neutral/acidic water into KMnO4 (purple) and MnO2 (brown).",
+    chemicalClass: "salt",
+    substanceColor: "#006400",
+    notes: "Dark green crystals containing Mn(VI); intermediate in the chemical synthesis of KMnO4.",
+    aliases: ["potassium manganate", "potassiummanganate", "potassium-manganate", "potassium manganate(vi)"],
+    hazardCodes: ["OXIDIZING", "IRRITANT"],
+    elements: { K: 2, Mn: 1, O: 4 },
+  },
+  {
+    id: "na2mno4",
+    commonName: "Sodium manganate",
+    iupacName: "Disodium manganate(VI)",
+    formula: "Na2MnO4",
+    molarMass: 164.921,
+    casNumber: "9055-92-1",
+    physicalState: "solid",
+    density: 2.50,
+    meltingPointC: 170,
+    solubilityNotes: "Soluble in alkaline solutions, dark emerald green color.",
+    chemicalClass: "salt",
+    substanceColor: "#006400",
+    notes: "Green solid; stable only under strongly alkaline conditions.",
+    aliases: ["sodium manganate", "sodiummanganate", "sodium-manganate"],
+    hazardCodes: ["OXIDIZING", "IRRITANT"],
+    elements: { Na: 2, Mn: 1, O: 4 },
+  },
+  {
+    id: "mno2",
+    commonName: "Manganese dioxide",
+    iupacName: "Manganese(IV) oxide",
+    formula: "MnO2",
+    molarMass: 86.937,
+    casNumber: "1313-13-9",
+    physicalState: "solid",
+    density: 5.03,
+    meltingPointC: 535,
+    solubilityNotes: "Insoluble in water and nitric acid; dissolves in hot concentrated HCl with Cl2 evolution.",
+    chemicalClass: "oxide",
+    substanceColor: "#3E2723",
+    notes: "Black-brown mineral powder (pyrolusite); famous heterogeneous catalyst for H2O2 decomposition.",
+    aliases: ["manganese dioxide", "manganesedioxide", "manganese-dioxide", "pyrolusite", "manganese(iv) oxide"],
+    hazardCodes: ["HEALTH_HAZARD"],
+    elements: { Mn: 1, O: 2 },
+  },
+  {
+    id: "mncl2",
+    commonName: "Manganese(II) chloride",
+    iupacName: "Manganese(II) chloride",
+    formula: "MnCl2",
+    molarMass: 125.84,
+    casNumber: "7773-01-5",
+    physicalState: "solid",
+    density: 2.98,
+    meltingPointC: 654,
+    boilingPointC: 1190,
+    solubilityNotes: "Freely soluble in water (72.3 g/100 mL at 20 °C); delicate rose-pink crystals.",
+    chemicalClass: "salt",
+    substanceColor: "#FFB6C1",
+    notes: "Pale pink tetrahydrate MnCl2·4H2O; precursor to other manganese organometallics.",
+    aliases: ["manganese chloride", "manganous chloride", "manganese(ii) chloride"],
+    hazardCodes: ["TOXIC", "HEALTH_HAZARD", "ENVIRONMENTAL_HAZARD"],
+    elements: { Mn: 1, Cl: 2 },
+  },
+  {
+    id: "mnso4",
+    commonName: "Manganese(II) sulfate",
+    iupacName: "Manganese(II) sulfate",
+    formula: "MnSO4",
+    molarMass: 151.00,
+    casNumber: "7785-87-7",
+    physicalState: "solid",
+    density: 3.25,
+    meltingPointC: 710,
+    boilingPointC: 850,
+    solubilityNotes: "Freely soluble in water (62.9 g/100 mL at 20 °C); forms pale pink solution.",
+    chemicalClass: "salt",
+    substanceColor: "#FFC0CB",
+    notes: "Pale pink crystals (monohydrate); major source of manganese for agricultural fertilizer and animal feed.",
+    aliases: ["manganese sulfate", "manganous sulfate", "manganese(ii) sulfate"],
+    hazardCodes: ["HEALTH_HAZARD", "ENVIRONMENTAL_HAZARD"],
+    elements: { Mn: 1, S: 1, O: 4 },
+  },
+
+  // --- IRON FAMILY & PRUSSIAN BLUE COMPLEXES ---
+  {
+    id: "feso4",
+    commonName: "Iron(II) sulfate",
+    iupacName: "Iron(II) sulfate",
+    formula: "FeSO4",
+    molarMass: 151.901,
+    casNumber: "7720-78-7",
+    physicalState: "solid",
+    density: 2.84,
+    meltingPointC: 680,
+    solubilityNotes: "Soluble in water (25.6 g/100 mL at 20 °C); forms blue-green solution slowly oxidizing in air.",
+    chemicalClass: "salt",
+    substanceColor: "#98FB98",
+    notes: "Known as green vitriol (heptahydrate FeSO4·7H2O); classic reducing agent and iron supplement.",
+    aliases: ["ferrous sulfate", "iron(ii) sulfate", "green vitriol", "copperas"],
+    hazardCodes: ["TOXIC", "IRRITANT"],
+    elements: { Fe: 1, S: 1, O: 4 },
+  },
+  {
+    id: "fe2-so4-3",
+    commonName: "Iron(III) sulfate",
+    iupacName: "Diiron(III) trisulfate",
+    formula: "Fe2(SO4)3",
+    molarMass: 399.88,
+    casNumber: "10028-22-5",
+    physicalState: "solid",
+    density: 3.10,
+    meltingPointC: 480,
+    solubilityNotes: "Soluble in water, acidic yellowish solution.",
+    chemicalClass: "salt",
+    substanceColor: "#FFF8DC",
+    notes: "Yellowish-white powder; industrial coagulant for municipal drinking water purification.",
+    aliases: ["ferric sulfate", "iron(iii) sulfate", "diiron trisulfate"],
+    hazardCodes: ["CORROSIVE", "IRRITANT"],
+    elements: { Fe: 2, S: 3, O: 12 },
+  },
+  {
+    id: "fecl2",
+    commonName: "Iron(II) chloride",
+    iupacName: "Iron(II) chloride",
+    formula: "FeCl2",
+    molarMass: 126.75,
+    casNumber: "7758-94-3",
+    physicalState: "solid",
+    density: 3.16,
+    meltingPointC: 677,
+    boilingPointC: 1023,
+    solubilityNotes: "Freely soluble in water (64.4 g/100 mL at 10 °C); greenish solution.",
+    chemicalClass: "salt",
+    substanceColor: "#90EE90",
+    notes: "Pale green tetrahydrate crystals; paramagnetic reducing agent in organic synthesis.",
+    aliases: ["ferrous chloride", "iron(ii) chloride"],
+    hazardCodes: ["TOXIC", "CORROSIVE"],
+    elements: { Fe: 1, Cl: 2 },
+  },
+  {
+    id: "fecl3",
+    commonName: "Iron(III) chloride",
+    iupacName: "Iron(III) chloride",
+    formula: "FeCl3",
+    molarMass: 162.20,
+    casNumber: "7705-08-0",
+    physicalState: "solid",
+    density: 2.90,
+    meltingPointC: 307,
+    boilingPointC: 315,
+    solubilityNotes: "Extremely soluble in water (92 g/100 mL at 20 °C); strongly acidic and yellow-brown due to hydrolysis.",
+    chemicalClass: "salt",
+    substanceColor: "#8B4513",
+    notes: "Dark brownish-black crystals; powerful Lewis acid and universal PCB copper etchant.",
+    aliases: ["ferric chloride", "iron(iii) chloride", "iron trichloride", "flores martis"],
+    hazardCodes: ["CORROSIVE", "TOXIC"],
+    elements: { Fe: 1, Cl: 3 },
+  },
+  {
+    id: "fe-nh4-2-so4-2",
+    commonName: "Ammonium iron(II) sulfate",
+    iupacName: "Diammonium iron(II) bis(sulfate)",
+    formula: "(NH4)2Fe(SO4)2",
+    molarMass: 284.05,
+    casNumber: "10045-89-3",
+    physicalState: "solid",
+    density: 1.86,
+    meltingPointC: 100,
+    solubilityNotes: "Soluble in water (26.9 g/100 mL at 20 °C); light blue-green crystals.",
+    chemicalClass: "salt",
+    substanceColor: "#AFEEEE",
+    notes: "Mohr's salt hexahydrate; standard primary analytical titrant for Fe(II) because it resists aerial oxidation.",
+    aliases: ["mohr's salt", "mohr salt", "ferrous ammonium sulfate", "ammonium iron(ii) sulfate"],
+    hazardCodes: ["IRRITANT"],
+    elements: { Fe: 1, N: 2, H: 8, S: 2, O: 8 },
+  },
+  {
+    id: "nh4fe-so4-2",
+    commonName: "Ammonium iron(III) sulfate",
+    iupacName: "Ammonium iron(III) bis(sulfate)",
+    formula: "NH4Fe(SO4)2",
+    molarMass: 266.01,
+    casNumber: "10138-04-2",
+    physicalState: "solid",
+    density: 1.71,
+    meltingPointC: 37,
+    solubilityNotes: "Soluble in water (124 g/100 mL at 25 °C); pale violet dodecahydrate crystals.",
+    chemicalClass: "salt",
+    substanceColor: "#D8BFD8",
+    notes: "Ferric ammonium alum; classic indicator for Volhard argentometric titrations (forming blood-red Fe(SCN)2+).",
+    aliases: ["ferric ammonium sulfate", "iron alum", "ammonium ferric sulfate"],
+    hazardCodes: ["IRRITANT"],
+    elements: { Fe: 1, N: 1, H: 4, S: 2, O: 8 },
+  },
+  {
+    id: "k4-fe-cn-6",
+    commonName: "Potassium ferrocyanide",
+    iupacName: "Tetrapotassium hexacyanoferrate(II)",
+    formula: "K4[Fe(CN)6]",
+    molarMass: 368.34,
+    casNumber: "13943-58-3",
+    physicalState: "solid",
+    density: 1.85,
+    meltingPointC: 70,
+    solubilityNotes: "Soluble in water (28.9 g/100 mL at 20 °C); light yellow crystals.",
+    chemicalClass: "salt",
+    substanceColor: "#FFFACD",
+    notes: "Yellow prussiate of potash; forms deep Prussian blue precipitate with Fe(III) ions.",
+    aliases: ["potassium ferrocyanide", "potassiumferrocyanide", "potassium hexacyanoferrate(ii)", "yellow prussiate of potash"],
+    hazardCodes: ["ENVIRONMENTAL_HAZARD"],
+    elements: { K: 4, Fe: 1, C: 6, N: 6 },
+  },
+  {
+    id: "k3-fe-cn-6",
+    commonName: "Potassium ferricyanide",
+    iupacName: "Tripotassium hexacyanoferrate(III)",
+    formula: "K3[Fe(CN)6]",
+    molarMass: 329.24,
+    casNumber: "13746-66-2",
+    physicalState: "solid",
+    density: 1.89,
+    meltingPointC: 300,
+    solubilityNotes: "Soluble in water (46.4 g/100 mL at 20 °C); bright ruby-red crystals.",
+    chemicalClass: "salt",
+    substanceColor: "#B22222",
+    notes: "Red prussiate of potash; forms Turnbull's blue with Fe(II) ions in qualitative analysis.",
+    aliases: ["potassium ferricyanide", "potassiumferricyanide", "potassium hexacyanoferrate(iii)", "red prussiate of potash"],
+    hazardCodes: ["IRRITANT", "ENVIRONMENTAL_HAZARD"],
+    elements: { K: 3, Fe: 1, C: 6, N: 6 },
+  },
+  {
+    id: "fe4-fe-cn-6-3",
+    commonName: "Prussian blue",
+    iupacName: "Iron(III) hexacyanoferrate(II)",
+    formula: "Fe4[Fe(CN)6]3",
+    molarMass: 859.23,
+    casNumber: "14038-43-8",
+    physicalState: "solid",
+    density: 1.80,
+    solubilityNotes: "Insoluble in water and dilute acids; dissolves in concentrated oxalic acid.",
+    chemicalClass: "salt",
+    substanceColor: "#000080",
+    notes: "Historical dark blue synthetic pigment; also used medically as an antidote for thallium and radioactive cesium poisoning.",
+    aliases: ["prussian blue", "berlin blue", "ferric ferrocyanide", "iron(iii) ferrocyanide"],
+    hazardCodes: ["IRRITANT"],
+    elements: { Fe: 7, C: 18, N: 18 },
+  },
+  {
+    id: "fe-scn-3",
+    commonName: "Iron(III) thiocyanate",
+    iupacName: "Iron(III) thiocyanate",
+    formula: "Fe(SCN)3",
+    molarMass: 230.09,
+    casNumber: "4119-52-2",
+    physicalState: "solid",
+    density: 1.50,
+    solubilityNotes: "Freely soluble in water and ether, producing an intense blood-red color.",
+    chemicalClass: "salt",
+    substanceColor: "#800000",
+    notes: "Intense blood-red complex; cornerstone demonstration of chemical equilibrium Le Chatelier shift.",
+    aliases: ["iron(iii) thiocyanate", "ferric thiocyanate", "iron thiocyanate"],
+    hazardCodes: ["IRRITANT"],
+    elements: { Fe: 1, S: 3, C: 3, N: 3 },
+  },
+
+  // --- HALOGENS & OXYHALIDES ---
+  {
+    id: "naclo",
+    commonName: "Sodium hypochlorite",
+    iupacName: "Sodium hypochlorite",
+    formula: "NaClO",
+    molarMass: 74.44,
+    casNumber: "7681-52-9",
+    physicalState: "solid",
+    density: 1.11,
+    meltingPointC: 18,
+    boilingPointC: 101,
+    solubilityNotes: "Miscible in water; commercial bleach is an aqueous 3–6% solution.",
+    chemicalClass: "salt",
+    isBase: true,
+    acidBaseStrength: "weak",
+    substanceColor: "#F0FFF0",
+    notes: "Active ingredient in liquid household bleach; strong oxidizing disinfectant.",
+    aliases: ["sodium hypochlorite", "sodiumhypochlorite", "bleach", "liquid bleach", "antiformin"],
+    hazardCodes: ["CORROSIVE", "OXIDIZING", "ENVIRONMENTAL_HAZARD"],
+    elements: { Na: 1, Cl: 1, O: 1 },
+  },
+  {
+    id: "ca-clo-2",
+    commonName: "Calcium hypochlorite",
+    iupacName: "Calcium hypochlorite",
+    formula: "Ca(ClO)2",
+    molarMass: 142.98,
+    casNumber: "7778-54-3",
+    physicalState: "solid",
+    density: 2.35,
+    meltingPointC: 100,
+    solubilityNotes: "Soluble in water (21 g/100 mL at 25 °C); white solid with strong chlorine odor.",
+    chemicalClass: "salt",
+    substanceColor: "#FFFFFF",
+    notes: "Bleaching powder; solid pool sanitizing tablets and water disinfectant.",
+    aliases: ["calcium hypochlorite", "calciumhypochlorite", "bleaching powder", "chlorinated lime"],
+    hazardCodes: ["OXIDIZING", "CORROSIVE", "TOXIC", "ENVIRONMENTAL_HAZARD"],
+    elements: { Ca: 1, Cl: 2, O: 2 },
+  },
+  {
+    id: "naclo2",
+    commonName: "Sodium chlorite",
+    iupacName: "Sodium chlorite",
+    formula: "NaClO2",
+    molarMass: 90.44,
+    casNumber: "7758-19-2",
+    physicalState: "solid",
+    density: 2.47,
+    meltingPointC: 180,
+    solubilityNotes: "Soluble in water (39 g/100 mL at 17 °C).",
+    chemicalClass: "salt",
+    substanceColor: "#FFFFFF",
+    notes: "White crystalline solid; industrial generator of chlorine dioxide (ClO2) for paper pulp bleaching.",
+    aliases: ["sodium chlorite", "sodiumchlorite", "sodium-chlorite"],
+    hazardCodes: ["OXIDIZING", "TOXIC", "CORROSIVE"],
+    elements: { Na: 1, Cl: 1, O: 2 },
+  },
+  {
+    id: "naclo3",
+    commonName: "Sodium chlorate",
+    iupacName: "Sodium chlorate",
+    formula: "NaClO3",
+    molarMass: 106.44,
+    casNumber: "7775-09-9",
+    physicalState: "solid",
+    density: 2.49,
+    meltingPointC: 248,
+    boilingPointC: 300,
+    solubilityNotes: "Extremely soluble in water (101 g/100 mL at 20 °C); hygroscopic.",
+    chemicalClass: "salt",
+    substanceColor: "#FFFFFF",
+    notes: "Powerful oxidizer and herbicide; precursor in chemical oxygen generators (oxygen candles).",
+    aliases: ["sodium chlorate", "sodiumchlorate", "sodium-chlorate"],
+    hazardCodes: ["OXIDIZING", "TOXIC", "ENVIRONMENTAL_HAZARD"],
+    elements: { Na: 1, Cl: 1, O: 3 },
+  },
+  {
+    id: "kclo3",
+    commonName: "Potassium chlorate",
+    iupacName: "Potassium chlorate",
+    formula: "KClO3",
+    molarMass: 122.55,
+    casNumber: "3811-04-9",
+    physicalState: "solid",
+    density: 2.32,
+    meltingPointC: 356,
+    boilingPointC: 400,
+    solubilityNotes: "Moderately soluble in cold water (7.3 g/100 mL at 20 °C), very soluble in boiling water (56 g/100 mL).",
+    chemicalClass: "salt",
+    substanceColor: "#FFFFFF",
+    notes: "White crystalline solid; famous for producing oxygen when heated with MnO2 catalyst.",
+    aliases: ["potassium chlorate", "potassiumchlorate", "potassium-chlorate", "berthollet's salt"],
+    hazardCodes: ["OXIDIZING", "TOXIC", "ENVIRONMENTAL_HAZARD"],
+    elements: { K: 1, Cl: 1, O: 3 },
+  },
+  {
+    id: "naclo4",
+    commonName: "Sodium perchlorate",
+    iupacName: "Sodium perchlorate",
+    formula: "NaClO4",
+    molarMass: 122.44,
+    casNumber: "7601-89-0",
+    physicalState: "solid",
+    density: 2.50,
+    meltingPointC: 468,
+    boilingPointC: 482,
+    solubilityNotes: "Extremely soluble in water (209 g/100 mL at 25 °C); highly deliquescent.",
+    chemicalClass: "salt",
+    substanceColor: "#FFFFFF",
+    notes: "Most soluble of the common perchlorate salts; primary precursor to other perchlorates.",
+    aliases: ["sodium perchlorate", "sodiumperchlorate", "sodium-perchlorate"],
+    hazardCodes: ["OXIDIZING", "IRRITANT"],
+    elements: { Na: 1, Cl: 1, O: 4 },
+  },
+  {
+    id: "kclo4",
+    commonName: "Potassium perchlorate",
+    iupacName: "Potassium perchlorate",
+    formula: "KClO4",
+    molarMass: 138.55,
+    casNumber: "7778-74-7",
+    physicalState: "solid",
+    density: 2.52,
+    meltingPointC: 525,
+    boilingPointC: 600,
+    solubilityNotes: "Sparingly soluble in water (1.5 g/100 mL at 25 °C).",
+    chemicalClass: "salt",
+    substanceColor: "#FFFFFF",
+    notes: "Non-hygroscopic white crystals; standard oxidizer in fireworks, flash powder, and percussion caps.",
+    aliases: ["potassium perchlorate", "potassiumperchlorate", "potassium-perchlorate"],
+    hazardCodes: ["OXIDIZING", "HEALTH_HAZARD"],
+    elements: { K: 1, Cl: 1, O: 4 },
+  },
+  {
+    id: "nabro3",
+    commonName: "Sodium bromate",
+    iupacName: "Sodium bromate",
+    formula: "NaBrO3",
+    molarMass: 150.89,
+    casNumber: "7789-38-0",
+    physicalState: "solid",
+    density: 3.34,
+    meltingPointC: 381,
+    solubilityNotes: "Soluble in water (36.4 g/100 mL at 20 °C).",
+    chemicalClass: "salt",
+    substanceColor: "#FFFFFF",
+    notes: "Strong oxidizer; used in cold-wave hair perms and gold extraction.",
+    aliases: ["sodium bromate", "sodiumbromate", "sodium-bromate"],
+    hazardCodes: ["OXIDIZING", "TOXIC"],
+    elements: { Na: 1, Br: 1, O: 3 },
+  },
+  {
+    id: "kbro3",
+    commonName: "Potassium bromate",
+    iupacName: "Potassium bromate",
+    formula: "KBrO3",
+    molarMass: 167.00,
+    casNumber: "7758-01-2",
+    physicalState: "solid",
+    density: 3.27,
+    meltingPointC: 350,
+    boilingPointC: 370,
+    solubilityNotes: "Soluble in water (6.9 g/100 mL at 20 °C); analytical redox standard in bromatometry.",
+    chemicalClass: "salt",
+    substanceColor: "#FFFFFF",
+    notes: "Primary analytical oxidant and essential reagent in the famous Belousov-Zhabotinsky oscillating reaction.",
+    aliases: ["potassium bromate", "potassiumbromate", "potassium-bromate"],
+    hazardCodes: ["OXIDIZING", "TOXIC", "HEALTH_HAZARD"],
+    elements: { K: 1, Br: 1, O: 3 },
+  },
+  {
+    id: "naio3",
+    commonName: "Sodium iodate",
+    iupacName: "Sodium iodate",
+    formula: "NaIO3",
+    molarMass: 197.89,
+    casNumber: "7681-55-2",
+    physicalState: "solid",
+    density: 4.28,
+    meltingPointC: 560,
+    solubilityNotes: "Soluble in water (9.0 g/100 mL at 20 °C).",
+    chemicalClass: "salt",
+    substanceColor: "#FFFFFF",
+    notes: "White crystalline powder; used in iodized salt and antiseptic formulations.",
+    aliases: ["sodium iodate", "sodiumiodate", "sodium-iodate"],
+    hazardCodes: ["OXIDIZING", "IRRITANT"],
+    elements: { Na: 1, I: 1, O: 3 },
+  },
+  {
+    id: "kio3",
+    commonName: "Potassium iodate",
+    iupacName: "Potassium iodate",
+    formula: "KIO3",
+    molarMass: 214.00,
+    casNumber: "7758-05-6",
+    physicalState: "solid",
+    density: 3.93,
+    meltingPointC: 560,
+    solubilityNotes: "Soluble in water (9.16 g/100 mL at 25 °C); primary standard in iodometric titrations.",
+    chemicalClass: "salt",
+    substanceColor: "#FFFFFF",
+    notes: "Redox primary standard; key component of the Briggs-Rauscher oscillating iodine clock reaction.",
+    aliases: ["potassium iodate", "potassiumiodate", "potassium-iodate"],
+    hazardCodes: ["OXIDIZING", "IRRITANT"],
+    elements: { K: 1, I: 1, O: 3 },
+  },
+  {
+    id: "naio4",
+    commonName: "Sodium periodate",
+    iupacName: "Sodium metaperiodate",
+    formula: "NaIO4",
+    molarMass: 213.89,
+    casNumber: "7790-28-5",
+    physicalState: "solid",
+    density: 3.86,
+    meltingPointC: 300,
+    solubilityNotes: "Soluble in water (14.4 g/100 mL at 25 °C).",
+    chemicalClass: "salt",
+    substanceColor: "#FFFFFF",
+    notes: "Specific glycol-cleaving oxidant in organic chemistry (Malaprade reaction).",
+    aliases: ["sodium periodate", "sodiumperiodate", "sodium-periodate", "sodium metaperiodate"],
+    hazardCodes: ["OXIDIZING", "CORROSIVE", "ENVIRONMENTAL_HAZARD"],
+    elements: { Na: 1, I: 1, O: 4 },
+  },
+  {
+    id: "kio4",
+    commonName: "Potassium periodate",
+    iupacName: "Potassium metaperiodate",
+    formula: "KIO4",
+    molarMass: 230.00,
+    casNumber: "7790-21-8",
+    physicalState: "solid",
+    density: 3.62,
+    meltingPointC: 582,
+    solubilityNotes: "Sparingly soluble in cold water (0.42 g/100 mL at 20 °C), soluble in hot water.",
+    chemicalClass: "salt",
+    substanceColor: "#FFFFFF",
+    notes: "Potassium salt of periodic acid; selective 1,2-diol oxidizer.",
+    aliases: ["potassium periodate", "potassiumperiodate", "potassium-periodate", "potassium metaperiodate"],
+    hazardCodes: ["OXIDIZING", "IRRITANT"],
+    elements: { K: 1, I: 1, O: 4 },
+  },
+
+  // --- SULFUR OXYANIONS & THIOSULFATES ---
+  {
+    id: "na2s2o3",
+    commonName: "Sodium thiosulfate",
+    iupacName: "Disodium thiosulfate",
+    formula: "Na2S2O3",
+    molarMass: 158.11,
+    casNumber: "7772-98-7",
+    physicalState: "solid",
+    density: 1.67,
+    meltingPointC: 48,
+    boilingPointC: 100,
+    solubilityNotes: "Very soluble in water (70 g/100 mL at 20 °C); dissolves silver halides forming [Ag(S2O3)2]3-.",
+    chemicalClass: "salt",
+    substanceColor: "#FFFFFF",
+    notes: "Photographer's 'hypo'; standard titrant in iodometry and antidote for cyanide poisoning.",
+    aliases: ["sodium thiosulfate", "sodiumthiosulfate", "sodium-thiosulfate", "hypo", "antichlor"],
+    hazardCodes: ["IRRITANT"],
+    elements: { Na: 2, S: 2, O: 3 },
+  },
+  {
+    id: "na2s2o4",
+    commonName: "Sodium dithionite",
+    iupacName: "Disodium dithionite",
+    formula: "Na2S2O4",
+    molarMass: 174.11,
+    casNumber: "7775-14-6",
+    physicalState: "solid",
+    density: 2.19,
+    meltingPointC: 52,
+    solubilityNotes: "Soluble in water (18.2 g/100 mL at 20 °C); prone to slow spontaneous oxidation.",
+    chemicalClass: "salt",
+    substanceColor: "#FFFFFF",
+    notes: "Sodium hydrosulfite; powerful water-soluble reducing agent for vat dyeing (indigo) and pulp bleaching.",
+    aliases: ["sodium dithionite", "sodiumdithionite", "sodium-dithionite", "sodium hydrosulfite"],
+    hazardCodes: ["FLAMMABLE", "TOXIC", "IRRITANT"],
+    elements: { Na: 2, S: 2, O: 4 },
+  },
+  {
+    id: "na2s2o5",
+    commonName: "Sodium metabisulfite",
+    iupacName: "Disodium disulfite",
+    formula: "Na2S2O5",
+    molarMass: 190.11,
+    casNumber: "7681-57-4",
+    physicalState: "solid",
+    density: 1.48,
+    meltingPointC: 150,
+    solubilityNotes: "Freely soluble in water (65.9 g/100 mL at 20 °C); releases SO2 with acid.",
+    chemicalClass: "salt",
+    substanceColor: "#FFFFFF",
+    notes: "Antioxidant and preservative (E223); widely used in food, brewing, and gold precipitation.",
+    aliases: ["sodium metabisulfite", "sodiummetabisulfite", "sodium-metabisulfite", "sodium pyrosulfite", "smbs"],
+    hazardCodes: ["TOXIC", "CORROSIVE", "IRRITANT"],
+    elements: { Na: 2, S: 2, O: 5 },
+  },
+  {
+    id: "nahso3",
+    commonName: "Sodium bisulfite",
+    iupacName: "Sodium hydrogen sulfite",
+    formula: "NaHSO3",
+    molarMass: 104.06,
+    casNumber: "7631-90-5",
+    physicalState: "solid",
+    density: 1.48,
+    meltingPointC: 150,
+    solubilityNotes: "Freely soluble in water (approx 42 g/100 mL at 20 °C); smells faintly of SO2.",
+    chemicalClass: "salt",
+    substanceColor: "#FFFFFF",
+    notes: "Forms crystalline bisulfite addition adducts with aldehydes and methyl ketones.",
+    aliases: ["sodium bisulfite", "sodiumbisulfite", "sodium-bisulfite", "sodium hydrogen sulfite"],
+    hazardCodes: ["TOXIC", "IRRITANT"],
+    elements: { Na: 1, H: 1, S: 1, O: 3 },
+  },
+  {
+    id: "na2so3",
+    commonName: "Sodium sulfite",
+    iupacName: "Disodium sulfite",
+    formula: "Na2SO3",
+    molarMass: 126.04,
+    casNumber: "7757-83-7",
+    physicalState: "solid",
+    density: 2.63,
+    meltingPointC: 33.4,
+    solubilityNotes: "Soluble in water (27 g/100 mL at 20 °C).",
+    chemicalClass: "salt",
+    substanceColor: "#FFFFFF",
+    notes: "Oxygen scavenger in boiler feed water and photographic developer preservative.",
+    aliases: ["sodium sulfite", "sodiumsulfite", "sodium-sulfite", "disodium sulfite"],
+    hazardCodes: ["IRRITANT"],
+    elements: { Na: 2, S: 1, O: 3 },
+  },
+  {
+    id: "nahso4",
+    commonName: "Sodium bisulfate",
+    iupacName: "Sodium hydrogen sulfate",
+    formula: "NaHSO4",
+    molarMass: 120.06,
+    casNumber: "7681-38-1",
+    physicalState: "solid",
+    density: 2.44,
+    meltingPointC: 315,
+    solubilityNotes: "Very soluble in water (50 g/100 mL at 20 °C); aqueous solutions are strongly acidic (pH ~1).",
+    chemicalClass: "salt",
+    isAcid: true,
+    acidBaseStrength: "strong",
+    pKa: 1.99,
+    substanceColor: "#FFFFFF",
+    notes: "Dry acid; used as swimming pool pH decreaser and metal finishing pickling salt.",
+    aliases: ["sodium bisulfate", "sodiumbisulfate", "sodium-bisulfate", "sodium hydrogen sulfate", "dry acid"],
+    hazardCodes: ["CORROSIVE", "IRRITANT"],
+    elements: { Na: 1, H: 1, S: 1, O: 4 },
+  },
+  {
+    id: "khso4",
+    commonName: "Potassium bisulfate",
+    iupacName: "Potassium hydrogen sulfate",
+    formula: "KHSO4",
+    molarMass: 136.17,
+    casNumber: "7646-93-7",
+    physicalState: "solid",
+    density: 2.24,
+    meltingPointC: 197,
+    solubilityNotes: "Soluble in water (49 g/100 mL at 20 °C); acidic in solution.",
+    chemicalClass: "salt",
+    isAcid: true,
+    acidBaseStrength: "strong",
+    pKa: 1.99,
+    substanceColor: "#FFFFFF",
+    notes: "Acid salt used in analytical fusion decompositions of refractory oxides and ores.",
+    aliases: ["potassium bisulfate", "potassiumbisulfate", "potassium-bisulfate", "potassium hydrogen sulfate"],
+    hazardCodes: ["CORROSIVE"],
+    elements: { K: 1, H: 1, S: 1, O: 4 },
+  },
+  {
+    id: "na2s",
+    commonName: "Sodium sulfide",
+    iupacName: "Disodium sulfide",
+    formula: "Na2S",
+    molarMass: 78.04,
+    casNumber: "1313-82-2",
+    physicalState: "solid",
+    density: 1.86,
+    meltingPointC: 1172,
+    solubilityNotes: "Very soluble in water (18.6 g/100 mL at 20 °C); hydrolyzes to strongly basic HS- and OH- solution.",
+    chemicalClass: "salt",
+    isBase: true,
+    acidBaseStrength: "strong",
+    substanceColor: "#FFF8DC",
+    notes: "Hygroscopic yellow/white flakes; Kraft pulping reagent and leather dehairing agent.",
+    aliases: ["sodium sulfide", "sodiumsulfide", "sodium-sulfide"],
+    hazardCodes: ["CORROSIVE", "TOXIC", "ENVIRONMENTAL_HAZARD"],
+    elements: { Na: 2, S: 1 },
+  },
+  {
+    id: "nahs",
+    commonName: "Sodium hydrosulfide",
+    iupacName: "Sodium hydrogen sulfide",
+    formula: "NaHS",
+    molarMass: 56.06,
+    casNumber: "16721-80-5",
+    physicalState: "solid",
+    density: 1.79,
+    meltingPointC: 52,
+    solubilityNotes: "Extremely soluble in water (50 g/100 mL at 20 °C); smells of H2S.",
+    chemicalClass: "salt",
+    substanceColor: "#FFFFE0",
+    notes: "Yellowish deliquescent flakes; unhairing agent in tanneries and ore flotation depressant.",
+    aliases: ["sodium hydrosulfide", "sodiumhydrosulfide", "sodium-hydrosulfide", "sodium hydrogen sulfide", "nash"],
+    hazardCodes: ["CORROSIVE", "TOXIC", "ENVIRONMENTAL_HAZARD"],
+    elements: { Na: 1, H: 1, S: 1 },
+  },
+
+  // --- PHOSPHATES ---
+  {
+    id: "h3po4",
+    commonName: "Phosphoric acid",
+    iupacName: "Orthophosphoric acid",
+    formula: "H3PO4",
+    molarMass: 97.994,
+    casNumber: "7664-38-2",
+    physicalState: "liquid",
+    density: 1.88,
+    meltingPointC: 42.4,
+    boilingPointC: 158,
+    solubilityNotes: "Miscible in all proportions with water; viscous colorless syrup (85% commercial).",
+    chemicalClass: "acid",
+    isAcid: true,
+    acidBaseStrength: "weak",
+    pKa: 2.15,
+    substanceColor: "#F5F5F5",
+    notes: "Triprotic acid (pKa1=2.15, pKa2=7.20, pKa3=12.35); rust converter and food acidulant (cola).",
+    aliases: ["phosphoric acid", "orthophosphoric acid"],
+    hazardCodes: ["CORROSIVE"],
+    elements: { H: 3, P: 1, O: 4 },
+  },
+  {
+    id: "na3po4",
+    commonName: "Trisodium phosphate",
+    iupacName: "Trisodium phosphate",
+    formula: "Na3PO4",
+    molarMass: 163.94,
+    casNumber: "7601-54-9",
+    physicalState: "solid",
+    density: 2.54,
+    meltingPointC: 1583,
+    solubilityNotes: "Soluble in water (12.1 g/100 mL at 20 °C); strongly alkaline (pH ~12 in 1% solution).",
+    chemicalClass: "salt",
+    isBase: true,
+    acidBaseStrength: "strong",
+    substanceColor: "#FFFFFF",
+    notes: "TSP cleaning agent, heavy-duty degreaser, and food additive buffer.",
+    aliases: ["trisodium phosphate", "tsp", "sodium phosphate tribasic"],
+    hazardCodes: ["CORROSIVE", "IRRITANT"],
+    elements: { Na: 3, P: 1, O: 4 },
+  },
+  {
+    id: "na2hpo4",
+    commonName: "Disodium hydrogen phosphate",
+    iupacName: "Disodium hydrogen phosphate",
+    formula: "Na2HPO4",
+    molarMass: 141.96,
+    casNumber: "7558-79-4",
+    physicalState: "solid",
+    density: 1.70,
+    meltingPointC: 250,
+    solubilityNotes: "Soluble in water (7.7 g/100 mL at 20 °C); neutral-to-slightly-alkaline buffer (pH ~9).",
+    chemicalClass: "salt",
+    substanceColor: "#FFFFFF",
+    notes: "Key buffer salt paired with NaH2PO4 to make standard physiological pH 7.4 phosphate buffered saline (PBS).",
+    aliases: ["disodium phosphate", "sodium phosphate dibasic", "dsp"],
+    hazardCodes: ["IRRITANT"],
+    elements: { Na: 2, H: 1, P: 1, O: 4 },
+  },
+  {
+    id: "nah2po4",
+    commonName: "Sodium dihydrogen phosphate",
+    iupacName: "Sodium dihydrogen phosphate",
+    formula: "NaH2PO4",
+    molarMass: 119.98,
+    casNumber: "7558-80-7",
+    physicalState: "solid",
+    density: 2.36,
+    meltingPointC: 100,
+    boilingPointC: 204,
+    solubilityNotes: "Very soluble in water (85 g/100 mL at 20 °C); mildly acidic solution (pH ~4.5).",
+    chemicalClass: "salt",
+    isAcid: true,
+    acidBaseStrength: "weak",
+    pKa: 7.20,
+    substanceColor: "#FFFFFF",
+    notes: "Monobasic sodium phosphate; widely used biological buffer component.",
+    aliases: ["sodium dihydrogen phosphate", "monosodium phosphate", "sodium phosphate monobasic", "msp"],
+    hazardCodes: ["IRRITANT"],
+    elements: { Na: 1, H: 2, P: 1, O: 4 },
+  },
+  {
+    id: "kh2po4",
+    commonName: "Potassium dihydrogen phosphate",
+    iupacName: "Potassium dihydrogen phosphate",
+    formula: "KH2PO4",
+    molarMass: 136.08,
+    casNumber: "7778-77-0",
+    physicalState: "solid",
+    density: 2.34,
+    meltingPointC: 252,
+    boilingPointC: 400,
+    solubilityNotes: "Soluble in water (22.6 g/100 mL at 20 °C); transparent tetragonal crystals.",
+    chemicalClass: "salt",
+    isAcid: true,
+    acidBaseStrength: "weak",
+    pKa: 7.20,
+    substanceColor: "#FFFFFF",
+    notes: "Monopotassium phosphate (MKP); major fertilizer source of P and K, and optical nonlinear crystal.",
+    aliases: ["potassium dihydrogen phosphate", "monopotassium phosphate", "mkp", "potassium phosphate monobasic"],
+    hazardCodes: ["IRRITANT"],
+    elements: { K: 1, H: 2, P: 1, O: 4 },
+  },
+  {
+    id: "nah2po2",
+    commonName: "Sodium hypophosphite",
+    iupacName: "Sodium phosphinate",
+    formula: "NaH2PO2",
+    molarMass: 87.98,
+    casNumber: "7681-53-0",
+    physicalState: "solid",
+    density: 1.77,
+    meltingPointC: 90,
+    solubilityNotes: "Extremely soluble in water (100 g/100 mL at 20 °C); deliquescent.",
+    chemicalClass: "salt",
+    substanceColor: "#FFFFFF",
+    notes: "Powerful reducing agent used industrially for electroless nickel plating onto metals and plastics.",
+    aliases: ["sodium hypophosphite", "sodium phosphinate"],
+    hazardCodes: ["IRRITANT"],
+    elements: { Na: 1, H: 2, P: 1, O: 2 },
+  },
+
+  // --- HYDRIDES & REDUCING AGENTS ---
+  {
+    id: "lialh4",
+    commonName: "Lithium aluminium hydride",
+    iupacName: "Lithium tetrahydridoaluminate",
+    formula: "LiAlH4",
+    molarMass: 37.95,
+    casNumber: "16853-85-3",
+    physicalState: "solid",
+    density: 0.917,
+    meltingPointC: 125,
+    solubilityNotes: "Insoluble in water (reacts violently releasing H2); soluble in dry THF and diethyl ether.",
+    chemicalClass: "hydride",
+    substanceColor: "#D3D3D3",
+    notes: "LAH; powerful organic reducing agent that converts esters, carboxylic acids, and amides to primary alcohols and amines.",
+    aliases: ["lithium aluminium hydride", "lithium aluminum hydride", "lah", "lithium aluminohydride"],
+    hazardCodes: ["FLAMMABLE", "CORROSIVE"],
+    elements: { Li: 1, Al: 1, H: 4 },
+  },
+  {
+    id: "nabh4",
+    commonName: "Sodium borohydride",
+    iupacName: "Sodium tetrahydridoborate",
+    formula: "NaBH4",
+    molarMass: 37.83,
+    casNumber: "16940-66-2",
+    physicalState: "solid",
+    density: 1.07,
+    meltingPointC: 400,
+    solubilityNotes: "Soluble in water (55 g/100 mL at 25 °C, slowly decomposes) and methanol; relatively stable selective reductant.",
+    chemicalClass: "hydride",
+    substanceColor: "#FFFFFF",
+    notes: "Mild, selective reducing agent that reduces aldehydes and ketones to alcohols without attacking esters or acids.",
+    aliases: ["sodium borohydride", "sodiumborohydride", "sodium tetrahydridoborate"],
+    hazardCodes: ["FLAMMABLE", "TOXIC", "CORROSIVE"],
+    elements: { Na: 1, B: 1, H: 4 },
+  },
+  {
+    id: "nah",
+    commonName: "Sodium hydride",
+    iupacName: "Sodium hydride",
+    formula: "NaH",
+    molarMass: 23.998,
+    casNumber: "7646-69-7",
+    physicalState: "solid",
+    density: 1.39,
+    meltingPointC: 638,
+    solubilityNotes: "Reacts violently with water releasing flammable H2 gas and NaOH; supplied as 60% dispersion in mineral oil.",
+    chemicalClass: "hydride",
+    isBase: true,
+    acidBaseStrength: "strong",
+    substanceColor: "#C0C0C0",
+    notes: "Superbase in organic synthesis; deprotonates alcohols, phenols, and carbon acids to generate nucleophiles.",
+    aliases: ["sodium hydride", "sodiumhydride"],
+    hazardCodes: ["FLAMMABLE", "CORROSIVE"],
+    elements: { Na: 1, H: 1 },
+  },
+  {
+    id: "kh",
+    commonName: "Potassium hydride",
+    iupacName: "Potassium hydride",
+    formula: "KH",
+    molarMass: 40.106,
+    casNumber: "7693-26-7",
+    physicalState: "solid",
+    density: 1.43,
+    meltingPointC: 300,
+    solubilityNotes: "Reacts violently and pyrophorically with moisture; handled in mineral oil.",
+    chemicalClass: "hydride",
+    isBase: true,
+    acidBaseStrength: "strong",
+    substanceColor: "#B0C4DE",
+    notes: "Extremely strong base, significantly more reactive than NaH.",
+    aliases: ["potassium hydride", "potassiumhydride"],
+    hazardCodes: ["FLAMMABLE", "CORROSIVE"],
+    elements: { K: 1, H: 1 },
+  },
+  {
+    id: "cah2",
+    commonName: "Calcium hydride",
+    iupacName: "Calcium hydride",
+    formula: "CaH2",
+    molarMass: 42.094,
+    casNumber: "7789-78-8",
+    physicalState: "solid",
+    density: 1.70,
+    meltingPointC: 816,
+    solubilityNotes: "Reacts cleanly with water (CaH2 + 2H2O -> Ca(OH)2 + 2H2); popular laboratory solvent drying agent.",
+    chemicalClass: "hydride",
+    substanceColor: "#DCDCDC",
+    notes: "Hydrolith; widely used desiccant for basic organic solvents such as pyridine and amines.",
+    aliases: ["calcium hydride", "calciumhydride", "hydrolith"],
+    hazardCodes: ["FLAMMABLE", "CORROSIVE"],
+    elements: { Ca: 1, H: 2 },
+  },
+  {
+    id: "nan3",
+    commonName: "Sodium azide",
+    iupacName: "Sodium azide",
+    formula: "NaN3",
+    molarMass: 65.01,
+    casNumber: "26628-22-8",
+    physicalState: "solid",
+    density: 1.85,
+    meltingPointC: 275,
+    solubilityNotes: "Soluble in water (41 g/100 mL at 17 °C); rapidly generates N2 on rapid thermal initiation.",
+    chemicalClass: "salt",
+    substanceColor: "#FFFFFF",
+    notes: "Gas generant in automobile airbags; potent antimicrobial preservative in biological buffers.",
+    aliases: ["sodium azide", "sodiumazide"],
+    hazardCodes: ["TOXIC", "HEALTH_HAZARD", "ENVIRONMENTAL_HAZARD"],
+    elements: { Na: 1, N: 3 },
+  },
+  {
+    id: "nanh2",
+    commonName: "Sodium amide",
+    iupacName: "Sodium azanide",
+    formula: "NaNH2",
+    molarMass: 39.019,
+    casNumber: "7782-92-5",
+    physicalState: "solid",
+    density: 1.39,
+    meltingPointC: 210,
+    boilingPointC: 400,
+    solubilityNotes: "Reacts violently with water releasing ammonia and caustic soda.",
+    chemicalClass: "base",
+    isBase: true,
+    acidBaseStrength: "strong",
+    substanceColor: "#E0E0E0",
+    notes: "Sodamide; superbase (pKa of NH3 is 38) used to deprotonate terminal alkynes and in indigo synthesis.",
+    aliases: ["sodium amide", "sodamide", "sodium azanide"],
+    hazardCodes: ["FLAMMABLE", "CORROSIVE", "TOXIC"],
+    elements: { Na: 1, N: 1, H: 2 },
+  },
+  {
+    id: "nh2oh-hcl",
+    commonName: "Hydroxylamine hydrochloride",
+    iupacName: "Hydroxylammonium chloride",
+    formula: "NH4ClO",
+    molarMass: 69.49,
+    casNumber: "5470-11-1",
+    physicalState: "solid",
+    density: 1.67,
+    meltingPointC: 151,
+    solubilityNotes: "Very soluble in water (83 g/100 mL at 20 °C); hygroscopic white needles.",
+    chemicalClass: "salt",
+    isAcid: true,
+    acidBaseStrength: "weak",
+    substanceColor: "#FFFFFF",
+    notes: "Stable salt form of hydroxylamine; converts ketones and aldehydes into oximes.",
+    aliases: ["hydroxylamine hydrochloride", "hydroxylammonium chloride"],
+    hazardCodes: ["TOXIC", "CORROSIVE", "HEALTH_HAZARD", "ENVIRONMENTAL_HAZARD"],
+    elements: { N: 1, H: 4, Cl: 1, O: 1 },
+  },
+
+  // --- BORON & ALKALINE EARTH REAGENTS ---
+  {
+    id: "h3bo3",
+    commonName: "Boric acid",
+    iupacName: "Boric acid",
+    formula: "H3BO3",
+    molarMass: 61.83,
+    casNumber: "10043-35-3",
+    physicalState: "solid",
+    density: 1.44,
+    meltingPointC: 170.9,
+    boilingPointC: 300,
+    solubilityNotes: "Soluble in water (4.7 g/100 mL at 20 °C, 27.5 g/100 mL at 100 °C); mild Lewis acid accepting OH-.",
+    chemicalClass: "acid",
+    isAcid: true,
+    acidBaseStrength: "weak",
+    pKa: 9.24,
+    substanceColor: "#FFFFFF",
+    notes: "Mild antiseptic eyewash, neutron absorber in nuclear power reactors, and flame retardant.",
+    aliases: ["boric acid", "orthoboric acid", "boracic acid"],
+    hazardCodes: ["HEALTH_HAZARD"],
+    elements: { H: 3, B: 1, O: 3 },
+  },
+  {
+    id: "na2b4o7",
+    commonName: "Sodium tetraborate",
+    iupacName: "Disodium tetraborate",
+    formula: "Na2B4O7",
+    molarMass: 201.22,
+    casNumber: "1330-43-4",
+    physicalState: "solid",
+    density: 2.37,
+    meltingPointC: 743,
+    boilingPointC: 1575,
+    solubilityNotes: "Soluble in water (3.1 g/100 mL at 20 °C, 65 g/100 mL at 100 °C).",
+    chemicalClass: "salt",
+    substanceColor: "#FFFFFF",
+    notes: "Borax (decahydrate Na2B4O7·10H2O); flux in metallurgy, slime polymer cross-linker, and borax bead test reagent.",
+    aliases: ["borax", "sodium tetraborate", "sodium borate", "disodium tetraborate"],
+    hazardCodes: ["HEALTH_HAZARD"],
+    elements: { Na: 2, B: 4, O: 7 },
+  },
+  {
+    id: "albr3",
+    commonName: "Aluminum bromide",
+    iupacName: "Aluminium tribromide",
+    formula: "AlBr3",
+    molarMass: 266.694,
+    casNumber: "7727-15-3",
+    physicalState: "solid",
+    density: 3.20,
+    meltingPointC: 97.5,
+    boilingPointC: 255,
+    solubilityNotes: "Hydrolyzes violently in water with HBr evolution; soluble in benzene and CS2.",
+    chemicalClass: "salt",
+    substanceColor: "#F5F5DC",
+    notes: "More potent Lewis acid than AlCl3; widely used in Friedel-Crafts bromination and alkylation.",
+    aliases: ["aluminum bromide", "aluminium bromide", "aluminum tribromide"],
+    hazardCodes: ["CORROSIVE", "IRRITANT"],
+    elements: { Al: 1, Br: 3 },
+  },
+  {
+    id: "alcl3",
+    commonName: "Aluminium chloride",
+    iupacName: "Aluminium trichloride",
+    formula: "AlCl3",
+    molarMass: 133.332,
+    casNumber: "7446-70-0",
+    physicalState: "solid",
+    density: 2.48,
+    meltingPointC: 192.4,
+    boilingPointC: 180,
+    solubilityNotes: "Hydrolyzes violently in water releasing dense HCl gas; soluble in ethanol, ether, and chloroform.",
+    chemicalClass: "salt",
+    substanceColor: "#FFFFE0",
+    notes: "Classic Friedel-Crafts Lewis acid catalyst for acylation and alkylation of aromatic rings.",
+    aliases: ["aluminum chloride", "aluminium chloride", "aluminum trichloride", "alcl3"],
+    hazardCodes: ["CORROSIVE", "IRRITANT"],
+    elements: { Al: 1, Cl: 3 },
+  },
+  {
+    id: "ba-oh-2",
+    commonName: "Barium hydroxide",
+    iupacName: "Barium dihydroxide",
+    formula: "Ba(OH)2",
+    molarMass: 171.341,
+    casNumber: "17194-00-2",
+    physicalState: "solid",
+    density: 2.18,
+    meltingPointC: 78,
+    boilingPointC: 780,
+    solubilityNotes: "Soluble in water (3.89 g/100 mL at 20 °C); clear solution (baryta water) turns cloudy with CO2.",
+    chemicalClass: "base",
+    isBase: true,
+    acidBaseStrength: "strong",
+    substanceColor: "#FFFFFF",
+    notes: "Baryta water; standard quantitative reagent for atmospheric CO2 absorption and organic saponification.",
+    aliases: ["barium hydroxide", "baryta", "baryta water", "barium hydroxide octahydrate"],
+    hazardCodes: ["CORROSIVE", "TOXIC"],
+    elements: { Ba: 1, O: 2, H: 2 },
+  },
+  {
+    id: "caoh2",
+    commonName: "Calcium hydroxide",
+    iupacName: "Calcium dihydroxide",
+    formula: "Ca(OH)2",
+    molarMass: 74.092,
+    casNumber: "1305-62-0",
+    physicalState: "solid",
+    density: 2.21,
+    meltingPointC: 580,
+    solubilityNotes: "Sparingly soluble in water (0.17 g/100 mL at 20 °C); saturated solution is limewater.",
+    chemicalClass: "base",
+    isBase: true,
+    acidBaseStrength: "strong",
+    substanceColor: "#FFFFFF",
+    notes: "Slaked lime; limewater test turns milky upon bubbling CO2 due to CaCO3 precipitation.",
+    aliases: ["calcium hydroxide", "slaked lime", "hydrated lime", "limewater", "pickling lime"],
+    hazardCodes: ["CORROSIVE", "IRRITANT"],
+    elements: { Ca: 1, O: 2, H: 2 },
+  },
+
+  // --- TRANSITION METALS & ORGANIC REAGENTS ---
+  {
+    id: "pbi2",
+    commonName: "Lead(II) iodide",
+    iupacName: "Lead(II) diiodide",
+    formula: "PbI2",
+    molarMass: 461.01,
+    casNumber: "10101-63-0",
+    physicalState: "solid",
+    density: 6.16,
+    meltingPointC: 402,
+    boilingPointC: 872,
+    solubilityNotes: "Sparingly soluble in cold water (0.06 g/100 mL at 20 °C), dissolves in boiling water and recrystallizes on cooling.",
+    chemicalClass: "salt",
+    substanceColor: "#FFD700",
+    notes: "Spectacular golden hexagonal crystalline flakes; star of the 'Golden Rain' chemical demonstration.",
+    aliases: ["lead iodide", "lead(ii) iodide", "golden rain"],
+    hazardCodes: ["TOXIC", "HEALTH_HAZARD", "ENVIRONMENTAL_HAZARD"],
+    elements: { Pb: 1, I: 2 },
+  },
+  {
+    id: "ch3coona",
+    commonName: "Sodium acetate",
+    iupacName: "Sodium ethanoate",
+    formula: "CH3COONa",
+    molarMass: 82.034,
+    casNumber: "127-09-3",
+    physicalState: "solid",
+    density: 1.53,
+    meltingPointC: 324,
+    boilingPointC: 881,
+    solubilityNotes: "Very soluble in water (123 g/100 mL at 20 °C); trihydrate forms supersaturated solutions that crystallize exothermically.",
+    chemicalClass: "salt",
+    substanceColor: "#FFFFFF",
+    notes: "Common chemical in 'hot ice' instant hand warmers and acetic acid / acetate buffer solutions.",
+    aliases: ["sodium acetate", "sodium ethanoate", "hot ice"],
+    hazardCodes: ["IRRITANT"],
+    elements: { C: 2, H: 3, Na: 1, O: 2 },
+  },
+  {
+    id: "h2c2o4",
+    commonName: "Oxalic acid",
+    iupacName: "Ethanedioic acid",
+    formula: "H2C2O4",
+    molarMass: 90.03,
+    casNumber: "144-62-7",
+    physicalState: "solid",
+    density: 1.90,
+    meltingPointC: 189.5,
+    solubilityNotes: "Soluble in water (14.3 g/100 mL at 25 °C); strong diprotic organic acid.",
+    chemicalClass: "acid",
+    isAcid: true,
+    acidBaseStrength: "weak",
+    pKa: 1.25,
+    substanceColor: "#FFFFFF",
+    notes: "Simplest dicarboxylic acid; powerful bidentate chelator for iron rust stains and standard in redox permanganometry.",
+    aliases: ["oxalic acid", "ethanedioic acid"],
+    hazardCodes: ["TOXIC", "CORROSIVE"],
+    elements: { C: 2, H: 2, O: 4 },
+  },
+  {
+    id: "na3c6h5o7",
+    commonName: "Sodium citrate",
+    iupacName: "Trisodium 2-hydroxypropane-1,2,3-tricarboxylate",
+    formula: "Na3C6H5O7",
+    molarMass: 258.07,
+    casNumber: "68-04-2",
+    physicalState: "solid",
+    density: 1.70,
+    solubilityNotes: "Freely soluble in water (72 g/100 mL at 25 °C); buffering agent.",
+    chemicalClass: "salt",
+    substanceColor: "#FFFFFF",
+    notes: "Trisodium citrate; clinical blood anticoagulant and buffer in food and biochemistry.",
+    aliases: ["sodium citrate", "sodiumcitrate", "trisodium citrate"],
+    hazardCodes: ["IRRITANT"],
+    elements: { Na: 3, C: 6, H: 5, O: 7 },
+  },
+  {
+    id: "can",
+    commonName: "Ceric ammonium nitrate",
+    iupacName: "Diammonium cerium(IV) hexanitrate",
+    formula: "(NH4)2Ce(NO3)6",
+    molarMass: 548.22,
+    casNumber: "16774-21-3",
+    physicalState: "solid",
+    density: 2.49,
+    meltingPointC: 107,
+    solubilityNotes: "Very soluble in water (141 g/100 mL at 25 °C); intense bright orange crystals.",
+    chemicalClass: "salt",
+    substanceColor: "#FF4500",
+    notes: "CAN oxidant; one-electron oxidant in organic synthesis and standard spot test for alcohols.",
+    aliases: ["ceric ammonium nitrate", "ammonium cerium(iv) nitrate", "can"],
+    hazardCodes: ["OXIDIZING", "CORROSIVE", "IRRITANT", "ENVIRONMENTAL_HAZARD"],
+    elements: { Ce: 1, N: 8, H: 8, O: 18 },
+  },
+  {
+    id: "zno",
+    commonName: "Zinc oxide",
+    iupacName: "Zinc oxide",
+    formula: "ZnO",
+    molarMass: 81.38,
+    casNumber: "1314-13-2",
+    physicalState: "solid",
+    density: 5.61,
+    meltingPointC: 1975,
+    solubilityNotes: "Insoluble in water; dissolves in dilute acids and strong bases (amphoteric oxide).",
+    chemicalClass: "oxide",
+    substanceColor: "#FFFFFF",
+    notes: "Thermochromic white powder (turns yellow when heated); mineral sunscreen and rubber vulcanization activator.",
+    aliases: ["zinc oxide", "philosopher's wool", "zinc white", "calamine"],
+    hazardCodes: ["ENVIRONMENTAL_HAZARD"],
+    elements: { Zn: 1, O: 1 },
+  },
+  {
+    id: "knh2",
+    commonName: "Potassium amide",
+    iupacName: "Potassium azanide",
+    formula: "KNH2",
+    molarMass: 55.12,
+    casNumber: "17242-52-3",
+    physicalState: "solid",
+    density: 1.62,
+    meltingPointC: 338,
+    solubilityNotes: "Reacts vigorously with water releasing ammonia and KOH.",
+    chemicalClass: "base",
+    isBase: true,
+    acidBaseStrength: "strong",
+    substanceColor: "#F5F5DC",
+    notes: "Potassamide superbase used in liquid ammonia organic chemistry.",
+    aliases: ["potassium amide", "potassamide"],
+    hazardCodes: ["FLAMMABLE", "CORROSIVE"],
+    elements: { K: 1, N: 1, H: 2 },
+  },
+  {
+    id: "lih",
+    commonName: "Lithium hydride",
+    iupacName: "Lithium hydride",
+    formula: "LiH",
+    molarMass: 7.948,
+    casNumber: "7580-67-8",
+    physicalState: "solid",
+    density: 0.78,
+    meltingPointC: 689,
+    solubilityNotes: "Reacts with water releasing hydrogen gas and lithium hydroxide.",
+    chemicalClass: "hydride",
+    isBase: true,
+    acidBaseStrength: "strong",
+    substanceColor: "#E6E6FA",
+    notes: "Lightest metal hydride; high hydrogen content reducing agent and heat storage material.",
+    aliases: ["lithium hydride", "lithiumhydride"],
+    hazardCodes: ["FLAMMABLE", "CORROSIVE"],
+    elements: { Li: 1, H: 1 },
+  },
+  {
+    id: "crpo4",
+    commonName: "Chromium(III) phosphate",
+    iupacName: "Chromium(III) phosphate",
+    formula: "CrPO4",
+    molarMass: 146.97,
+    casNumber: "7789-04-0",
+    physicalState: "solid",
+    density: 2.42,
+    meltingPointC: 1500,
+    solubilityNotes: "Insoluble in water and dilute acids; dissolves in concentrated mineral acids.",
+    chemicalClass: "salt",
+    substanceColor: "#2E8B57",
+    notes: "Green amorphous or crystalline pigment with high thermal resistance and corrosion inhibitor properties.",
+    aliases: ["chromium phosphate", "chromic phosphate", "chromium(iii) phosphate"],
+    hazardCodes: ["IRRITANT"],
+    elements: { Cr: 1, P: 1, O: 4 },
+  },
+  {
+    id: "nh4pf6",
+    commonName: "Ammonium hexafluorophosphate",
+    iupacName: "Ammonium hexafluorophosphate(1-)",
+    formula: "NH4PF6",
+    molarMass: 163.00,
+    casNumber: "16941-11-0",
+    physicalState: "solid",
+    density: 2.18,
+    meltingPointC: 198,
+    solubilityNotes: "Soluble in water, acetone, and methanol; common source of non-coordinating PF6- anion.",
+    chemicalClass: "salt",
+    substanceColor: "#FFFFFF",
+    notes: "Inorganic salt providing inert, weakly coordinating PF6- counterion for organometallic cation precipitation.",
+    aliases: ["ammonium hexafluorophosphate"],
+    hazardCodes: ["CORROSIVE", "TOXIC"],
+    elements: { N: 1, H: 4, P: 1, F: 6 },
+  },
+  {
+    id: "kpf6",
+    commonName: "Potassium hexafluorophosphate",
+    iupacName: "Potassium hexafluorophosphate(1-)",
+    formula: "KPF6",
+    molarMass: 184.06,
+    casNumber: "17084-13-8",
+    physicalState: "solid",
+    density: 2.75,
+    meltingPointC: 575,
+    solubilityNotes: "Soluble in water (8.3 g/100 mL at 20 °C); standard electrolyte salt.",
+    chemicalClass: "salt",
+    substanceColor: "#FFFFFF",
+    notes: "White crystalline powder used in non-aqueous electrochemistry and ionic liquids.",
+    aliases: ["potassium hexafluorophosphate"],
+    hazardCodes: ["CORROSIVE", "IRRITANT"],
+    elements: { K: 1, P: 1, F: 6 },
+  },
+  {
+    id: "lipf6",
+    commonName: "Lithium hexafluorophosphate",
+    iupacName: "Lithium hexafluorophosphate(1-)",
+    formula: "LiPF6",
+    molarMass: 151.91,
+    casNumber: "21324-40-3",
+    physicalState: "solid",
+    density: 1.50,
+    meltingPointC: 200,
+    solubilityNotes: "Highly soluble in organic carbonate solvents (EC/DMC/EMC) for lithium-ion battery electrolytes.",
+    chemicalClass: "salt",
+    substanceColor: "#FFFFFF",
+    notes: "Premier commercial electrolyte salt used in rechargeable lithium-ion batteries.",
+    aliases: ["lithium hexafluorophosphate"],
+    hazardCodes: ["TOXIC", "CORROSIVE", "HEALTH_HAZARD"],
+    elements: { Li: 1, P: 1, F: 6 },
+  },
+  {
+    id: "lioh",
+    commonName: "Lithium hydroxide",
+    iupacName: "Lithium hydroxide",
+    formula: "LiOH",
+    molarMass: 23.947,
+    casNumber: "1310-65-2",
+    physicalState: "solid",
+    density: 1.46,
+    meltingPointC: 462,
+    boilingPointC: 924,
+    solubilityNotes: "Soluble in water (12.8 g/100 mL at 20 °C); strong alkali, absorbs CO2.",
+    chemicalClass: "base",
+    isBase: true,
+    acidBaseStrength: "strong",
+    substanceColor: "#FFFFFF",
+    notes: "Lightest alkali hydroxide; CO2 scrubber in spacecraft and submarines, and cathode precursor in lithium batteries.",
+    aliases: ["lithium hydroxide", "lithiumhydroxide", "lithium hydroxide monohydrate"],
+    hazardCodes: ["CORROSIVE", "TOXIC"],
+    elements: { Li: 1, O: 1, H: 1 },
+  },
+  {
+    id: "csoh",
+    commonName: "Cesium hydroxide",
+    iupacName: "Caesium hydroxide",
+    formula: "CsOH",
+    molarMass: 149.91,
+    casNumber: "21351-79-1",
+    physicalState: "solid",
+    density: 3.68,
+    meltingPointC: 342,
+    solubilityNotes: "Extremely soluble in water (395 g/100 mL at 15 °C); dissolves with intense heat.",
+    chemicalClass: "base",
+    isBase: true,
+    acidBaseStrength: "strong",
+    substanceColor: "#F5F5DC",
+    notes: "Strongest known conventional base in aqueous chemistry; etches silicon rapidly.",
+    aliases: ["cesium hydroxide", "caesium hydroxide"],
+    hazardCodes: ["CORROSIVE", "TOXIC"],
+    elements: { Cs: 1, O: 1, H: 1 },
+  },
+  {
+    id: "coo",
+    commonName: "Cobalt(II) oxide",
+    iupacName: "Cobalt(II) oxide",
+    formula: "CoO",
+    molarMass: 74.93,
+    casNumber: "1307-96-6",
+    physicalState: "solid",
+    density: 6.44,
+    meltingPointC: 1933,
+    solubilityNotes: "Insoluble in water; dissolves in hot mineral acids.",
+    chemicalClass: "oxide",
+    substanceColor: "#556B2F",
+    notes: "Olive-green to black powder; primary pigment for cobalt blue ceramics and enamels.",
+    aliases: ["cobalt oxide", "cobalt(ii) oxide", "cobaltous oxide"],
+    hazardCodes: ["TOXIC", "HEALTH_HAZARD", "ENVIRONMENTAL_HAZARD"],
+    elements: { Co: 1, O: 1 },
+  },
+  {
+    id: "gd-no3-3",
+    commonName: "Gadolinium(III) nitrate",
+    iupacName: "Gadolinium(III) nitrate",
+    formula: "Gd(NO3)3",
+    molarMass: 343.26,
+    casNumber: "10168-88-4",
+    physicalState: "solid",
+    density: 2.40,
+    meltingPointC: 91,
+    solubilityNotes: "Freely soluble in water; deliquescent hexahydrate crystals.",
+    chemicalClass: "salt",
+    substanceColor: "#FFFFFF",
+    notes: "Soluble neutron poison used in nuclear reactor safety shutdown systems.",
+    aliases: ["gadolinium nitrate", "gadolinium(iii) nitrate"],
+    hazardCodes: ["OXIDIZING", "IRRITANT"],
+    elements: { Gd: 1, N: 3, O: 9 },
+  },
+  {
+    id: "eu-no3-3",
+    commonName: "Europium(III) nitrate",
+    iupacName: "Europium(III) nitrate",
+    formula: "Eu(NO3)3",
+    molarMass: 337.97,
+    casNumber: "10138-01-9",
+    physicalState: "solid",
+    density: 2.40,
+    meltingPointC: 85,
+    solubilityNotes: "Freely soluble in water; exhibits brilliant red luminescence under UV excitation.",
+    chemicalClass: "salt",
+    substanceColor: "#FFFFFF",
+    notes: "Precursor for red phosphor materials in lighting and anti-counterfeiting security inks.",
+    aliases: ["europium nitrate", "europium(iii) nitrate"],
+    hazardCodes: ["OXIDIZING", "IRRITANT"],
+    elements: { Eu: 1, N: 3, O: 9 },
+  },
+  {
+    id: "nabf4",
+    commonName: "Sodium tetrafluoroborate",
+    iupacName: "Sodium tetrafluoroborate(1-)",
+    formula: "NaBF4",
+    molarMass: 109.79,
+    casNumber: "13755-29-8",
+    physicalState: "solid",
+    density: 2.47,
+    meltingPointC: 384,
+    solubilityNotes: "Very soluble in water (108 g/100 mL at 25 °C); soluble in free alcohols.",
+    chemicalClass: "salt",
+    substanceColor: "#FFFFFF",
+    notes: "Non-coordinating fluoroborate source; catalyst in organic synthesis and sand casting flux.",
+    aliases: ["sodium tetrafluoroborate", "sodium fluoroborate"],
+    hazardCodes: ["CORROSIVE"],
+    elements: { Na: 1, B: 1, F: 4 },
+  },
+  {
+    id: "kbf4",
+    commonName: "Potassium tetrafluoroborate",
+    iupacName: "Potassium tetrafluoroborate(1-)",
+    formula: "KBF4",
+    molarMass: 125.90,
+    casNumber: "14075-53-7",
+    physicalState: "solid",
+    density: 2.50,
+    meltingPointC: 530,
+    solubilityNotes: "Sparingly soluble in cold water (0.44 g/100 mL at 20 °C); soluble in hot water.",
+    chemicalClass: "salt",
+    substanceColor: "#FFFFFF",
+    notes: "Grain-refining additive in aluminum metallurgy and electrochemical fluxes.",
+    aliases: ["potassium tetrafluoroborate", "potassium fluoroborate"],
+    hazardCodes: ["CORROSIVE", "IRRITANT"],
+    elements: { K: 1, B: 1, F: 4 },
+  },
+  {
+    id: "hbf4",
+    commonName: "Fluoroboric acid",
+    iupacName: "Tetrafluoroboric acid",
+    formula: "HBF4",
+    molarMass: 87.81,
+    casNumber: "16872-11-0",
+    physicalState: "liquid",
+    density: 1.40,
+    meltingPointC: -90,
+    boilingPointC: 130,
+    solubilityNotes: "Miscible in water (commercial 48–50% aqueous solution).",
+    chemicalClass: "acid",
+    isAcid: true,
+    acidBaseStrength: "strong",
+    substanceColor: "#F8F8FF",
+    notes: "Strong non-oxidizing acid (pKa ~ -0.4); generates stable diazonium tetrafluoroborate salts for the Schiemann reaction.",
+    aliases: ["fluoroboric acid", "tetrafluoroboric acid", "hydrofluoroboric acid"],
+    hazardCodes: ["CORROSIVE"],
+    elements: { H: 1, B: 1, F: 4 },
+  },
+];
+
+// ---------------------------------------------------------------------------
+// 4. TRANSACTION: PURGE NOISE, MERGE DUPLICATES, ENRICH CANONICAL REAGENTS
+// ---------------------------------------------------------------------------
+const runCleanupAndEnrichment = db.transaction(() => {
+  // A. PURGE NOISE CHEMICALS
   if (noiseIds.length > 0) {
     const chunk = 500;
     for (let i = 0; i < noiseIds.length; i += chunk) {
       const slice = noiseIds.slice(i, i + chunk);
       const marks = slice.map(() => "?").join(",");
 
-      // Remove dependent rows first
       db.prepare(`DELETE FROM chemical_aliases WHERE chemical_id IN (${marks})`).run(...slice);
       db.prepare(`DELETE FROM chemical_hazards WHERE chemical_id IN (${marks})`).run(...slice);
       db.prepare(`DELETE FROM chemical_elements WHERE chemical_id IN (${marks})`).run(...slice);
       db.prepare(`DELETE FROM molecule_atoms WHERE chemical_id IN (${marks})`).run(...slice);
       db.prepare(`DELETE FROM molecule_bonds WHERE chemical_id IN (${marks})`).run(...slice);
 
-      // Find any patent reaction referencing these noise chemicals
       const rxnIds = (
-        db
-          .prepare(
-            `SELECT DISTINCT reaction_id FROM reaction_reactants WHERE chemical_id IN (${marks})
-             UNION
-             SELECT DISTINCT reaction_id FROM reaction_products WHERE chemical_id IN (${marks})`
-          )
-          .all(...slice, ...slice) as { reaction_id: string }[]
+        db.prepare(
+          `SELECT DISTINCT reaction_id FROM reaction_reactants WHERE chemical_id IN (${marks})
+           UNION
+           SELECT DISTINCT reaction_id FROM reaction_products WHERE chemical_id IN (${marks})`
+        ).all(...slice, ...slice) as { reaction_id: string }[]
       ).map((r) => r.reaction_id);
 
       if (rxnIds.length > 0) {
@@ -94,543 +2143,439 @@ const cleanupTx = db.transaction(() => {
     }
   }
 
-  // 3. Fix Corrupted / Misrepresented Canonical Chemicals
-  // Phosphorus
-  db.prepare(`
-    UPDATE chemicals
-    SET common_name = 'Phosphorus', formula = 'P', molar_mass = 30.974, chemical_class = 'nonmetal', is_elemental = 1
-    WHERE id = 'p'
-  `).run();
-
-  // Iodine
-  db.prepare(`
-    UPDATE chemicals
-    SET common_name = 'Iodine', formula = 'I2', molar_mass = 253.808, chemical_class = 'halogen', is_elemental = 1
-    WHERE id = 'i'
-  `).run();
-
-  // Hydrogen
-  db.prepare(`
-    UPDATE chemicals
-    SET common_name = 'Hydrogen', formula = 'H2', molar_mass = 2.016, chemical_class = 'nonmetal', is_elemental = 1
-    WHERE id = 'h'
-  `).run();
-
-  // Sodium thiosulfate
-  db.prepare(`
-    UPDATE chemicals
-    SET common_name = 'Sodium thiosulfate', formula = 'Na2S2O3', molar_mass = 158.11, chemical_class = 'salt'
-    WHERE id = 'sodium-thiosulfate'
-  `).run();
-
-  db.prepare(`
-    UPDATE chemicals
-    SET common_name = 'Sodium thiosulfate pentahydrate', formula = 'Na2S2O3', molar_mass = 248.18, chemical_class = 'salt'
-    WHERE id = 'sodium-thiosulfate-pentahydrate'
-  `).run();
-
-  // Sodium sulfate & sulfite
-  db.prepare(`
-    UPDATE chemicals
-    SET common_name = 'Sodium sulfate', formula = 'Na2SO4', molar_mass = 142.04, chemical_class = 'salt'
-    WHERE id = 'sodium-sulphate'
-  `).run();
-
-  db.prepare(`
-    UPDATE chemicals
-    SET common_name = 'Sodium sulfite', formula = 'Na2SO3', molar_mass = 126.04, chemical_class = 'salt'
-    WHERE id = 'sodium-sulphite' OR id = 'sodium-sulfite-heptahydrate'
-  `).run();
-
-  db.prepare(`
-    UPDATE chemicals
-    SET common_name = 'Sodium dithionite', formula = 'Na2S2O4', molar_mass = 174.11, chemical_class = 'salt'
-    WHERE id = 'sodium-hydrosulfite'
-  `).run();
-
-  // Cupric chloride & copper iodide
-  db.prepare(`
-    UPDATE chemicals
-    SET common_name = 'Copper(II) chloride', formula = 'CuCl2', molar_mass = 134.45, chemical_class = 'salt'
-    WHERE id = 'cupric-chloride' OR id = 'cupric-chloride-dihydrate'
-  `).run();
-
-  db.prepare(`
-    UPDATE chemicals
-    SET common_name = 'Copper(I) iodide', formula = 'CuI', molar_mass = 190.45, chemical_class = 'salt'
-    WHERE id = 'copper-iodide'
-  `).run();
-
-  // Tin(II) chloride
-  db.prepare(`
-    UPDATE chemicals
-    SET common_name = 'Tin(II) chloride', formula = 'SnCl2', molar_mass = 189.60, chemical_class = 'salt'
-    WHERE id = 'stannous-chloride'
-  `).run();
-
-  // Carbon tetrachloride
-  db.prepare(`
-    UPDATE chemicals
-    SET common_name = 'Carbon tetrachloride', formula = 'CCl4', molar_mass = 153.82, chemical_class = 'organic'
-    WHERE id = 'carbontetrachloride'
-  `).run();
-
-  // Osmium tetroxide & Platinum oxide
-  db.prepare(`
-    UPDATE chemicals
-    SET common_name = 'Osmium tetroxide', formula = 'OsO4', molar_mass = 254.23, chemical_class = 'oxide'
-    WHERE id = 'osmium-tetroxide'
-  `).run();
-
-  db.prepare(`
-    UPDATE chemicals
-    SET common_name = 'Platinum(IV) oxide', formula = 'PtO2', molar_mass = 227.08, chemical_class = 'oxide'
-    WHERE id = 'platinum-oxide'
-  `).run();
-
-  // Iron salts
-  db.prepare(`
-    UPDATE chemicals
-    SET common_name = 'Iron(II) chloride tetrahydrate', formula = 'FeCl2', molar_mass = 198.81, chemical_class = 'salt'
-    WHERE id = 'iron-ii-chloride-tetrahydrate'
-  `).run();
-
-  db.prepare(`
-    UPDATE chemicals
-    SET common_name = 'Iron(II) sulfate heptahydrate', formula = 'FeSO4', molar_mass = 278.01, chemical_class = 'salt'
-    WHERE id = 'iron-ii-sulphate-heptahydrate'
-  `).run();
-
-  // Aluminum reagents
-  db.prepare(`
-    UPDATE chemicals
-    SET common_name = 'Aluminum isopropoxide', formula = 'C9H21AlO3', molar_mass = 204.25, chemical_class = 'organic'
-    WHERE id = 'aluminum-isopropoxide' OR id = 'aluminum-isopropylate'
-  `).run();
-
-  db.prepare(`
-    UPDATE chemicals
-    SET common_name = 'Diisobutylaluminum hydride', formula = 'C8H19Al', molar_mass = 142.22, chemical_class = 'organic'
-    WHERE id = 'diisobutylaluminum-hydride'
-  `).run();
-
-  // Purge bogus non-chemical descriptors
-  db.prepare(`
-    DELETE FROM chemicals
-    WHERE id IN (
-      '14n-potassium-hydroxide', 'iron-ii', 'sodium-amalgam', 'oily-nitrated-product',
-      'acid-chloride-2', 'peroxide', 'hydrobromide-salt', 'potassium-dichromate-sulfuric-acid',
-      'bis-4-hydroxyphenyl-methane-bisphenol-f', 'bis-tert-butyl-chromate'
-    )
-  `).run();
-
-  // Sodium tetraborate (Borax)
-  db.prepare(`
-    UPDATE chemicals
-    SET common_name = 'Sodium tetraborate (Borax)', molar_mass = 201.22
-    WHERE id = 'na2b4o7'
-  `).run();
-
-  // Sodium periodate
-  db.prepare(`
-    UPDATE chemicals
-    SET common_name = 'Sodium periodate', molar_mass = 213.89
-    WHERE id = 'naio4'
-  `).run();
-
-  // 4. Add Missing Standard Reagents
-  const newChemicals: {
-    id: string;
-    commonName: string;
-    formula: string;
-    molarMass: number;
-    chemicalClass: string;
-    physicalState: string;
-    substanceColor?: string;
-    density?: number;
-    solubilityNotes?: string;
-    aliases: string[];
-    elements: Record<string, number>;
-  }[] = [
-    {
-      id: "namno4",
-      commonName: "Sodium permanganate",
-      formula: "NaMnO4",
-      molarMass: 141.925,
-      chemicalClass: "salt",
-      physicalState: "solid",
-      substanceColor: "#800080",
-      density: 1.97,
-      solubilityNotes: "Very soluble in water (readily soluble oxidizing agent).",
-      aliases: ["sodiumpermanganate", "sodium-permanganate", "sodium manganate(vii)"],
-      elements: { Na: 1, Mn: 1, O: 4 },
-    },
-    {
-      id: "k2mno4",
-      commonName: "Potassium manganate",
-      formula: "K2MnO4",
-      molarMass: 197.132,
-      chemicalClass: "salt",
-      physicalState: "solid",
-      substanceColor: "#006400",
-      density: 2.78,
-      solubilityNotes: "Soluble in water, forms intense dark green solution.",
-      aliases: ["potassiummanganate", "potassium-manganate", "potassium manganate(vi)"],
-      elements: { K: 2, Mn: 1, O: 4 },
-    },
-    {
-      id: "na2mno4",
-      commonName: "Sodium manganate",
-      formula: "Na2MnO4",
-      molarMass: 164.921,
-      chemicalClass: "salt",
-      physicalState: "solid",
-      substanceColor: "#006400",
-      density: 2.5,
-      solubilityNotes: "Soluble in alkaline water.",
-      aliases: ["sodiummanganate", "sodium-manganate", "sodium manganate(vi)"],
-      elements: { Na: 2, Mn: 1, O: 4 },
-    },
-    {
-      id: "k2s2o3",
-      commonName: "Potassium thiosulfate",
-      formula: "K2S2O3",
-      molarMass: 190.32,
-      chemicalClass: "salt",
-      physicalState: "solid",
-      substanceColor: "#FFFFFF",
-      density: 2.1,
-      solubilityNotes: "Freely soluble in water.",
-      aliases: ["potassiumthiosulfate", "potassium-thiosulfate"],
-      elements: { K: 2, S: 2, O: 3 },
-    },
-    {
-      id: "nh4-2-s2o3",
-      commonName: "Ammonium thiosulfate",
-      formula: "(NH4)2S2O3",
-      molarMass: 148.2,
-      chemicalClass: "salt",
-      physicalState: "solid",
-      substanceColor: "#FFFFFF",
-      density: 1.67,
-      solubilityNotes: "Rapid fixer in photography, highly water soluble.",
-      aliases: ["ammoniumthiosulfate", "ammonium-thiosulfate", "ats"],
-      elements: { N: 2, H: 8, S: 2, O: 3 },
-    },
-    {
-      id: "na4-fe-cn-6",
-      commonName: "Sodium ferrocyanide",
-      formula: "Na4[Fe(CN)6]",
-      molarMass: 303.93,
-      chemicalClass: "salt",
-      physicalState: "solid",
-      substanceColor: "#FFFFE0",
-      density: 1.46,
-      solubilityNotes: "Soluble in water, yellow crystals.",
-      aliases: [
-        "sodium ferrocyanide",
-        "sodiumferrocyanide",
-        "sodium-ferrocyanide",
-        "yellow prussiate of soda",
-        "sodium hexacyanoferrate(ii)",
-      ],
-      elements: { Na: 4, Fe: 1, C: 6, N: 6 },
-    },
-    {
-      id: "na3-fe-cn-6",
-      commonName: "Sodium ferricyanide",
-      formula: "Na3[Fe(CN)6]",
-      molarMass: 280.93,
-      chemicalClass: "salt",
-      physicalState: "solid",
-      substanceColor: "#B22222",
-      density: 1.8,
-      solubilityNotes: "Soluble in water, red crystals.",
-      aliases: [
-        "sodium ferricyanide",
-        "sodiumferricyanide",
-        "sodium-ferricyanide",
-        "red prussiate of soda",
-        "sodium hexacyanoferrate(iii)",
-      ],
-      elements: { Na: 3, Fe: 1, C: 6, N: 6 },
-    },
-    {
-      id: "khso3",
-      commonName: "Potassium bisulfite",
-      formula: "KHSO3",
-      molarMass: 120.17,
-      chemicalClass: "salt",
-      physicalState: "solid",
-      substanceColor: "#FFFFFF",
-      density: 2.3,
-      solubilityNotes: "Soluble in water.",
-      aliases: ["potassiumbisulfite", "potassium-bisulfite", "potassium hydrogen sulfite"],
-      elements: { K: 1, H: 1, S: 1, O: 3 },
-    },
-    {
-      id: "k2s2o5",
-      commonName: "Potassium metabisulfite",
-      formula: "K2S2O5",
-      molarMass: 222.32,
-      chemicalClass: "salt",
-      physicalState: "solid",
-      substanceColor: "#FFFFFF",
-      density: 2.34,
-      solubilityNotes: "Common antioxidant and antimicrobial agent, soluble in water.",
-      aliases: ["potassiummetabisulfite", "potassium-metabisulfite", "potassium pyrosulfite", "kmb"],
-      elements: { K: 2, S: 2, O: 5 },
-    },
-    {
-      id: "kno2",
-      commonName: "Potassium nitrite",
-      formula: "KNO2",
-      molarMass: 85.1,
-      chemicalClass: "salt",
-      physicalState: "solid",
-      substanceColor: "#FFFFFF",
-      density: 1.92,
-      solubilityNotes: "Deliquescent white crystalline solid, very soluble in water.",
-      aliases: ["potassiumnitrite", "potassium-nitrite"],
-      elements: { K: 1, N: 1, O: 2 },
-    },
-    {
-      id: "kclo",
-      commonName: "Potassium hypochlorite",
-      formula: "KClO",
-      molarMass: 90.55,
-      chemicalClass: "salt",
-      physicalState: "solid",
-      substanceColor: "#FFFFFF",
-      density: 1.16,
-      solubilityNotes: "Strong oxidizer, soluble in water.",
-      aliases: ["potassiumhypochlorite", "potassium-hypochlorite"],
-      elements: { K: 1, Cl: 1, O: 1 },
-    },
-    {
-      id: "ca-clo-2",
-      commonName: "Calcium hypochlorite",
-      formula: "Ca(ClO)2",
-      molarMass: 142.98,
-      chemicalClass: "salt",
-      physicalState: "solid",
-      substanceColor: "#FFFFFF",
-      density: 2.35,
-      solubilityNotes: "Bleaching powder, water disinfectant.",
-      aliases: ["calcium hypochlorite", "calciumhypochlorite", "bleaching powder"],
-      elements: { Ca: 1, Cl: 2, O: 2 },
-    },
-    {
-      id: "naclo3",
-      commonName: "Sodium chlorate",
-      formula: "NaClO3",
-      molarMass: 106.44,
-      chemicalClass: "salt",
-      physicalState: "solid",
-      substanceColor: "#FFFFFF",
-      density: 2.49,
-      solubilityNotes: "Very soluble in water, strong oxidizer.",
-      aliases: ["sodiumchlorate", "sodium-chlorate"],
-      elements: { Na: 1, Cl: 1, O: 3 },
-    },
-    {
-      id: "nabro3",
-      commonName: "Sodium bromate",
-      formula: "NaBrO3",
-      molarMass: 150.89,
-      chemicalClass: "salt",
-      physicalState: "solid",
-      substanceColor: "#FFFFFF",
-      density: 3.34,
-      solubilityNotes: "Soluble in water.",
-      aliases: ["sodiumbromate", "sodium-bromate"],
-      elements: { Na: 1, Br: 1, O: 3 },
-    },
-    {
-      id: "kbro3",
-      commonName: "Potassium bromate",
-      formula: "KBrO3",
-      molarMass: 167.0,
-      chemicalClass: "salt",
-      physicalState: "solid",
-      substanceColor: "#FFFFFF",
-      density: 3.27,
-      solubilityNotes: "Soluble in water, oxidizing agent.",
-      aliases: ["potassiumbromate", "potassium-bromate"],
-      elements: { K: 1, Br: 1, O: 3 },
-    },
-    {
-      id: "naio3",
-      commonName: "Sodium iodate",
-      formula: "NaIO3",
-      molarMass: 197.89,
-      chemicalClass: "salt",
-      physicalState: "solid",
-      substanceColor: "#FFFFFF",
-      density: 4.28,
-      solubilityNotes: "Moderately soluble in water.",
-      aliases: ["sodiumiodate", "sodium-iodate"],
-      elements: { Na: 1, I: 1, O: 3 },
-    },
-    {
-      id: "kio3",
-      commonName: "Potassium iodate",
-      formula: "KIO3",
-      molarMass: 214.0,
-      chemicalClass: "salt",
-      physicalState: "solid",
-      substanceColor: "#FFFFFF",
-      density: 3.93,
-      solubilityNotes: "Soluble in water, analytical redox standard.",
-      aliases: ["potassiumiodate", "potassium-iodate"],
-      elements: { K: 1, I: 1, O: 3 },
-    },
-    {
-      id: "kio4",
-      commonName: "Potassium periodate",
-      formula: "KIO4",
-      molarMass: 230.0,
-      chemicalClass: "salt",
-      physicalState: "solid",
-      substanceColor: "#FFFFFF",
-      density: 3.62,
-      solubilityNotes: "Sparingly soluble in cold water, soluble in hot water.",
-      aliases: ["potassiumperiodate", "potassium-periodate", "potassium metaperiodate"],
-      elements: { K: 1, I: 1, O: 4 },
-    },
-    {
-      id: "naocn",
-      commonName: "Sodium cyanate",
-      formula: "NaOCN",
-      molarMass: 65.01,
-      chemicalClass: "salt",
-      physicalState: "solid",
-      substanceColor: "#FFFFFF",
-      density: 1.94,
-      solubilityNotes: "Soluble in water.",
-      aliases: ["sodiumcyanate", "sodium-cyanate"],
-      elements: { Na: 1, O: 1, C: 1, N: 1 },
-    },
-    {
-      id: "kocn",
-      commonName: "Potassium cyanate",
-      formula: "KOCN",
-      molarMass: 81.11,
-      chemicalClass: "salt",
-      physicalState: "solid",
-      substanceColor: "#FFFFFF",
-      density: 2.06,
-      solubilityNotes: "Soluble in water, precursor in Wöhler urea synthesis.",
-      aliases: ["potassiumcyanate", "potassium-cyanate"],
-      elements: { K: 1, O: 1, C: 1, N: 1 },
-    },
-    {
-      id: "na3c6h5o7",
-      commonName: "Sodium citrate",
-      formula: "Na3C6H5O7",
-      molarMass: 258.07,
-      chemicalClass: "salt",
-      physicalState: "solid",
-      substanceColor: "#FFFFFF",
-      density: 1.7,
-      solubilityNotes: "Freely soluble in water, buffering agent and anticoagulant.",
-      aliases: ["sodiumcitrate", "sodium-citrate", "trisodium citrate"],
-      elements: { Na: 3, C: 6, H: 5, O: 7 },
-    },
-  ];
-
-  const insertChem = db.prepare(`
-    INSERT OR REPLACE INTO chemicals (
-      id, common_name, formula, molar_mass, physical_state, chemical_class, charge,
-      substance_color, density, solubility_notes, source, confidence, data_version
+  // B. INSERT / UPDATE CANONICAL ENRICHED CHEMICALS
+  console.log("Upserting comprehensive canonical chemicals with complete webpage properties...");
+  const upsertChemical = db.prepare(`
+    INSERT INTO chemicals (
+      id, common_name, iupac_name, formula, molar_mass, cas_number,
+      physical_state, density, melting_point_c, boiling_point_c, solubility_notes,
+      chemical_class, is_acid, is_base, acid_base_strength, pka, pkb, charge,
+      substance_color, is_elemental, source, confidence, data_version, notes
     ) VALUES (
-      @id, @commonName, @formula, @molarMass, @physicalState, @chemicalClass, 0,
-      @substanceColor, @density, @solubilityNotes, 'VirtualCLab Curated General Reagents', 'high', '1.0'
+      @id, @commonName, @iupacName, @formula, @molarMass, @casNumber,
+      @physicalState, @density, @meltingPointC, @boilingPointC, @solubilityNotes,
+      @chemicalClass, @isAcid, @isBase, @acidBaseStrength, @pKa, @pKb, @charge,
+      @substanceColor, @isElemental, 'VirtualCLab Curated General Reagents', 'high', '1.0', @notes
     )
+    ON CONFLICT(id) DO UPDATE SET
+      common_name = excluded.common_name,
+      iupac_name = excluded.iupac_name,
+      formula = excluded.formula,
+      molar_mass = excluded.molar_mass,
+      cas_number = excluded.cas_number,
+      physical_state = excluded.physical_state,
+      density = excluded.density,
+      melting_point_c = excluded.melting_point_c,
+      boiling_point_c = excluded.boiling_point_c,
+      solubility_notes = excluded.solubility_notes,
+      chemical_class = excluded.chemical_class,
+      is_acid = excluded.is_acid,
+      is_base = excluded.is_base,
+      acid_base_strength = excluded.acid_base_strength,
+      pka = excluded.pka,
+      pkb = excluded.pkb,
+      charge = excluded.charge,
+      substance_color = excluded.substance_color,
+      is_elemental = excluded.is_elemental,
+      notes = excluded.notes
   `);
 
   const insertAlias = db.prepare(`INSERT OR IGNORE INTO chemical_aliases (chemical_id, alias) VALUES (?, ?)`);
-  const insertElem = db.prepare(
-    `INSERT OR IGNORE INTO chemical_elements (chemical_id, element_symbol, count) VALUES (?, ?, ?)`
-  );
+  const insertHazard = db.prepare(`INSERT OR IGNORE INTO chemical_hazards (chemical_id, hazard_code) VALUES (?, ?)`);
+  const insertElement = db.prepare(`INSERT OR REPLACE INTO chemical_elements (chemical_id, element_symbol, count) VALUES (?, ?, ?)`);
 
-  for (const n of newChemicals) {
-    insertChem.run({
-      id: n.id,
-      commonName: n.commonName,
-      formula: n.formula,
-      molarMass: n.molarMass,
-      physicalState: n.physicalState,
-      chemicalClass: n.chemicalClass,
-      substanceColor: n.substanceColor ?? null,
-      density: n.density ?? null,
-      solubilityNotes: n.solubilityNotes ?? null,
+  for (const c of CANONICAL_CHEMICALS) {
+    upsertChemical.run({
+      id: c.id,
+      commonName: c.commonName,
+      iupacName: c.iupacName,
+      formula: c.formula,
+      molarMass: c.molarMass,
+      casNumber: c.casNumber,
+      physicalState: c.physicalState,
+      density: c.density,
+      meltingPointC: c.meltingPointC ?? null,
+      boilingPointC: c.boilingPointC ?? null,
+      solubilityNotes: c.solubilityNotes,
+      chemicalClass: c.chemicalClass,
+      isAcid: c.isAcid ? 1 : 0,
+      isBase: c.isBase ? 1 : 0,
+      acidBaseStrength: c.acidBaseStrength ?? "none",
+      pKa: c.pKa ?? null,
+      pKb: c.pKb ?? null,
+      charge: c.charge ?? 0,
+      substanceColor: c.substanceColor,
+      isElemental: c.isElemental ? 1 : 0,
+      notes: c.notes,
     });
-    for (const a of n.aliases) {
-      insertAlias.run(n.id, a);
+
+    for (const a of c.aliases) {
+      insertAlias.run(c.id, a);
     }
-    for (const [sym, count] of Object.entries(n.elements)) {
-      insertElem.run(n.id, sym, count);
+
+    for (const h of c.hazardCodes) {
+      insertHazard.run(c.id, h);
+    }
+
+    for (const [elem, count] of Object.entries(c.elements)) {
+      insertElement.run(c.id, elem, count);
     }
   }
 
-  // 5. Inject Synonyms for Existing Key Chemicals
-  const keyAliases: Record<string, string[]> = {
-    na2cro4: ["sodiumchromate", "sodium-chromate", "disodium chromate", "chromic acid disodium salt"],
-    k2cro4: ["potassiumchromate", "potassium-chromate", "dipotassium chromate"],
-    na2cr2o7: ["sodiumdichromate", "sodium-dichromate", "disodium dichromate"],
-    k2cr2o7: ["potassiumdichromate", "potassium-dichromate", "dipotassium dichromate"],
-    pbcro4: ["lead chromate", "leadchromate", "chrome yellow"],
-    bacro4: ["barium chromate", "bariumchromate"],
-    ag2cro4: ["silver chromate", "silverchromate"],
-    srcro4: ["strontium chromate", "strontiumchromate"],
-    "nh4-2-cr2o7": ["ammonium dichromate", "ammoniumdichromate"],
-    "nh4-2-cro4": ["ammonium chromate", "ammoniumchromate"],
-    kmno4: ["potassiumpermanganate", "potassium-permanganate", "permanganate of potash"],
-    "sodium-thiosulfate": ["sodiumthiosulfate", "sodium-thiosulfate", "na2s2o3", "hypo"],
-    nascn: ["sodiumthiocyanate", "sodium-thiocyanate"],
-    kscn: ["potassiumthiocyanate", "potassium-thiocyanate"],
-    nh4scn: ["ammoniumthiocyanate", "ammonium-thiocyanate"],
-    "k4-fe-cn-6": [
-      "potassium ferrocyanide",
-      "potassiumferrocyanide",
-      "potassium-ferrocyanide",
-      "potassium hexacyanoferrate(ii)",
-    ],
-    "k3-fe-cn-6": [
-      "potassium ferricyanide",
-      "potassiumferricyanide",
-      "potassium-ferricyanide",
-      "potassium hexacyanoferrate(iii)",
-    ],
-    na2c2o4: ["sodiumoxalate", "sodium-oxalate", "disodium oxalate"],
-    k2c2o4: ["potassiumoxalate", "potassium-oxalate", "dipotassium oxalate"],
-    cac2o4: ["calciumoxalate", "calcium-oxalate"],
-    "nh4-2-c2o4": ["ammoniumoxalate", "ammonium-oxalate"],
-    na2so3: ["sodiumsulfite", "sodium-sulfite"],
-    k2so3: ["potassiumsulfite", "potassium-sulfite"],
-    "sodium-bisulfite": ["sodiumbisulfite", "sodium-bisulfite", "nahso3", "sodium hydrogen sulfite"],
-    "sodium-metabisulfite": ["sodiummetabisulfite", "sodium-metabisulfite", "na2s2o5", "sodium pyrosulfite"],
-    nano2: ["sodiumnitrite", "sodium-nitrite"],
-    naclo: ["sodiumhypochlorite", "sodium-hypochlorite", "bleach", "liquid bleach"],
-    "sodium-chlorite": ["sodiumchlorite", "sodium-chlorite", "naclo2"],
-    naclo4: ["sodiumperchlorate", "sodium-perchlorate"],
-    kclo3: ["potassiumchlorate", "potassium-chlorate"],
-    kclo4: ["potassiumperchlorate", "potassium-perchlorate"],
-    "sodium-borohydride": ["sodiumborohydride", "sodium-borohydride", "nabh4"],
-    "lithium-aluminum-hydride": ["lithiumaluminumhydride", "lithium-aluminum-hydride", "lialh4", "lah"],
-    na2b4o7: ["borax", "sodium borate", "sodiumborate", "sodium-borate", "sodium tetraborate"],
-    naio4: ["sodiumperiodate", "sodium-periodate", "sodium metaperiodate"],
-  };
+  // C. MERGE DUPLICATES INTO CANONICAL CHEMICALS
+  console.log("Merging duplicate / corrupted chemical entries...");
 
-  for (const [chemId, aliases] of Object.entries(keyAliases)) {
-    for (const a of aliases) {
-      insertAlias.run(chemId, a);
+  // In patent reactions, nh4cl was scraped for ClH (HCl acid workup)
+  db.prepare(`UPDATE reaction_reactants SET chemical_id = 'hcl' WHERE chemical_id = 'nh4cl' AND reaction_id LIKE 'chemrxn-%'`).run();
+  db.prepare(`UPDATE reaction_products SET chemical_id = 'hcl' WHERE chemical_id = 'nh4cl' AND reaction_id LIKE 'chemrxn-%'`).run();
+
+  for (const [dupId, canonId] of Object.entries(DUPLICATE_MERGES)) {
+    // 1. Move aliases from duplicate to canonical
+    const existingAliases = (
+      db.prepare(`SELECT alias FROM chemical_aliases WHERE chemical_id = ?`).all(dupId) as { alias: string }[]
+    ).map((a) => a.alias);
+
+    for (const a of existingAliases) {
+      insertAlias.run(canonId, a);
+    }
+    // Also add dupId itself and spaced name as aliases of canonical
+    insertAlias.run(canonId, dupId);
+    insertAlias.run(canonId, dupId.replace(/-/g, " "));
+
+    // 2. Remap reaction_reactants
+    const reactantRows = db.prepare(`SELECT reaction_id, coefficient FROM reaction_reactants WHERE chemical_id = ?`).all(dupId) as {
+      reaction_id: string;
+      coefficient: number;
+    }[];
+    for (const row of reactantRows) {
+      const alreadyHas = db.prepare(`SELECT 1 FROM reaction_reactants WHERE reaction_id = ? AND chemical_id = ?`).get(row.reaction_id, canonId);
+      if (alreadyHas) {
+        db.prepare(`DELETE FROM reaction_reactants WHERE reaction_id = ? AND chemical_id = ?`).run(row.reaction_id, dupId);
+      } else {
+        db.prepare(`UPDATE reaction_reactants SET chemical_id = ? WHERE reaction_id = ? AND chemical_id = ?`).run(canonId, row.reaction_id, dupId);
+      }
+    }
+
+    // 3. Remap reaction_products
+    const productRows = db.prepare(`SELECT reaction_id, coefficient FROM reaction_products WHERE chemical_id = ?`).all(dupId) as {
+      reaction_id: string;
+      coefficient: number;
+    }[];
+    for (const row of productRows) {
+      const alreadyHas = db.prepare(`SELECT 1 FROM reaction_products WHERE reaction_id = ? AND chemical_id = ?`).get(row.reaction_id, canonId);
+      if (alreadyHas) {
+        db.prepare(`DELETE FROM reaction_products WHERE reaction_id = ? AND chemical_id = ?`).run(row.reaction_id, dupId);
+      } else {
+        db.prepare(`UPDATE reaction_products SET chemical_id = ? WHERE reaction_id = ? AND chemical_id = ?`).run(canonId, row.reaction_id, dupId);
+      }
+    }
+
+    // 4. Remap reactions.catalyst_chemical_id
+    db.prepare(`UPDATE reactions SET catalyst_chemical_id = ? WHERE catalyst_chemical_id = ?`).run(canonId, dupId);
+
+    // 5. Remap reaction_observable_effects.related_chemical_id
+    db.prepare(`UPDATE reaction_observable_effects SET related_chemical_id = ? WHERE related_chemical_id = ?`).run(canonId, dupId);
+
+    // 6. Delete the duplicate record
+    db.prepare(`DELETE FROM chemical_aliases WHERE chemical_id = ?`).run(dupId);
+    db.prepare(`DELETE FROM chemical_hazards WHERE chemical_id = ?`).run(dupId);
+    db.prepare(`DELETE FROM chemical_elements WHERE chemical_id = ?`).run(dupId);
+    db.prepare(`DELETE FROM molecule_atoms WHERE chemical_id = ?`).run(dupId);
+    db.prepare(`DELETE FROM molecule_bonds WHERE chemical_id = ?`).run(dupId);
+    db.prepare(`DELETE FROM chemicals WHERE id = ?`).run(dupId);
+  }
+
+  // D. ENRICH EXISTING HIGH-PROFILE CHEMICALS MISSING IUPAC NAMES & SOLUBILITY
+  const existingEnrichments: {
+    id: string;
+    iupacName?: string;
+    solubilityNotes?: string;
+    meltingPointC?: number;
+    boilingPointC?: number;
+    density?: number;
+    hazardCodes?: string[];
+  }[] = [
+    {
+      id: "agno3",
+      iupacName: "Silver(I) nitrate",
+      solubilityNotes: "Freely soluble in water (256 g/100 mL at 20 °C); darkens on prolonged exposure to light.",
+      boilingPointC: 440,
+      hazardCodes: ["OXIDIZING", "CORROSIVE", "TOXIC", "ENVIRONMENTAL_HAZARD"],
+    },
+    {
+      id: "agcl",
+      iupacName: "Silver(I) chloride",
+      solubilityNotes: "Insoluble in water (Ksp ≈ 1.8×10⁻¹⁰); dissolves readily in aqueous ammonia forming [Ag(NH3)2]+.",
+      boilingPointC: 1547,
+      hazardCodes: ["ENVIRONMENTAL_HAZARD"],
+    },
+    {
+      id: "nano3",
+      iupacName: "Sodium nitrate",
+      solubilityNotes: "Very soluble in water (91.2 g/100 mL at 25 °C); deliquescent.",
+      boilingPointC: 380,
+      hazardCodes: ["OXIDIZING", "IRRITANT"],
+    },
+    {
+      id: "kno3",
+      iupacName: "Potassium nitrate",
+      solubilityNotes: "Soluble in water (31.6 g/100 mL at 20 °C, increases dramatically to 247 g/100 mL at 100 °C).",
+      boilingPointC: 400,
+      hazardCodes: ["OXIDIZING", "IRRITANT"],
+    },
+    {
+      id: "na2co3",
+      iupacName: "Sodium carbonate",
+      solubilityNotes: "Soluble in water (21.5 g/100 mL at 20 °C); solution is alkaline.",
+      boilingPointC: 1600,
+      hazardCodes: ["IRRITANT"],
+    },
+    {
+      id: "nahco3",
+      iupacName: "Sodium hydrogen carbonate",
+      solubilityNotes: "Soluble in water (9.6 g/100 mL at 20 °C); decomposes with effervescence upon heating or acid addition.",
+      boilingPointC: 851,
+      hazardCodes: ["IRRITANT"],
+    },
+    {
+      id: "caco3",
+      iupacName: "Calcium carbonate",
+      solubilityNotes: "Practically insoluble in pure water (Ksp ≈ 3.3×10⁻⁹); dissolves with vigorous effervescence in acids.",
+      boilingPointC: 898,
+      hazardCodes: ["IRRITANT"],
+    },
+    {
+      id: "znso4",
+      iupacName: "Zinc sulfate",
+      solubilityNotes: "Freely soluble in water (57.7 g/100 mL at 20 °C).",
+      boilingPointC: 740,
+      hazardCodes: ["TOXIC", "CORROSIVE", "ENVIRONMENTAL_HAZARD"],
+    },
+    {
+      id: "cu",
+      iupacName: "Copper",
+      solubilityNotes: "Insoluble in water; dissolves in oxidizing acids such as concentrated HNO3 or hot H2SO4.",
+      hazardCodes: ["ENVIRONMENTAL_HAZARD"],
+    },
+    {
+      id: "fe",
+      iupacName: "Iron",
+      solubilityNotes: "Insoluble in water; dissolves readily in dilute mineral acids releasing H2.",
+      hazardCodes: ["IRRITANT"],
+    },
+    {
+      id: "zn",
+      iupacName: "Zinc",
+      solubilityNotes: "Insoluble in water; reacts with dilute acids and strong bases (amphoteric metal) releasing H2.",
+      hazardCodes: ["FLAMMABLE", "ENVIRONMENTAL_HAZARD"],
+    },
+    {
+      id: "hcl",
+      iupacName: "Hydrochloric acid",
+      solubilityNotes: "Miscible in all proportions with water; concentrated aqueous reagent is ~37% HCl (12 M).",
+      boilingPointC: -85,
+      density: 1.19,
+      hazardCodes: ["CORROSIVE", "TOXIC"],
+    },
+    {
+      id: "hno3",
+      iupacName: "Nitric acid",
+      solubilityNotes: "Miscible in all proportions with water; concentrated nitric acid is ~68% (16 M).",
+      boilingPointC: 83,
+      density: 1.51,
+      hazardCodes: ["OXIDIZING", "CORROSIVE", "TOXIC"],
+    },
+    {
+      id: "h2so4",
+      iupacName: "Sulfuric acid",
+      solubilityNotes: "Miscible with water with immense heat evolution (always add acid to water, never water to acid).",
+      boilingPointC: 337,
+      density: 1.83,
+      hazardCodes: ["CORROSIVE", "HEALTH_HAZARD"],
+    },
+    {
+      id: "acetic-acid",
+      iupacName: "Ethanoic acid",
+      solubilityNotes: "Miscible in all proportions with water, ethanol, and ether.",
+      boilingPointC: 118,
+      density: 1.05,
+      hazardCodes: ["CORROSIVE", "FLAMMABLE"],
+    },
+    {
+      id: "ch3cooh",
+      iupacName: "Ethanoic acid",
+      solubilityNotes: "Miscible in all proportions with water, ethanol, and ether.",
+      boilingPointC: 118,
+      density: 1.05,
+      hazardCodes: ["CORROSIVE", "FLAMMABLE"],
+    },
+    {
+      id: "naoh",
+      iupacName: "Sodium hydroxide",
+      solubilityNotes: "Extremely soluble in water (109 g/100 mL at 20 °C) with strong exothermic heat of solution.",
+      boilingPointC: 1388,
+      density: 2.13,
+      hazardCodes: ["CORROSIVE", "TOXIC"],
+    },
+    {
+      id: "koh",
+      iupacName: "Potassium hydroxide",
+      solubilityNotes: "Extremely soluble in water (121 g/100 mL at 25 °C); highly exothermic dissolution.",
+      boilingPointC: 1327,
+      density: 2.12,
+      hazardCodes: ["CORROSIVE", "TOXIC"],
+    },
+    {
+      id: "ammonia",
+      iupacName: "Ammonia",
+      solubilityNotes: "Very soluble in water (53.1 g/100 mL at 20 °C); 28% aqueous NH3 is standard concentrated ammonia.",
+      boilingPointC: -33.3,
+      density: 0.73,
+      hazardCodes: ["CORROSIVE", "TOXIC", "ENVIRONMENTAL_HAZARD"],
+    },
+    {
+      id: "nacl",
+      iupacName: "Sodium chloride",
+      solubilityNotes: "Soluble in water (36.0 g/100 mL at 20 °C); solubility changes very little with temperature.",
+      boilingPointC: 1465,
+      density: 2.16,
+      hazardCodes: ["IRRITANT"],
+    },
+    {
+      id: "kcl",
+      iupacName: "Potassium chloride",
+      solubilityNotes: "Soluble in water (355 g/L at 20 °C); neutral aqueous solution.",
+      boilingPointC: 1420,
+      density: 1.98,
+      hazardCodes: ["IRRITANT"],
+    },
+    {
+      id: "cuso4-5h2o",
+      iupacName: "Copper(II) sulfate pentahydrate",
+      solubilityNotes: "Soluble in water (31.6 g/100 mL at 0 °C, 203 g/100 mL at 100 °C); bright blue solution.",
+      boilingPointC: 650,
+      density: 2.286,
+      hazardCodes: ["TOXIC", "IRRITANT", "ENVIRONMENTAL_HAZARD"],
+    },
+    {
+      id: "mg",
+      iupacName: "Magnesium",
+      solubilityNotes: "Insoluble in cold water; reacts slowly with hot water and vigorously with dilute mineral acids.",
+      boilingPointC: 1091,
+      density: 1.74,
+      hazardCodes: ["FLAMMABLE"],
+    },
+    {
+      id: "al",
+      iupacName: "Aluminium",
+      solubilityNotes: "Insoluble in water due to passivating oxide film; soluble in dilute mineral acids and strong alkalis.",
+      boilingPointC: 2470,
+      density: 2.7,
+      hazardCodes: ["FLAMMABLE"],
+    },
+    {
+      id: "cacl2",
+      iupacName: "Calcium chloride",
+      solubilityNotes: "Extremely soluble in water (74.5 g/100 mL at 20 °C) with strong exothermic heat of solution.",
+      boilingPointC: 1935,
+      density: 2.15,
+      hazardCodes: ["IRRITANT"],
+    },
+    {
+      id: "k2co3",
+      iupacName: "Potassium carbonate",
+      solubilityNotes: "Very soluble in water (112 g/100 mL at 20 °C); strongly alkaline solution; insoluble in alcohol.",
+      boilingPointC: 1600,
+      density: 2.43,
+      hazardCodes: ["IRRITANT"],
+    },
+    {
+      id: "khco3",
+      iupacName: "Potassium hydrogen carbonate",
+      solubilityNotes: "Soluble in water (22.4 g/100 mL at 20 °C); mildly alkaline solution.",
+      boilingPointC: 850,
+      density: 2.17,
+      hazardCodes: ["IRRITANT"],
+    },
+    {
+      id: "cucl2",
+      iupacName: "Copper(II) chloride",
+      solubilityNotes: "Freely soluble in water (75.7 g/100 mL at 25 °C), ethanol, and methanol; forms green-blue solution.",
+      boilingPointC: 993,
+      density: 3.38,
+      hazardCodes: ["TOXIC", "IRRITANT", "ENVIRONMENTAL_HAZARD"],
+    },
+    {
+      id: "mgso4",
+      iupacName: "Magnesium sulfate",
+      solubilityNotes: "Very soluble in water (35.1 g/100 mL at 20 °C); neutral aqueous solution.",
+      boilingPointC: 1124,
+      density: 2.66,
+      hazardCodes: ["IRRITANT"],
+    },
+    {
+      id: "ammonium-chloride",
+      iupacName: "Ammonium chloride",
+      solubilityNotes: "Highly soluble in water (372 g/L at 20 °C); mildly acidic solution (pH ~4.5–5.5).",
+      boilingPointC: 520,
+      density: 1.527,
+      aliases: ["nh4cl", "ammonium chloride", "sal ammoniac", "ammonium muriate", "ammonium-chloride"],
+      hazardCodes: ["IRRITANT", "TOXIC"],
+    },
+    {
+      id: "nh4no3",
+      iupacName: "Ammonium nitrate",
+      solubilityNotes: "Extremely soluble in water (150 g/100 mL at 20 °C); strongly endothermic dissolution.",
+      boilingPointC: 210,
+      density: 1.72,
+      hazardCodes: ["OXIDIZING", "IRRITANT"],
+    },
+    {
+      id: "nh4-2-so4",
+      iupacName: "Ammonium sulfate",
+      solubilityNotes: "Very soluble in water (76.4 g/100 mL at 20 °C); neutral to slightly acidic solution.",
+      boilingPointC: 513,
+      density: 1.77,
+      hazardCodes: ["IRRITANT"],
+    },
+  ];
+
+  for (const e of existingEnrichments) {
+    if (e.iupacName) {
+      db.prepare(`UPDATE chemicals SET iupac_name = ? WHERE id = ?`).run(e.iupacName, e.id);
+    }
+    if (e.solubilityNotes) {
+      db.prepare(`UPDATE chemicals SET solubility_notes = ? WHERE id = ?`).run(e.solubilityNotes, e.id);
+    }
+    if (e.boilingPointC !== undefined) {
+      db.prepare(`UPDATE chemicals SET boiling_point_c = ? WHERE id = ?`).run(e.boilingPointC, e.id);
+    }
+    if (e.density !== undefined) {
+      db.prepare(`UPDATE chemicals SET density = ? WHERE id = ?`).run(e.density, e.id);
+    }
+    if (e.aliases) {
+      for (const a of e.aliases) {
+        insertAlias.run(e.id, a);
+      }
+    }
+    if (e.hazardCodes) {
+      for (const h of e.hazardCodes) {
+        insertHazard.run(e.id, h);
+      }
     }
   }
 });
 
-cleanupTx();
+runCleanupAndEnrichment();
+
+console.log("Running VACUUM to reclaim space and optimize indexes...");
+db.exec("VACUUM");
 
 const finalCount = (db.prepare("SELECT count(*) as count FROM chemicals").get() as { count: number }).count;
-console.log(`=== COMPLETED CLEANUP: ${noise.length} noise entries purged, ${finalCount} valid chemicals remaining ===`);
+const aliasesCount = (db.prepare("SELECT count(*) as count FROM chemical_aliases").get() as { count: number }).count;
+const hazardsCount = (db.prepare("SELECT count(DISTINCT chemical_id) as count FROM chemical_hazards").get() as { count: number }).count;
+
+console.log("=== COMPLETED CLEANUP AND ENRICHMENT ===");
+console.log(`- Valid chemicals in DB: ${finalCount}`);
+console.log(`- Aliases indexed: ${aliasesCount}`);
+console.log(`- Chemicals with safety hazard profiles: ${hazardsCount}`);

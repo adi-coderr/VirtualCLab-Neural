@@ -3008,10 +3008,11 @@ function generatePolyOxoanionSalt(
   }
 
   // Place metal cations coordinated to oxygens at physical distance ~2.10 Å
+  let cationIndex = 0;
   for (const m of metals) {
     const mCount = comp[m] ?? 0;
     for (let j = 0; j < mCount; j++) {
-      const coordTarget = coordinatingOxygens[j % coordinatingOxygens.length]!;
+      const coordTarget = coordinatingOxygens[(cationIndex++) % coordinatingOxygens.length]!;
       const oAtom = atoms[coordTarget.oIdx]!;
       const vx = oAtom.x3d - coordTarget.sx;
       const vy = oAtom.y3d - coordTarget.sy;

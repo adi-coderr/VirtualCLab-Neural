@@ -17,12 +17,12 @@ const batch3 = SEED_REACTIONS.slice(131, 181); // Batch 3 reactions (50)
 const batch4 = SEED_REACTIONS.slice(181); // Batch 4 reactions (1000 newly added)
 
 describe("Comprehensive Audit of 50 Batch 3 Reactions and 1000 Batch 4 Reactions", () => {
-  it("has exactly 1,181 reactions total with 523 chemicals and 1000 reactions in batch 4", () => {
+  it("has exactly 1,181 reactions total with 570 chemicals and 1000 reactions in batch 4", () => {
     expect(batch2.length).toBe(50);
     expect(batch3.length).toBe(50);
     expect(batch4.length).toBe(1000);
     expect(SEED_REACTIONS.length).toBe(1181);
-    expect(SEED_CHEMICALS.length).toBe(523);
+    expect(SEED_CHEMICALS.length).toBe(570);
   });
 
 
