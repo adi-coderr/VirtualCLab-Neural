@@ -244,9 +244,10 @@ export class ChemicalRepository {
       .get(id, id) as ChemicalRow | undefined;
     if (byName) return this.rowToChemical(byName);
 
-    // 3. Normalize ID (clean slug, replace underscores)
+    // 3. Normalize ID (clean slug, replace underscores, compact alphanumeric)
     const cleanWithSpaces = id.replace(/_/g, " ").trim();
     const cleanSlug = id.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    const cleanCompact = id.toLowerCase().replace(/[^a-z0-9]/g, "");
 
     const byNormalized = this.db
       .prepare(`
@@ -255,11 +256,14 @@ export class ChemicalRepository {
            OR id = ? 
            OR LOWER(common_name) = LOWER(?) 
            OR LOWER(common_name) = LOWER(?)
+           OR REPLACE(REPLACE(LOWER(common_name), ' ', ''), '-', '') = ?
+           OR REPLACE(REPLACE(LOWER(id), ' ', ''), '-', '') = ?
            OR id IN (
              SELECT chemical_id FROM chemical_aliases 
              WHERE LOWER(alias) = LOWER(?) 
                 OR LOWER(alias) = LOWER(?)
                 OR LOWER(alias) = LOWER(?)
+                OR REPLACE(REPLACE(LOWER(alias), ' ', ''), '-', '') = ?
            )
         LIMIT 1
       `)
@@ -268,9 +272,12 @@ export class ChemicalRepository {
         cleanSlug,
         id,
         cleanWithSpaces,
+        cleanCompact,
+        cleanCompact,
         id,
         cleanWithSpaces,
-        cleanSlug
+        cleanSlug,
+        cleanCompact
       ) as ChemicalRow | undefined;
 
     if (byNormalized) {
@@ -357,8 +364,11 @@ export class ChemicalRepository {
   }
 
   search(query: string, limit = 20, offset = 0): PagedResult<ChemicalSummary> {
-    const q = `%${query.trim().toLowerCase()}%`;
-    const exact = query.trim().toLowerCase();
+    const rawTrim = query.trim();
+    const q = `%${rawTrim.toLowerCase()}%`;
+    const exact = rawTrim.toLowerCase();
+    const compactExact = exact.replace(/[^a-z0-9]/g, "");
+    const qCompact = `%${compactExact}%`;
 
     const rows = this.db
       .prepare(
@@ -366,22 +376,40 @@ export class ChemicalRepository {
                 CASE
                   WHEN LOWER(c.formula) = @exact THEN 0
                   WHEN LOWER(c.common_name) = @exact THEN 1
+                  WHEN REPLACE(REPLACE(LOWER(c.common_name), ' ', ''), '-', '') = @compactExact THEN 1
+                  WHEN LOWER(a.alias) = @exact THEN 1
+                  WHEN REPLACE(REPLACE(LOWER(a.alias), ' ', ''), '-', '') = @compactExact THEN 1
                   WHEN c.cas_number = @raw THEN 1
                   WHEN LOWER(c.formula) LIKE @prefix THEN 2
                   WHEN LOWER(c.common_name) LIKE @prefix THEN 3
+                  WHEN LOWER(a.alias) LIKE @prefix THEN 3
+                  WHEN REPLACE(REPLACE(LOWER(c.common_name), ' ', ''), '-', '') LIKE @qCompact THEN 3
+                  WHEN REPLACE(REPLACE(LOWER(a.alias), ' ', ''), '-', '') LIKE @qCompact THEN 3
                   ELSE 4
-                END as rank
+                END as rank,
+                CASE
+                  WHEN c.source LIKE '%CRC%' OR c.source LIKE '%Curated%' OR c.source LIKE '%textbook%' THEN 0
+                  ELSE 1
+                END as sourceRank
          FROM chemicals c
          LEFT JOIN chemical_aliases a ON a.chemical_id = c.id
-         WHERE LOWER(c.common_name) LIKE @q
+         WHERE (
+            LOWER(c.common_name) LIKE @q
             OR LOWER(c.formula) LIKE @q
             OR LOWER(COALESCE(c.iupac_name, '')) LIKE @q
             OR LOWER(a.alias) LIKE @q
             OR c.cas_number = @raw
-         ORDER BY rank ASC, LENGTH(c.common_name) ASC
+            OR (LENGTH(@compactExact) >= 3 AND (
+                 REPLACE(REPLACE(LOWER(c.common_name), ' ', ''), '-', '') LIKE @qCompact
+                 OR REPLACE(REPLACE(LOWER(c.id), ' ', ''), '-', '') LIKE @qCompact
+                 OR REPLACE(REPLACE(LOWER(a.alias), ' ', ''), '-', '') LIKE @qCompact
+               ))
+         )
+         AND NOT (c.common_name GLOB '(*)' OR c.common_name GLOB '[*]' OR c.common_name GLOB '#*')
+         ORDER BY rank ASC, sourceRank ASC, LENGTH(c.common_name) ASC
          LIMIT @limit OFFSET @offset`
       )
-      .all({ q, exact, raw: query.trim(), prefix: `${exact}%`, limit, offset }) as (ChemicalRow extends never
+      .all({ q, exact, compactExact, qCompact, raw: rawTrim, prefix: `${exact}%`, limit, offset }) as (ChemicalRow extends never
       ? never
       : {
           id: string;
@@ -397,13 +425,21 @@ export class ChemicalRepository {
         `SELECT COUNT(DISTINCT c.id) as n
          FROM chemicals c
          LEFT JOIN chemical_aliases a ON a.chemical_id = c.id
-         WHERE LOWER(c.common_name) LIKE @q
+         WHERE (
+            LOWER(c.common_name) LIKE @q
             OR LOWER(c.formula) LIKE @q
             OR LOWER(COALESCE(c.iupac_name, '')) LIKE @q
             OR LOWER(a.alias) LIKE @q
-            OR c.cas_number = @raw`
+            OR c.cas_number = @raw
+            OR (LENGTH(@compactExact) >= 3 AND (
+                 REPLACE(REPLACE(LOWER(c.common_name), ' ', ''), '-', '') LIKE @qCompact
+                 OR REPLACE(REPLACE(LOWER(c.id), ' ', ''), '-', '') LIKE @qCompact
+                 OR REPLACE(REPLACE(LOWER(a.alias), ' ', ''), '-', '') LIKE @qCompact
+               ))
+         )
+         AND NOT (c.common_name GLOB '(*)' OR c.common_name GLOB '[*]' OR c.common_name GLOB '#*')`
       )
-      .get({ q, raw: query.trim() }) as { n: number };
+      .get({ q, compactExact, qCompact, raw: rawTrim }) as { n: number };
 
     return {
       items: rows.map((r) => ({
@@ -421,13 +457,41 @@ export class ChemicalRepository {
   list(limit = 50, offset = 0, chemicalClass?: string): PagedResult<ChemicalSummary> {
     const rows = chemicalClass
       ? (this.db
-          .prepare("SELECT * FROM chemicals WHERE chemical_class = ? ORDER BY common_name LIMIT ? OFFSET ?")
+          .prepare(`
+            SELECT * FROM chemicals 
+            WHERE chemical_class = ?
+              AND NOT (common_name GLOB '(*)' OR common_name GLOB '[*]' OR common_name GLOB '#*')
+            ORDER BY 
+              CASE WHEN source LIKE '%CRC%' OR source LIKE '%Curated%' OR source LIKE '%textbook%' THEN 0 ELSE 1 END,
+              common_name ASC 
+            LIMIT ? OFFSET ?
+          `)
           .all(chemicalClass, limit, offset) as ChemicalRow[])
-      : (this.db.prepare("SELECT * FROM chemicals ORDER BY common_name LIMIT ? OFFSET ?").all(limit, offset) as ChemicalRow[]);
+      : (this.db
+          .prepare(`
+            SELECT * FROM chemicals 
+            WHERE NOT (common_name GLOB '(*)' OR common_name GLOB '[*]' OR common_name GLOB '#*')
+            ORDER BY 
+              CASE WHEN source LIKE '%CRC%' OR source LIKE '%Curated%' OR source LIKE '%textbook%' THEN 0 ELSE 1 END,
+              common_name ASC 
+            LIMIT ? OFFSET ?
+          `)
+          .all(limit, offset) as ChemicalRow[]);
 
     const totalRow = chemicalClass
-      ? (this.db.prepare("SELECT COUNT(*) as n FROM chemicals WHERE chemical_class = ?").get(chemicalClass) as { n: number })
-      : (this.db.prepare("SELECT COUNT(*) as n FROM chemicals").get() as { n: number });
+      ? (this.db
+          .prepare(`
+            SELECT COUNT(*) as n FROM chemicals 
+            WHERE chemical_class = ?
+              AND NOT (common_name GLOB '(*)' OR common_name GLOB '[*]' OR common_name GLOB '#*')
+          `)
+          .get(chemicalClass) as { n: number })
+      : (this.db
+          .prepare(`
+            SELECT COUNT(*) as n FROM chemicals 
+            WHERE NOT (common_name GLOB '(*)' OR common_name GLOB '[*]' OR common_name GLOB '#*')
+          `)
+          .get() as { n: number });
 
     return {
       items: rows.map((r) => ({
