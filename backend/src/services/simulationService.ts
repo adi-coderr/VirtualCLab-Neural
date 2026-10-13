@@ -645,6 +645,114 @@ export class SimulationService {
   }
 
   /**
+   * Helper to generate candidate reactantKeys for dev.db by creating the Cartesian product
+   * of canonical aliases, formulas, and chemical IDs for the provided input species.
+   */
+  private generateCandidateReactantKeys(inputs: ReactionInputSpecies[]): string[] {
+    const getTokensForInput = (input: ReactionInputSpecies): string[] => {
+      const tokens = new Set<string>();
+      const add = (str?: string | null) => {
+        if (!str) return;
+        const s = str.trim().toLowerCase();
+        if (!s) return;
+        tokens.add(s.replace(/[^a-z0-9]/g, "_"));
+        tokens.add(s.replace(/[^a-z0-9]/g, "-"));
+        tokens.add(s.replace(/[^a-z0-9]/g, ""));
+      };
+
+      add(input.chemicalId);
+      add(input.formula);
+
+      const chem =
+        this.chemicalRepo.getById(input.chemicalId) ||
+        (input.formula ? this.chemicalRepo.getByFormula(input.formula) : null);
+
+      if (chem) {
+        add(chem.id);
+        add(chem.formula);
+        add(chem.commonName);
+        chem.aliases?.forEach((a) => add(a));
+      }
+
+      const formLower = (chem?.formula || input.formula || "").toLowerCase();
+      const idLower = (chem?.id || input.chemicalId || "").toLowerCase();
+      const nameLower = (chem?.commonName || "").toLowerCase();
+
+      // Common canonical mappings across reaction database batches
+      if (formLower === "h2o" || idLower === "water" || nameLower === "water") {
+        add("water");
+        add("h2o");
+      }
+      if (formLower === "nh3" || idLower === "ammonia" || nameLower === "ammonia") {
+        add("ammonia");
+        add("nh3");
+      }
+      if (formLower === "al" || idLower.includes("alumin") || nameLower.includes("alumin")) {
+        add("al");
+        add("aluminum");
+        add("aluminium");
+      }
+      if (formLower === "fe" || idLower.includes("iron") || nameLower.includes("iron")) {
+        add("fe");
+        add("iron");
+      }
+      if (formLower === "cu" || idLower.includes("copper") || nameLower.includes("copper")) {
+        add("cu");
+        add("copper");
+      }
+      if (formLower === "zn" || idLower.includes("zinc") || nameLower.includes("zinc")) {
+        add("zn");
+        add("zinc");
+      }
+      if (formLower === "naoh" || idLower.includes("sodium_hydroxide") || nameLower.includes("sodium hydroxide")) {
+        add("naoh");
+        add("sodium_hydroxide");
+        add("sodium-hydroxide");
+      }
+      if (formLower === "koh" || idLower.includes("potassium_hydroxide") || nameLower.includes("potassium hydroxide")) {
+        add("koh");
+        add("potassium_hydroxide");
+        add("potassium-hydroxide");
+      }
+      if (formLower === "hcl" || idLower.includes("hydrochloric") || nameLower.includes("hydrochloric")) {
+        add("hcl");
+        add("hydrochloric_acid");
+        add("hydrochloric-acid");
+      }
+      if (formLower === "h2so4" || idLower.includes("sulfuric") || nameLower.includes("sulfuric")) {
+        add("h2so4");
+        add("sulfuric_acid");
+        add("sulfuric-acid");
+      }
+      if (formLower === "hno3" || idLower.includes("nitric") || nameLower.includes("nitric")) {
+        add("hno3");
+        add("nitric_acid");
+        add("nitric-acid");
+      }
+
+      return Array.from(tokens).filter((t) => t.length > 0);
+    };
+
+    const tokenLists = inputs.map(getTokensForInput);
+    let combos: string[][] = [[]];
+    for (const tokens of tokenLists) {
+      const next: string[][] = [];
+      for (const prefix of combos) {
+        for (const token of tokens) {
+          next.push([...prefix, token]);
+        }
+      }
+      combos = next;
+    }
+
+    const candidateKeys = new Set<string>();
+    for (const combo of combos) {
+      candidateKeys.add([...combo].sort().join("+"));
+    }
+    return Array.from(candidateKeys);
+  }
+
+  /**
    * Helper to check local curated databases (both chemlab.db and dev.db) for the given input species.
    */
   private async findInDatabase(
@@ -655,51 +763,28 @@ export class SimulationService {
     try {
       const localResult = this.simulate(inputs, conditions);
       if (localResult.resolution.status !== "UNSUPPORTED") {
-        return localResult;
+        // If inputs have 2 or fewer chemicals, this is a direct full match.
+        // If inputs have > 2 chemicals, check whether this was a true complete reaction for all inputs
+        // or a pairwise subset search that left spectator species behind.
+        const hasSpectators =
+          localResult.resolution.warnings?.some((w) => w.toLowerCase().includes("spectator")) ||
+          (localResult.resolution.reactants && localResult.resolution.reactants.length < inputs.length);
+
+        if (!hasSpectators) {
+          return localResult;
+        }
       }
     } catch {
       // Continue to prisma dev.db lookup
     }
 
-    // 2. Check prisma dev.db curated reactions
+    // 2. Check prisma dev.db curated reactions for an exact match for ALL reactants
     try {
-      const candidateKeys = new Set<string>();
-
-      // A. Chemical IDs sorted
-      const rawIds = inputs.map((i) => i.chemicalId.toLowerCase().replace(/[^a-z0-9]/g, "_")).sort();
-      candidateKeys.add(rawIds.join("+"));
-      candidateKeys.add(rawIds.map((id) => id.replace(/_/g, "-")).join("+"));
-
-      // B. Resolved chemical repository IDs (canonical)
-      const resolvedIds = inputs.map((i) => {
-        const chem = this.chemicalRepo.getById(i.chemicalId) || this.chemicalRepo.getByFormula(i.chemicalId);
-        return (chem?.id || i.chemicalId).toLowerCase().replace(/[^a-z0-9]/g, "_");
-      }).sort();
-      candidateKeys.add(resolvedIds.join("+"));
-      candidateKeys.add(resolvedIds.map((id) => id.replace(/_/g, "-")).join("+"));
-
-      // C. Formulas
-      const formulas = inputs
-        .map((i) => {
-          const chem = this.chemicalRepo.getById(i.chemicalId);
-          return (chem?.formula || i.formula || i.chemicalId).toLowerCase().replace(/[^a-z0-9]/g, "_");
-        })
-        .sort();
-      candidateKeys.add(formulas.join("+"));
-      candidateKeys.add(formulas.map((f) => f.replace(/_/g, "-")).join("+"));
-
-      // D. Common names
-      const commonNames = inputs
-        .map((i) => {
-          const chem = this.chemicalRepo.getById(i.chemicalId);
-          return (chem?.commonName || i.chemicalId).toLowerCase().replace(/[^a-z0-9]/g, "_");
-        })
-        .sort();
-      candidateKeys.add(commonNames.join("+"));
-      candidateKeys.add(commonNames.map((c) => c.replace(/_/g, "-")).join("+"));
-
-      for (const k of candidateKeys) {
-        const matched = await prisma.reaction.findUnique({ where: { reactantKey: k } }).catch(() => null);
+      const candidateKeys = this.generateCandidateReactantKeys(inputs);
+      if (candidateKeys.length > 0) {
+        const matched = await prisma.reaction.findFirst({
+          where: { reactantKey: { in: candidateKeys } },
+        });
         if (matched) {
           return this.buildResolutionFromDbRow(matched, inputs, conditions);
         }
@@ -708,6 +793,19 @@ export class SimulationService {
       // Prisma error fallback
     }
 
+    // 3. For 2 or fewer reactants, if localResult was valid, return it
+    if (inputs.length <= 2) {
+      try {
+        const localResult = this.simulate(inputs, conditions);
+        if (localResult.resolution.status !== "UNSUPPORTED") {
+          return localResult;
+        }
+      } catch {}
+    }
+
+    // If inputs have >2 reactants and neither database has an exact full match:
+    // Return null so that Priority 2 (ReactionT5v2) and Priority 3 (Integrated AI Predictor)
+    // can predict the reaction for the full mixture rather than prematurely discarding reactants.
     return null;
   }
 
