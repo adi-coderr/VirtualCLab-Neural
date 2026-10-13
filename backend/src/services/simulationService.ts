@@ -387,7 +387,12 @@ export class SimulationService {
     resolution: ReactionResolution,
     inputs: ReactionInputSpecies[],
     conditions: ReactionConditions = {}
-  ): { stoichiometry?: StoichiometryLine[]; calorimetry?: CalorimetryResult } {
+  ): {
+    resolution: ReactionResolution;
+    stoichiometry?: StoichiometryLine[];
+    limitingReagentChemicalId?: string;
+    calorimetry?: CalorimetryResult;
+  } {
     const stoichReactants = resolution.reactants.map((r) => ({
       chemicalId: r.chemicalId,
       formula: r.formula,
@@ -396,38 +401,125 @@ export class SimulationService {
       molarMass: this.getMolarMass(r.chemicalId, r.formula),
     }));
 
-    const stoichProducts = resolution.products.map((p) => ({
-      chemicalId: p.chemicalId,
-      formula: p.formula,
-      commonName: p.commonName,
-      coefficient: p.coefficient || 1,
-      molarMass: this.getMolarMass(p.chemicalId, p.formula),
-      isByproduct: p.isByproduct,
-    }));
+    const stoichProducts = resolution.products
+      .filter((p) => p.isRegistered)
+      .map((p) => ({
+        chemicalId: p.chemicalId,
+        formula: p.formula,
+        commonName: p.commonName,
+        coefficient: p.coefficient || 1,
+        molarMass: this.getMolarMass(p.chemicalId, p.formula),
+        isByproduct: p.isByproduct,
+      }));
 
-    let stoichiometry: StoichiometryLine[] | undefined;
-    let calorimetry: CalorimetryResult | undefined;
+    const enrichedInputs = inputs.map((inp) => {
+      if (inp.formula) return inp;
+      const chem = this.chemicalRepo.getById(inp.chemicalId);
+      return {
+        ...inp,
+        formula: chem?.formula || inp.formula,
+      };
+    });
+
     try {
-      const stoich = computeStoichiometry(stoichReactants, stoichProducts, inputs);
-      stoichiometry = stoich.lines;
-      if (resolution.enthalpyKjPerMol !== undefined && stoich.extentMoles > 0) {
-        try {
-          calorimetry = computeCalorimetry({
-            inputs,
-            extentMoles: stoich.extentMoles,
-            enthalpyKjPerMol: resolution.enthalpyKjPerMol,
-            initialTemperatureC: conditions.temperatureC ?? 25.0,
-            molarMassLookup: (id) => this.getMolarMass(id),
-          });
-        } catch {
-          // Calorimetry optional
-        }
+      const stoich = computeStoichiometry(stoichReactants, stoichProducts, enrichedInputs);
+
+      let calorimetry: CalorimetryResult | undefined;
+      let augmentedResolution = resolution;
+
+      const effectiveEnthalpy =
+        resolution.enthalpyKjPerMol !== undefined
+          ? resolution.enthalpyKjPerMol
+          : resolution.energyClassification === "exothermic"
+            ? -65.0
+            : resolution.energyClassification === "endothermic"
+              ? 35.0
+              : undefined;
+
+      if (effectiveEnthalpy !== undefined && stoich.extentMoles > 0) {
+        calorimetry = computeCalorimetry({
+          inputs: enrichedInputs,
+          extentMoles: stoich.extentMoles,
+          enthalpyKjPerMol: effectiveEnthalpy,
+          initialTemperatureC: conditions.temperatureC ?? 25.0,
+          molarMassLookup: (id) => this.getMolarMass(id),
+        });
+        augmentedResolution = this.augmentResolutionWithCalorimetry(
+          { ...resolution, enthalpyKjPerMol: effectiveEnthalpy },
+          calorimetry
+        );
       }
-    } catch {
-      // Stoichiometry optional
+
+      return {
+        resolution: augmentedResolution,
+        stoichiometry: stoich.lines,
+        limitingReagentChemicalId: stoich.limitingReagentChemicalId,
+        calorimetry,
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown stoichiometry error";
+      return {
+        resolution: { ...resolution, warnings: [...resolution.warnings, `Stoichiometry not computed: ${message}`] },
+      };
+    }
+  }
+
+  /**
+   * Augments a ReactionResolution with calorimetry results, updating temperature change observable effects
+   * and process breakdowns consistently.
+   */
+  private augmentResolutionWithCalorimetry(
+    resolution: ReactionResolution,
+    calorimetry?: CalorimetryResult
+  ): ReactionResolution {
+    if (!calorimetry) return resolution;
+
+    let hasTempEffect = false;
+    const augmentedEffects: ObservableEffect[] = resolution.observableEffects.map((effect): ObservableEffect => {
+      if (effect.type === "temperature_decrease" || effect.type === "temperature_increase") {
+        hasTempEffect = true;
+        const isDecrease = calorimetry.temperatureDeltaC < 0;
+        const changeLabel = isDecrease
+          ? `Temperature decreased by ${Math.abs(calorimetry.temperatureDeltaC).toFixed(1)} °C (from ${calorimetry.initialTemperatureC.toFixed(1)} °C to ${calorimetry.finalTemperatureC.toFixed(1)} °C).`
+          : calorimetry.temperatureDeltaC > 0
+            ? `Temperature increased by ${calorimetry.temperatureDeltaC.toFixed(1)} °C (from ${calorimetry.initialTemperatureC.toFixed(1)} °C to ${calorimetry.finalTemperatureC.toFixed(1)} °C).`
+            : `No significant temperature change (${calorimetry.initialTemperatureC.toFixed(1)} °C).`;
+
+        const cleanDesc = effect.description.replace(/^Temperature (?:decreased|increased)[^.]*\.\s*/, "");
+        return {
+          ...effect,
+          type: isDecrease ? ("temperature_decrease" as const) : ("temperature_increase" as const),
+          temperatureDeltaC: calorimetry.temperatureDeltaC,
+          initialTemperatureC: calorimetry.initialTemperatureC,
+          finalTemperatureC: calorimetry.finalTemperatureC,
+          description: `${changeLabel} ${cleanDesc}`,
+        };
+      }
+      return effect;
+    });
+
+    if (!hasTempEffect && Math.abs(calorimetry.temperatureDeltaC) >= 0.1) {
+      const isDecrease = calorimetry.temperatureDeltaC < 0;
+      augmentedEffects.push({
+        type: isDecrease ? ("temperature_decrease" as const) : ("temperature_increase" as const),
+        temperatureDeltaC: calorimetry.temperatureDeltaC,
+        initialTemperatureC: calorimetry.initialTemperatureC,
+        finalTemperatureC: calorimetry.finalTemperatureC,
+        description: calorimetry.summaryText,
+      });
     }
 
-    return { stoichiometry, calorimetry };
+    const updated: ReactionResolution = {
+      ...resolution,
+      observableEffects: augmentedEffects,
+      calorimetry,
+    };
+
+    if (!updated.processBreakdown || calorimetry) {
+      updated.processBreakdown = generateProcessBreakdown(updated);
+    }
+
+    return updated;
   }
 
   /**
@@ -447,125 +539,202 @@ export class SimulationService {
       return { resolution };
     }
 
-    const stoichReactants = resolution.reactants.map((r) => ({
-      chemicalId: r.chemicalId,
-      formula: r.formula,
-      commonName: r.commonName,
-      coefficient: r.coefficient,
-      molarMass: this.getMolarMass(r.chemicalId, r.formula),
-    }));
-
-    const stoichProducts = resolution.products
-      .filter((p) => p.isRegistered)
-      .map((p) => ({
-        chemicalId: p.chemicalId,
-        formula: p.formula,
-        commonName: p.commonName,
-        coefficient: p.coefficient,
-        molarMass: this.getMolarMass(p.chemicalId, p.formula),
-        isByproduct: p.isByproduct,
-      }));
-
-    try {
-      const stoich = computeStoichiometry(stoichReactants, stoichProducts, inputs);
-
-      let calorimetry: CalorimetryResult | undefined;
-      let augmentedResolution = resolution;
-
-      if (resolution.enthalpyKjPerMol !== undefined && stoich.extentMoles > 0) {
-        calorimetry = computeCalorimetry({
-          inputs,
-          extentMoles: stoich.extentMoles,
-          enthalpyKjPerMol: resolution.enthalpyKjPerMol,
-          initialTemperatureC: conditions.temperatureC ?? 25.0,
-          molarMassLookup: (id) => this.getMolarMass(id),
-        });
-
-        let hasTempEffect = false;
-        const augmentedEffects = resolution.observableEffects.map((effect) => {
-          if (effect.type === "temperature_decrease" || effect.type === "temperature_increase") {
-            hasTempEffect = true;
-            const isDecrease = calorimetry!.temperatureDeltaC < 0;
-            const changeLabel = isDecrease
-              ? `Temperature decreased by ${Math.abs(calorimetry!.temperatureDeltaC).toFixed(1)} °C (from ${calorimetry!.initialTemperatureC.toFixed(1)} °C to ${calorimetry!.finalTemperatureC.toFixed(1)} °C).`
-              : calorimetry!.temperatureDeltaC > 0
-                ? `Temperature increased by ${calorimetry!.temperatureDeltaC.toFixed(1)} °C (from ${calorimetry!.initialTemperatureC.toFixed(1)} °C to ${calorimetry!.finalTemperatureC.toFixed(1)} °C).`
-                : `No significant temperature change (${calorimetry!.initialTemperatureC.toFixed(1)} °C).`;
-
-            const cleanDesc = effect.description.replace(/^Temperature (?:decreased|increased)[^.]*\.\s*/, "");
-            return {
-              ...effect,
-              type: isDecrease ? "temperature_decrease" : "temperature_increase",
-              temperatureDeltaC: calorimetry!.temperatureDeltaC,
-              initialTemperatureC: calorimetry!.initialTemperatureC,
-              finalTemperatureC: calorimetry!.finalTemperatureC,
-              description: `${changeLabel} ${cleanDesc}`,
-            };
-          }
-          return effect;
-        });
-
-        if (!hasTempEffect && Math.abs(calorimetry!.temperatureDeltaC) >= 0.1) {
-          const isDecrease = calorimetry!.temperatureDeltaC < 0;
-          augmentedEffects.push({
-            type: isDecrease ? "temperature_decrease" : "temperature_increase",
-            temperatureDeltaC: calorimetry!.temperatureDeltaC,
-            initialTemperatureC: calorimetry!.initialTemperatureC,
-            finalTemperatureC: calorimetry!.finalTemperatureC,
-            description: calorimetry!.summaryText,
-          });
-        }
-
-        augmentedResolution = {
-          ...resolution,
-          observableEffects: augmentedEffects,
-          calorimetry,
-        };
-
-        if (!augmentedResolution.processBreakdown) {
-          augmentedResolution.processBreakdown = generateProcessBreakdown(augmentedResolution);
-        }
-      }
-
-      return {
-        resolution: augmentedResolution,
-        stoichiometry: stoich.lines,
-        limitingReagentChemicalId: stoich.limitingReagentChemicalId,
-        calorimetry,
-      };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Unknown stoichiometry error";
-      return {
-        resolution: { ...resolution, warnings: [...resolution.warnings, `Stoichiometry not computed: ${message}`] },
-      };
-    }
+    return this.computeStoichiometryForResolution(resolution, inputs, conditions);
   }
 
   /**
-   * 3-tier reaction resolution pipeline:
-   * 1. Search local curated database and deterministic rule engine.
-   * 2. If not found in database, send to local ReactionT5v2 Neural Model.
-   * 3. If ML model cannot recognize or provide output, fall back to Groq AI API.
-   * All outputs are unified into the main result.
+   * Helper to build a full SimulationResult from a curated database record in SQLite dev.db.
+   * Handles reaction resolution, stoichiometric scaling, and calorimetry adjustments for amounts.
+   */
+  private buildResolutionFromDbRow(
+    matchedRow: any,
+    inputs: ReactionInputSpecies[],
+    conditions: ReactionConditions = {}
+  ): SimulationResult {
+    const cond = (matchedRow.conditions as any) || {};
+    const obs = (matchedRow.observations as any[]) || [];
+    const reactants = (matchedRow.reactants as any[]) || [];
+    const products = (matchedRow.products as any[]) || [];
+
+    const rawEnthalpy = cond.enthalpyKjPerMol;
+    let energyClass = cond.energyClassification;
+    if (!energyClass) {
+      if (rawEnthalpy !== undefined && rawEnthalpy < 0) energyClass = "exothermic";
+      else if (rawEnthalpy !== undefined && rawEnthalpy > 0) energyClass = "endothermic";
+      else energyClass = "exothermic";
+    }
+    const enthalpyKjPerMol =
+      rawEnthalpy !== undefined && rawEnthalpy !== null
+        ? rawEnthalpy
+        : energyClass === "exothermic"
+          ? -65.0
+          : energyClass === "endothermic"
+            ? 35.0
+            : undefined;
+
+    const enrichedObs = [...obs];
+    const hasTemp = enrichedObs.some(
+      (e: any) => e.type === "temperature_increase" || e.type === "temperature_decrease"
+    );
+    if (!hasTemp) {
+      if (energyClass === "exothermic" || (enthalpyKjPerMol !== undefined && enthalpyKjPerMol < 0)) {
+        enrichedObs.push({
+          type: "temperature_increase",
+          description: `Exothermic reaction releasing heat (ΔH = ${enthalpyKjPerMol ?? -65.0} kJ/mol); final temperature rise scales directly with the quantity and concentration of reactants.`,
+        });
+      } else if (energyClass === "endothermic" || (enthalpyKjPerMol !== undefined && enthalpyKjPerMol > 0)) {
+        enrichedObs.push({
+          type: "temperature_decrease",
+          description: `Endothermic reaction absorbing heat (ΔH = +${enthalpyKjPerMol ?? 35.0} kJ/mol); final temperature drop scales directly with the quantity of reactants dissolved or reacted.`,
+        });
+      }
+    }
+
+    let resolution: ReactionResolution = {
+      status: "REACTION",
+      confidenceTier: "SUPPORTED",
+      confidenceScore: matchedRow.confidenceScore ?? 1.0,
+      reactionType: matchedRow.reactionType as any,
+      balancedEquation: matchedRow.equation,
+      netIonicEquation: matchedRow.netIonicEquation ?? undefined,
+      reactants: reactants.map((r: any) => {
+        const chem = this.chemicalRepo.getById(r.chemicalId) || this.chemicalRepo.getByFormula(r.chemicalId);
+        return {
+          chemicalId: r.chemicalId,
+          formula: chem?.formula || r.formula || r.chemicalId,
+          commonName: chem?.commonName || r.commonName || r.chemicalId,
+          coefficient: r.coefficient || 1,
+          isRegistered: true,
+          substanceColor: chem?.substanceColor,
+        };
+      }),
+      products: products.map((p: any) => {
+        const chem = this.chemicalRepo.getById(p.chemicalId) || this.chemicalRepo.getByFormula(p.chemicalId);
+        return {
+          chemicalId: p.chemicalId,
+          formula: chem?.formula || p.formula || p.chemicalId,
+          commonName: chem?.commonName || p.commonName || p.chemicalId,
+          coefficient: p.coefficient || 1,
+          isByproduct: !!p.isByproduct,
+          isRegistered: true,
+          substanceColor: chem?.substanceColor,
+        };
+      }),
+      observableEffects: enrichedObs as ObservableEffect[],
+      energyClassification: energyClass,
+      enthalpyKjPerMol,
+      explanation: `Curated reaction from verified chemical database: ${matchedRow.name || matchedRow.equation}.`,
+      ruleApplied: "curated_database",
+      safetyNotes: (matchedRow.hazards as any)?.safetyNotes,
+      warnings: [],
+      isAiPredicted: false,
+    };
+
+    const { stoichiometry, calorimetry } = this.computeStoichiometryForResolution(
+      resolution,
+      inputs,
+      conditions
+    );
+    const augmentedResolution = this.augmentResolutionWithCalorimetry(resolution, calorimetry);
+
+    return {
+      resolution: augmentedResolution,
+      stoichiometry,
+      calorimetry,
+    };
+  }
+
+  /**
+   * Helper to check local curated databases (both chemlab.db and dev.db) for the given input species.
+   */
+  private async findInDatabase(
+    inputs: ReactionInputSpecies[],
+    conditions: ReactionConditions = {}
+  ): Promise<SimulationResult | null> {
+    // 1. Check local chemlab.db and deterministic rule engine
+    try {
+      const localResult = this.simulate(inputs, conditions);
+      if (localResult.resolution.status !== "UNSUPPORTED") {
+        return localResult;
+      }
+    } catch {
+      // Continue to prisma dev.db lookup
+    }
+
+    // 2. Check prisma dev.db curated reactions
+    try {
+      const candidateKeys = new Set<string>();
+
+      // A. Chemical IDs sorted
+      const rawIds = inputs.map((i) => i.chemicalId.toLowerCase().replace(/[^a-z0-9]/g, "_")).sort();
+      candidateKeys.add(rawIds.join("+"));
+      candidateKeys.add(rawIds.map((id) => id.replace(/_/g, "-")).join("+"));
+
+      // B. Resolved chemical repository IDs (canonical)
+      const resolvedIds = inputs.map((i) => {
+        const chem = this.chemicalRepo.getById(i.chemicalId) || this.chemicalRepo.getByFormula(i.chemicalId);
+        return (chem?.id || i.chemicalId).toLowerCase().replace(/[^a-z0-9]/g, "_");
+      }).sort();
+      candidateKeys.add(resolvedIds.join("+"));
+      candidateKeys.add(resolvedIds.map((id) => id.replace(/_/g, "-")).join("+"));
+
+      // C. Formulas
+      const formulas = inputs
+        .map((i) => {
+          const chem = this.chemicalRepo.getById(i.chemicalId);
+          return (chem?.formula || i.formula || i.chemicalId).toLowerCase().replace(/[^a-z0-9]/g, "_");
+        })
+        .sort();
+      candidateKeys.add(formulas.join("+"));
+      candidateKeys.add(formulas.map((f) => f.replace(/_/g, "-")).join("+"));
+
+      // D. Common names
+      const commonNames = inputs
+        .map((i) => {
+          const chem = this.chemicalRepo.getById(i.chemicalId);
+          return (chem?.commonName || i.chemicalId).toLowerCase().replace(/[^a-z0-9]/g, "_");
+        })
+        .sort();
+      candidateKeys.add(commonNames.join("+"));
+      candidateKeys.add(commonNames.map((c) => c.replace(/_/g, "-")).join("+"));
+
+      for (const k of candidateKeys) {
+        const matched = await prisma.reaction.findUnique({ where: { reactantKey: k } }).catch(() => null);
+        if (matched) {
+          return this.buildResolutionFromDbRow(matched, inputs, conditions);
+        }
+      }
+    } catch {
+      // Prisma error fallback
+    }
+
+    return null;
+  }
+
+  /**
+   * 3-tier reaction resolution pipeline following strict priority:
+   * 1. Priority 1 (Local Database): If reactant is present in local database (chemlab.db or dev.db),
+   *    show final output directly because local database data is verified and accurate.
+   * 2. Priority 2 (Local ML Model - ReactionT5v2): If not in database, local ML model predicts output.
+   *    - If ML output is available: Integrated API rechecks reactions and adds additional literature/internet data.
+   *      If API is unable to recheck/respond, the predicted output by the ML model is treated as final output and displayed.
+   * 3. Priority 3 (Integrated API Fallback): If ML model is unable to predict, send input to Integrated API
+   *    to generate output from scratch, treating API output as final output to display on webpage.
    */
   async simulateWithAi(
     inputs: ReactionInputSpecies[],
     conditions: ReactionConditions = {},
     options?: PredictReactionOptions
   ): Promise<SimulationResult> {
-    // 1. Search local curated database and deterministic rule engine
-    const localResult = this.simulate(inputs, conditions);
-    if (localResult.resolution.status !== "UNSUPPORTED") {
-      logger.info("Tier 1: Reaction resolved via local database/engine", {
+    // 1. Priority 1: Check Local Verified Database (Direct output, verified & accurate)
+    const dbResult = await this.findInDatabase(inputs, conditions);
+    if (dbResult && dbResult.resolution.status !== "UNSUPPORTED") {
+      logger.info("Priority 1: Reaction resolved directly via curated database", {
         reactants: inputs.map((i) => i.chemicalId),
-        status: localResult.resolution.status,
-        equation: localResult.resolution.balancedEquation,
+        status: dbResult.resolution.status,
+        equation: dbResult.resolution.balancedEquation,
       });
-      return localResult;
-    }
-
-    if (process.env.NODE_ENV === "test" && !options?.apiKey) {
-      return localResult;
+      return dbResult;
     }
 
     const chemicals = this.resolveChemicalsOrThrow(inputs);
@@ -583,151 +752,188 @@ export class SimulationService {
       };
     }
 
-    // 2. Query Local Neural ML Model (ReactionT5v2) unless an external provider was requested
-    if (!options?.provider || options.provider === "groq") {
-      try {
-        const mlTokens = chemicals.map((chem) => chem.smiles || chem.formula || chem.commonName || chem.id);
-        const mlInput = mlTokens.join(".");
+    // 2. Priority 2: Query Local Neural ML Model (ReactionT5v2)
+    let mlPredictionResult: SimulationResult | null = null;
+    try {
+      const mlTokens = chemicals.map((chem) => chem.smiles || chem.formula || chem.commonName || chem.id);
+      const mlInput = mlTokens.join(".");
 
-        if (mlInput.trim()) {
-          const mlPromise = localMlModelService.predict({ input: mlInput, numBeams: 3, maxLength: 128 });
-          const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("ML timeout")), 4500)
-          );
-          const mlRes = await Promise.race([mlPromise, timeoutPromise]);
+      if (mlInput.trim()) {
+        const mlPromise = localMlModelService.predict({ input: mlInput, numBeams: 3, maxLength: 128 });
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("ML timeout")), 4500)
+        );
+        const mlRes = await Promise.race([mlPromise, timeoutPromise]);
 
-          const hasValidProducts = !!(mlRes && mlRes.predictedProducts && mlRes.predictedProducts.length > 0);
-          const isEcho = isReactionEcho(mlTokens, mlRes?.predictedProducts || []);
+        const hasValidProducts = !!(mlRes && mlRes.predictedProducts && mlRes.predictedProducts.length > 0);
+        const isEcho = isReactionEcho(mlTokens, mlRes?.predictedProducts || []);
 
-          const resolvedReactants: ResolvedSpecies[] = chemicals.map((chem) => ({
-            chemicalId: chem.id,
-            formula: chem.formula,
-            commonName: chem.commonName,
+        const resolvedReactants: ResolvedSpecies[] = chemicals.map((chem) => ({
+          chemicalId: chem.id,
+          formula: chem.formula,
+          commonName: chem.commonName,
+          coefficient: 1,
+          isRegistered: true,
+        }));
+
+        const candidateProducts: ResolvedSpecies[] = (mlRes?.predictedProducts || []).map((p, idx) => {
+          const profile = mlRes?.productAnalyses?.[idx];
+          return {
+            chemicalId: (profile?.formula || p).toLowerCase().replace(/[^a-z0-9]/g, "_"),
+            formula: profile?.formula || p,
+            commonName: profile?.name || p,
             coefficient: 1,
             isRegistered: true,
-          }));
-
-          const candidateProducts: ResolvedSpecies[] = (mlRes?.predictedProducts || []).map((p, idx) => {
-            const profile = mlRes?.productAnalyses?.[idx];
-            return {
-              chemicalId: (profile?.formula || p).toLowerCase().replace(/[^a-z0-9]/g, "_"),
-              formula: profile?.formula || p,
-              commonName: profile?.name || p,
-              coefficient: 1,
-              isRegistered: true,
-            };
-          });
-
-          const audit: ReactionAuditReport = hasValidProducts && !isEcho
-            ? auditReactionChemistry(resolvedReactants, candidateProducts)
-            : { passed: false, isInertAlkanes: false, failureReason: "No valid products or echo detected." };
-
-          if (audit.passed) {
-            logger.info("Tier 2: Reaction validated and resolved via ReactionT5v2 Neural Model", {
-              input: mlInput,
-              equation: audit.balancedEquation || mlRes.predictedEquation,
-              latencyMs: mlRes.latencyMs,
-            });
-
-            const mlResolution = this.buildResolutionFromMl(
-              mlRes,
-              audit.balancedReactants || resolvedReactants,
-              conditions,
-              audit.balancedProducts,
-              audit.balancedEquation
-            );
-            const { stoichiometry, calorimetry } = this.computeStoichiometryForResolution(
-              mlResolution,
-              inputs,
-              conditions
-            );
-
-            return {
-              resolution: mlResolution,
-              stoichiometry,
-              calorimetry,
-            };
-          } else {
-            logger.info("ML model prediction rejected by chemical audit, cascading to Groq AI", {
-              input: mlInput,
-              reason: audit.failureReason,
-              cleanedOutput: mlRes?.cleanedOutput,
-            });
-          }
-        }
-      } catch (err: any) {
-        logger.info("Local ML model skipped or failed, falling back to Groq AI", { error: err.message });
-      }
-    }
-
-    // 3. Fallback to Groq AI API if ML model could not recognize and provide valid output
-    let result = localResult;
-    if (result.resolution.status === "UNSUPPORTED") {
-      if (process.env.NODE_ENV === "test" && !options?.apiKey) {
-        return result;
-      }
-      try {
-        const reactantDetails = inputs.map((input) => {
-          const chem = this.chemicalRepo.getById(input.chemicalId);
-          const name = chem?.commonName || input.chemicalId;
-          const formula = chem?.formula || input.formula || input.chemicalId;
-          const conc = input.concentrationMolar ? `${input.concentrationMolar} M` : undefined;
-          const amt = `${input.amount} ${input.unit}`;
-          return {
-            name,
-            formula,
-            amount: conc ? `${amt} (${conc})` : amt,
-            class: chem?.chemicalClass,
-            state: chem?.physicalState,
           };
         });
 
-        const reactantDescription = chemicals
-          .map((c) => `${c.commonName} (${c.formula})`)
-          .join(" + ");
-        const aiResolution = await aiReactionPredictor.predict(reactantDescription, {
-          apiKey: options?.apiKey,
-          provider: options?.provider,
-          conditions,
-          reactantDetails,
-        });
+        const audit: ReactionAuditReport = hasValidProducts && !isEcho
+          ? auditReactionChemistry(resolvedReactants, candidateProducts)
+          : { passed: false, isInertAlkanes: false, failureReason: "No valid products or echo detected." };
 
-        if (aiResolution.status !== "REACTION") {
-          return { ...result, resolution: aiResolution };
-        }
-
-        // Validate Groq AI prediction with chemical balancer and audit
-        const audit = auditReactionChemistry(aiResolution.reactants, aiResolution.products);
         if (audit.passed) {
-          if (audit.balancedEquation) aiResolution.balancedEquation = audit.balancedEquation;
-          if (audit.balancedReactants) aiResolution.reactants = audit.balancedReactants;
-          if (audit.balancedProducts) aiResolution.products = audit.balancedProducts;
-        }
+          logger.info("Priority 2: Valid prediction obtained from Local ML Model (ReactionT5v2)", {
+            input: mlInput,
+            equation: audit.balancedEquation || mlRes.predictedEquation,
+            latencyMs: mlRes.latencyMs,
+          });
 
-        const { stoichiometry, calorimetry } = this.computeStoichiometryForResolution(
-          aiResolution,
-          inputs,
-          conditions
-        );
+          const mlResolution = this.buildResolutionFromMl(
+            mlRes,
+            audit.balancedReactants || resolvedReactants,
+            conditions,
+            audit.balancedProducts,
+            audit.balancedEquation
+          );
 
-        return {
-          ...result,
-          resolution: aiResolution,
-          stoichiometry,
-          calorimetry,
-        };
-      } catch (err: any) {
-        logger.info("AI reaction prediction skipped or not available", { error: err.message });
-        if (err.message && err.message.includes("NO_API_KEY")) {
-          result.resolution.warnings = [
-            ...(result.resolution.warnings ?? []),
-            "This reaction is not in our curated database. Set an AI API key in ✨ AI Settings to automatically predict and balance it in the background.",
-          ];
+          // Recheck with Integrated API to verify and add additional internet/literature details (if needed)
+          let finalResolution = mlResolution;
+          try {
+            const enrichedResolution = await aiReactionPredictor.recheckAndEnrich(
+              mlResolution,
+              conditions,
+              options
+            );
+            if (enrichedResolution && enrichedResolution.status === "REACTION") {
+              finalResolution = enrichedResolution;
+              logger.info("Integrated API successfully rechecked reaction and added literature data", {
+                equation: finalResolution.balancedEquation,
+              });
+            }
+          } catch (apiErr: any) {
+            logger.info("Integrated API unable to recheck/enrich (using ML model predicted output directly as final output)", {
+              error: apiErr.message,
+            });
+            // Fallback to pure ML predicted output as final output
+          }
+
+          const stoichResult = this.computeStoichiometryForResolution(
+            finalResolution,
+            inputs,
+            conditions
+          );
+
+          mlPredictionResult = {
+            resolution: stoichResult.resolution,
+            stoichiometry: stoichResult.stoichiometry,
+            calorimetry: stoichResult.calorimetry,
+            mlPrediction: {
+              modelName: mlRes.modelName,
+              rawOutput: mlRes.rawOutput,
+              cleanedOutput: mlRes.cleanedOutput,
+              predictedEquation: mlRes.predictedEquation,
+              predictedProducts: mlRes.predictedProducts,
+              productAnalyses: mlRes.productAnalyses,
+              reactionType: mlRes.reactionType,
+              atomEconomyPercent: mlRes.atomEconomyPercent,
+              expectedByproducts: mlRes.expectedByproducts,
+              mechanismNotes: mlRes.mechanismNotes,
+              latencyMs: mlRes.latencyMs,
+              trainingDataset: mlRes.trainingDataset,
+              device: mlRes.device,
+              beamsUsed: mlRes.beamsUsed,
+            },
+          };
+        } else {
+          logger.info("ML model prediction rejected by chemical audit, falling back to Integrated API", {
+            input: mlInput,
+            reason: audit.failureReason,
+          });
         }
       }
+    } catch (err: any) {
+      logger.info("Local ML model skipped or failed, falling back to Integrated API", { error: err.message });
     }
 
-    return result;
+    if (mlPredictionResult) {
+      return mlPredictionResult;
+    }
+
+    // 3. Priority 3: ML model unable to predict -> Send input to Integrated API to generate output
+    if (process.env.NODE_ENV === "test" && !options?.apiKey) {
+      return this.simulate(inputs, conditions);
+    }
+
+    try {
+      const reactantDetails = inputs.map((input) => {
+        const chem = this.chemicalRepo.getById(input.chemicalId);
+        const name = chem?.commonName || input.chemicalId;
+        const formula = chem?.formula || input.formula || input.chemicalId;
+        const conc = input.concentrationMolar ? `${input.concentrationMolar} M` : undefined;
+        const amt = `${input.amount} ${input.unit}`;
+        return {
+          name,
+          formula,
+          amount: conc ? `${amt} (${conc})` : amt,
+          class: chem?.chemicalClass,
+          state: chem?.physicalState,
+        };
+      });
+
+      const reactantDescription = chemicals
+        .map((c) => `${c.commonName} (${c.formula})`)
+        .join(" + ");
+      const aiResolution = await aiReactionPredictor.predict(reactantDescription, {
+        apiKey: options?.apiKey,
+        provider: options?.provider,
+        conditions,
+        reactantDetails,
+      });
+
+      if (aiResolution.status !== "REACTION") {
+        return { resolution: aiResolution };
+      }
+
+      // Validate Integrated API prediction with chemical balancer and audit
+      const audit = auditReactionChemistry(aiResolution.reactants, aiResolution.products);
+      if (audit.passed) {
+        if (audit.balancedEquation) aiResolution.balancedEquation = audit.balancedEquation;
+        if (audit.balancedReactants) aiResolution.reactants = audit.balancedReactants;
+        if (audit.balancedProducts) aiResolution.products = audit.balancedProducts;
+      }
+
+      const stoichResult = this.computeStoichiometryForResolution(
+        aiResolution,
+        inputs,
+        conditions
+      );
+
+      return {
+        resolution: stoichResult.resolution,
+        stoichiometry: stoichResult.stoichiometry,
+        calorimetry: stoichResult.calorimetry,
+      };
+    } catch (err: any) {
+      logger.info("Integrated API reaction prediction failed or unavailable", { error: err.message });
+      const localFallback = this.simulate(inputs, conditions);
+      if (err.message && err.message.includes("NO_API_KEY")) {
+        localFallback.resolution.warnings = [
+          ...(localFallback.resolution.warnings ?? []),
+          "This reaction is not in our verified database and could not be predicted by the ML model. Set an AI API key in Settings to generate products dynamically.",
+        ];
+      }
+      return localFallback;
+    }
   }
 
 
@@ -744,7 +950,7 @@ export class SimulationService {
     for (const segment of segments) {
       // 1. Volume + optional molarity + chemical name (e.g. "25ml 2M sodium hydroxide", "50 mL water")
       const mVolConc = segment.match(/(\d+(?:\.\d+)?)\s*(ml|l)\s*(?:of\s+)?(?:(\d+(?:\.\d+)?)\s*m\s+)?(.*)/i);
-      if (mVolConc) {
+      if (mVolConc && mVolConc[1] && mVolConc[2] && mVolConc[4]) {
         const amt = parseFloat(mVolConc[1]);
         const u = mVolConc[2].toLowerCase() === "ml" ? "mL" : "L";
         const conc = mVolConc[3] ? parseFloat(mVolConc[3]) : undefined;
@@ -758,7 +964,7 @@ export class SimulationService {
 
       // 2. Mass / moles + chemical name (e.g. "15g urea", "2 mol zinc")
       const mMass = segment.match(/(\d+(?:\.\d+)?)\s*(g|mg|kg|mol|mmol)\s+(.*)/i);
-      if (mMass) {
+      if (mMass && mMass[1] && mMass[2] && mMass[3]) {
         const amt = parseFloat(mMass[1]);
         const u = mMass[2].toLowerCase();
         const rawChem = mMass[3].trim().toLowerCase();
@@ -771,7 +977,7 @@ export class SimulationService {
 
       // 3. Standalone molarity + chemical name (e.g. "2M HCl")
       const mMolar = segment.match(/(\d+(?:\.\d+)?)\s*m\s+(.*)/i);
-      if (mMolar) {
+      if (mMolar && mMolar[1] && mMolar[2]) {
         const conc = parseFloat(mMolar[1]);
         const rawChem = mMolar[2].trim().toLowerCase();
         if (rawChem) {
@@ -804,23 +1010,34 @@ export class SimulationService {
           parsedAmounts.get(tok.toLowerCase());
 
         if (parsed) {
+          const isLiquid = (parsed.unit === "mL" || parsed.unit === "L") && chemId !== "water" && chemId !== "h2o";
           result.push({
             chemicalId: chemId,
             formula: chem?.formula,
             amount: parsed.amount,
             unit: parsed.unit as any,
-            concentrationMolar: parsed.concentrationMolar,
+            concentrationMolar: parsed.concentrationMolar ?? (isLiquid ? 1.0 : undefined),
           });
         } else {
-          const isSolid = chem?.physicalState === "solid";
-          const isGas = chem?.physicalState === "gas";
-          result.push({
-            chemicalId: chemId,
-            formula: chem?.formula,
-            amount: isSolid ? 10 : isGas ? 1 : 25,
-            unit: (isSolid ? "g" : isGas ? "mol" : "mL") as any,
-            concentrationMolar: !isSolid && !isGas ? 1.0 : undefined,
-          });
+          const isWater = chemId === "water" || chemId === "h2o" || chem?.formula?.toUpperCase() === "H2O";
+          if (isWater) {
+            result.push({
+              chemicalId: chemId,
+              formula: "H2O",
+              amount: 50,
+              unit: "mL" as any,
+            });
+          } else {
+            const isSolid = chem?.physicalState === "solid";
+            const isGas = chem?.physicalState === "gas";
+            result.push({
+              chemicalId: chemId,
+              formula: chem?.formula,
+              amount: isSolid ? 10 : isGas ? 1 : 25,
+              unit: (isSolid ? "g" : isGas ? "mol" : "mL") as any,
+              concentrationMolar: !isSolid && !isGas ? 1.0 : undefined,
+            });
+          }
         }
       }
       return result;
@@ -836,12 +1053,13 @@ export class SimulationService {
         (chem && parsedAmounts.get(chem.commonName.toLowerCase().replace(/[^a-z0-9]/g, "")));
 
       if (parsed) {
+        const isLiquid = (parsed.unit === "mL" || parsed.unit === "L") && r.chemicalId !== "water" && r.chemicalId !== "h2o";
         return {
           chemicalId: r.chemicalId,
           formula: chem?.formula,
           amount: parsed.amount,
           unit: parsed.unit as any,
-          concentrationMolar: parsed.concentrationMolar,
+          concentrationMolar: parsed.concentrationMolar ?? (isLiquid ? 1.0 : undefined),
         };
       }
 
@@ -898,161 +1116,46 @@ export class SimulationService {
       .replace(/\s+/g, " ")
       .trim();
 
-    // 1. Search dev.db by exact reactantKey
-    let matchedRow = await prisma.reaction.findUnique({ where: { reactantKey: clean.toLowerCase() } }).catch(() => null);
-    if (!matchedRow && cleanWithoutAmounts) {
-      matchedRow = await prisma.reaction.findUnique({ where: { reactantKey: cleanWithoutAmounts.toLowerCase() } }).catch(() => null);
-    }
-
-    if (!matchedRow) {
-      const strippedTokens = (cleanWithoutAmounts || clean).split(/\s*[\+,]\s*|\s+\.\s+/).map((t) => t.trim()).filter(Boolean);
-      const sortedParts = strippedTokens.map((t) => t.toLowerCase().replace(/[^a-z0-9]/g, "_")).sort().join("+");
-      matchedRow = await prisma.reaction.findUnique({ where: { reactantKey: sortedParts } }).catch(() => null);
-    }
-
-    // Search by name or id, or by equation if query has an arrow (e.g. "A + B -> C")
-    const hasArrow = clean.includes("->") || clean.includes("→");
-    if (!matchedRow) {
-      const searchTarget = cleanWithoutAmounts || clean;
-      matchedRow = await prisma.reaction.findFirst({
-        where: {
-          OR: [
-            { name: { contains: searchTarget } },
-            { id: { contains: searchTarget.toLowerCase() } },
-            ...(hasArrow ? [{ equation: { contains: clean } }] : []),
-          ],
-        },
-      }).catch(() => null);
-    }
-
-    if (matchedRow) {
-      const cond = (matchedRow.conditions as any) || {};
-      const obs = (matchedRow.observations as any[]) || [];
-      const reactants = (matchedRow.reactants as any[]) || [];
-      const products = (matchedRow.products as any[]) || [];
-
-      let resolution: ReactionResolution = {
-        status: "REACTION",
-        confidenceTier: "SUPPORTED",
-        confidenceScore: matchedRow.confidenceScore,
-        reactionType: matchedRow.reactionType as any,
-        balancedEquation: matchedRow.equation,
-        netIonicEquation: matchedRow.netIonicEquation ?? undefined,
-        reactants: reactants.map((r: any) => {
-          const chem = this.chemicalRepo.getById(r.chemicalId) || this.chemicalRepo.getByFormula(r.chemicalId);
-          return {
-            chemicalId: r.chemicalId,
-            formula: chem?.formula || r.formula || r.chemicalId,
-            commonName: chem?.commonName || r.commonName || r.chemicalId,
-            coefficient: r.coefficient || 1,
-            isRegistered: true,
-            substanceColor: chem?.substanceColor,
-          };
-        }),
-        products: products.map((p: any) => {
-          const chem = this.chemicalRepo.getById(p.chemicalId) || this.chemicalRepo.getByFormula(p.chemicalId);
-          return {
-            chemicalId: p.chemicalId,
-            formula: chem?.formula || p.formula || p.chemicalId,
-            commonName: chem?.commonName || p.commonName || p.chemicalId,
-            coefficient: p.coefficient || 1,
-            isByproduct: !!p.isByproduct,
-            isRegistered: true,
-            substanceColor: chem?.substanceColor,
-          };
-        }),
-        observableEffects: obs as ObservableEffect[],
-        energyClassification: cond.energyClassification,
-        enthalpyKjPerMol: cond.enthalpyKjPerMol,
-        explanation: `Curated reaction from verified chemical database: ${matchedRow.name}.`,
-        ruleApplied: "curated_database",
-        safetyNotes: (matchedRow.hazards as any)?.safetyNotes,
-        warnings: [],
-      };
-
-      const inputs = this.parseOrBuildInputsForPredict(clean, reactants);
-      const { stoichiometry, calorimetry } = this.computeStoichiometryForResolution(
-        resolution,
-        inputs,
-        conditions
-      );
-
-      if (calorimetry) {
-        let hasTempEffect = false;
-        const augmentedEffects = resolution.observableEffects.map((effect) => {
-          if (effect.type === "temperature_decrease" || effect.type === "temperature_increase") {
-            hasTempEffect = true;
-            const isDecrease = calorimetry.temperatureDeltaC < 0;
-            const changeLabel = isDecrease
-              ? `Temperature decreased by ${Math.abs(calorimetry.temperatureDeltaC).toFixed(1)} °C (from ${calorimetry.initialTemperatureC.toFixed(1)} °C to ${calorimetry.finalTemperatureC.toFixed(1)} °C).`
-              : calorimetry.temperatureDeltaC > 0
-                ? `Temperature increased by ${calorimetry.temperatureDeltaC.toFixed(1)} °C (from ${calorimetry.initialTemperatureC.toFixed(1)} °C to ${calorimetry.finalTemperatureC.toFixed(1)} °C).`
-                : `No significant temperature change (${calorimetry.initialTemperatureC.toFixed(1)} °C).`;
-
-            const cleanDesc = effect.description.replace(/^Temperature (?:decreased|increased)[^.]*\.\s*/, "");
-            return {
-              ...effect,
-              type: isDecrease ? "temperature_decrease" : "temperature_increase",
-              temperatureDeltaC: calorimetry.temperatureDeltaC,
-              initialTemperatureC: calorimetry.initialTemperatureC,
-              finalTemperatureC: calorimetry.finalTemperatureC,
-              description: `${changeLabel} ${cleanDesc}`,
-            };
-          }
-          return effect;
-        });
-
-        if (!hasTempEffect && Math.abs(calorimetry.temperatureDeltaC) >= 0.1) {
-          const isDecrease = calorimetry.temperatureDeltaC < 0;
-          augmentedEffects.push({
-            type: isDecrease ? "temperature_decrease" : "temperature_increase",
-            temperatureDeltaC: calorimetry.temperatureDeltaC,
-            initialTemperatureC: calorimetry.initialTemperatureC,
-            finalTemperatureC: calorimetry.finalTemperatureC,
-            description: calorimetry.summaryText,
-          });
-        }
-
-        resolution = {
-          ...resolution,
-          observableEffects: augmentedEffects,
-          calorimetry,
+    // 1. Priority 1: Check Local Verified Database (Direct output, verified & accurate)
+    const parsedInputs = this.parseOrBuildInputsForPredict(clean, []);
+    if (parsedInputs.length >= 1) {
+      const dbResult = await this.findInDatabase(parsedInputs, conditions);
+      if (dbResult && dbResult.resolution.status !== "UNSUPPORTED") {
+        return {
+          simulationResult: dbResult,
+          source: "curated_database",
         };
       }
+    }
 
-      resolution.processBreakdown = generateProcessBreakdown(resolution);
+    // Fallback: Search dev.db by name, id, or equation (e.g. named reactions or "A + B -> C")
+    const hasArrow = clean.includes("->") || clean.includes("→");
+    const searchTarget = cleanWithoutAmounts || clean;
+    const matchedRow = await prisma.reaction.findFirst({
+      where: {
+        OR: [
+          { name: { contains: searchTarget } },
+          { id: { contains: searchTarget.toLowerCase() } },
+          ...(hasArrow ? [{ equation: { contains: clean } }] : []),
+        ],
+      },
+    }).catch(() => null);
 
+    if (matchedRow) {
+      const reactants = (matchedRow.reactants as any[]) || [];
+      const inputs = this.parseOrBuildInputsForPredict(clean, reactants);
+      const simRes = this.buildResolutionFromDbRow(matchedRow, inputs, conditions);
       return {
-        simulationResult: {
-          resolution,
-          stoichiometry,
-          calorimetry,
-        },
+        simulationResult: simRes,
         source: "curated_database",
       };
     }
 
-    // 1b. Check local deterministic chemistry engine & curated chemical repository before ML
+    // 2. Priority 2: Not in database -> Try Local Neural ML Model (ReactionT5v2)
+    let mlSimResult: SimulationResult | null = null;
     try {
-      const parsedInputs = this.parseOrBuildInputsForPredict(clean, []);
-      if (parsedInputs.length >= 1) {
-        const localSim = this.simulate(parsedInputs, conditions);
-        if (localSim.resolution.status === "REACTION") {
-          return {
-            simulationResult: localSim,
-            source: "curated_database",
-          };
-        }
-      }
-    } catch {
-      // Continue to ML/AI prediction
-    }
-
-    // 2. Not in database: Try Local Neural ML Model (ReactionT5v2) unless an external provider was requested
-    if (!options?.provider || options.provider === "groq") {
-      try {
-        const mlInput = clean.replace(/\s*\+\s*/g, ".");
-        const mlRes = await localMlModelService.predict({ input: mlInput, numBeams: 3, maxLength: 128 });
+      const mlInput = clean.replace(/\s*\+\s*/g, ".");
+      const mlRes = await localMlModelService.predict({ input: mlInput, numBeams: 3, maxLength: 128 });
 
         const hasValidProducts = !!(mlRes && mlRes.predictedProducts && mlRes.predictedProducts.length > 0);
         const isEcho = isReactionEcho(mlTokens, mlRes?.predictedProducts || []);
@@ -1075,7 +1178,7 @@ export class SimulationService {
           : { passed: false, isInertAlkanes: false, failureReason: "No valid products or echo detected." };
 
         if (audit.passed) {
-          logger.info("Tier 2: Reaction validated and resolved via ReactionT5v2 Neural Model in predictAny", {
+          logger.info("Priority 2: Valid prediction obtained from Local ML Model in predictAny", {
             input: mlInput,
             equation: audit.balancedEquation || mlRes.predictedEquation,
             latencyMs: mlRes.latencyMs,
@@ -1088,39 +1191,79 @@ export class SimulationService {
             audit.balancedProducts,
             audit.balancedEquation
           );
-          const mockInputs: ReactionInputSpecies[] = mlResolution.reactants.map((r) => ({
-            chemicalId: r.chemicalId,
-            amount: r.coefficient || 1,
-            unit: "mol",
-          }));
 
-          const { stoichiometry, calorimetry } = this.computeStoichiometryForResolution(
-            mlResolution,
-            mockInputs,
+          // Recheck with Integrated API to verify and add additional internet/literature details (if needed)
+          let finalResolution = mlResolution;
+          try {
+            const enrichedResolution = await aiReactionPredictor.recheckAndEnrich(
+              mlResolution,
+              conditions,
+              options
+            );
+            if (enrichedResolution && enrichedResolution.status === "REACTION") {
+              finalResolution = enrichedResolution;
+              logger.info("Integrated API successfully rechecked reaction in predictAny", {
+                equation: finalResolution.balancedEquation,
+              });
+            }
+          } catch (apiErr: any) {
+            logger.info("Integrated API unable to recheck in predictAny (using ML model predicted output directly as final output)", {
+              error: apiErr.message,
+            });
+            // Fallback to pure ML predicted output as final output
+          }
+
+          const actualInputs = this.parseOrBuildInputsForPredict(
+            clean,
+            finalResolution.reactants
+          );
+
+          const stoichResult = this.computeStoichiometryForResolution(
+            finalResolution,
+            actualInputs,
             conditions
           );
 
-          return {
-            simulationResult: {
-              resolution: mlResolution,
-              stoichiometry,
-              calorimetry,
+          mlSimResult = {
+            resolution: stoichResult.resolution,
+            stoichiometry: stoichResult.stoichiometry,
+            calorimetry: stoichResult.calorimetry,
+            mlPrediction: {
+              modelName: mlRes.modelName,
+              rawOutput: mlRes.rawOutput,
+              cleanedOutput: mlRes.cleanedOutput,
+              predictedEquation: mlRes.predictedEquation,
+              predictedProducts: mlRes.predictedProducts,
+              productAnalyses: mlRes.productAnalyses,
+              reactionType: mlRes.reactionType,
+              atomEconomyPercent: mlRes.atomEconomyPercent,
+              expectedByproducts: mlRes.expectedByproducts,
+              mechanismNotes: mlRes.mechanismNotes,
+              latencyMs: mlRes.latencyMs,
+              trainingDataset: mlRes.trainingDataset,
+              device: mlRes.device,
+              beamsUsed: mlRes.beamsUsed,
             },
-            source: "ai_predicted",
           };
         } else {
-          logger.info("Local ML model prediction rejected by chemical audit in predictAny, falling back to Groq AI", {
+          logger.info("Local ML model prediction rejected by chemical audit in predictAny, falling back to Integrated API", {
             input: mlInput,
             reason: audit.failureReason,
             products: mlRes?.predictedProducts,
           });
         }
       } catch (err: any) {
-        logger.debug("Local ML model skipped in predictAny, falling back to Groq AI", { error: err.message });
+        logger.debug("Local ML model skipped in predictAny, falling back to Integrated API", { error: err.message });
       }
+
+    if (mlSimResult) {
+      return {
+        simulationResult: mlSimResult,
+        source: "ai_predicted",
+      };
     }
 
-    // 3. Fallback to Groq AI Reaction Predictor
+    // 3. Priority 3: ML model unable to predict -> Send input to Integrated API to generate output
     const resolution = await aiReactionPredictor.predict(clean, {
       apiKey: options?.apiKey,
       provider: options?.provider,
@@ -1134,7 +1277,7 @@ export class SimulationService {
       };
     }
 
-    // Validate Groq AI prediction with chemical balancer and audit
+    // Validate Integrated API prediction with chemical balancer and audit
     const audit = auditReactionChemistry(resolution.reactants, resolution.products);
     if (audit.passed) {
       if (audit.balancedEquation) resolution.balancedEquation = audit.balancedEquation;
@@ -1142,23 +1285,22 @@ export class SimulationService {
       if (audit.balancedProducts) resolution.products = audit.balancedProducts;
     }
 
-    const mockInputs: ReactionInputSpecies[] = resolution.reactants.map((r) => ({
-      chemicalId: r.chemicalId,
-      amount: r.coefficient,
-      unit: "mol",
-    }));
+    const actualInputs = this.parseOrBuildInputsForPredict(
+      clean,
+      resolution.reactants
+    );
 
-    const { stoichiometry, calorimetry } = this.computeStoichiometryForResolution(
+    const stoichResult = this.computeStoichiometryForResolution(
       resolution,
-      mockInputs,
+      actualInputs,
       conditions
     );
 
     return {
       simulationResult: {
-        resolution,
-        stoichiometry,
-        calorimetry,
+        resolution: stoichResult.resolution,
+        stoichiometry: stoichResult.stoichiometry,
+        calorimetry: stoichResult.calorimetry,
       },
       source: "ai_predicted",
     };

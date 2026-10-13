@@ -48,6 +48,7 @@ interface LabState {
   addEquipment: (type: EquipmentType) => void;
   removeContainer: (id: string) => void;
   setActiveContainer: (id: string) => void;
+  clearContainer: (id: string) => void;
   addChemical: (chemical: ChemicalSummary, amount: number, unit: Unit, concentrationMolar?: number) => Promise<void>;
   updateContentAmount: (containerId: string, chemicalId: string, deltaAmount: number) => void;
   updateContentConcentration: (containerId: string, chemicalId: string, newConcentration: number) => void;
@@ -205,6 +206,15 @@ export const useLabStore = create<LabState>((set, get) => ({
 
   setActiveContainer: (id) => set({ activeContainerId: id }),
 
+  clearContainer: (id) => {
+    set((s) => ({
+      containers: s.containers.map((c) =>
+        c.id === id ? { ...c, contents: [], temperatureC: 25, appearanceColor: undefined } : c
+      ),
+      lastSimulationResult: s.activeContainerId === id ? null : s.lastSimulationResult,
+    }));
+  },
+
   addChemical: async (chemical, amount, unit, concentrationMolar) => {
     const state = get();
     if (!state.activeContainerId) return;
@@ -278,7 +288,8 @@ export const useLabStore = create<LabState>((set, get) => ({
     }
   },
 
-  updateContentAmount: (containerId, chemicalId, deltaAmount) => {
+  updateContentAmount: async (containerId, chemicalId, deltaAmount) => {
+    let targetContainer: Container | undefined;
     set((s) => {
       const containers = s.containers.map((c) => {
         if (c.id !== containerId) return c;
@@ -287,16 +298,43 @@ export const useLabStore = create<LabState>((set, get) => ({
           const newAmt = Math.max(0.1, parseFloat((item.amount + deltaAmount).toFixed(3)));
           return { ...item, amount: newAmt };
         });
-        return { ...c, contents: nextContents };
+        const updated = { ...c, contents: nextContents };
+        targetContainer = updated;
+        return updated;
       });
-      return {
-        containers,
-        lastSimulationResult: null,
-      };
+      return { containers };
     });
+
+    const state = get();
+    if (state.lastSimulationResult && targetContainer && targetContainer.contents.length > 0) {
+      try {
+        const consolidated = consolidateContents(targetContainer.contents);
+        const reactants = consolidated.map((c) => ({
+          chemicalId: c.chemicalId,
+          formula: c.formula,
+          amount: c.amount,
+          unit: c.unit,
+          concentrationMolar: c.concentrationMolar,
+        }));
+        const simRes = await reactionsApi.simulate(reactants, { ...state.conditions, temperatureC: 25 });
+        if (simRes && simRes.resolution) {
+          const calorimetry = simRes.calorimetry ?? simRes.resolution.calorimetry;
+          const nextTemp = calorimetry ? calorimetry.finalTemperatureC : targetContainer.temperatureC;
+          set((s) => ({
+            lastSimulationResult: simRes,
+            containers: s.containers.map((c) =>
+              c.id === containerId ? { ...c, temperatureC: nextTemp } : c
+            ),
+          }));
+        }
+      } catch {
+        // Keep current state
+      }
+    }
   },
 
-  updateContentConcentration: (containerId, chemicalId, newConcentration) => {
+  updateContentConcentration: async (containerId, chemicalId, newConcentration) => {
+    let targetContainer: Container | undefined;
     set((s) => {
       const containers = s.containers.map((c) => {
         if (c.id !== containerId) return c;
@@ -304,13 +342,39 @@ export const useLabStore = create<LabState>((set, get) => ({
           if (item.chemicalId !== chemicalId) return item;
           return { ...item, concentrationMolar: Math.max(0.01, parseFloat(newConcentration.toFixed(2))) };
         });
-        return { ...c, contents: nextContents };
+        const updated = { ...c, contents: nextContents };
+        targetContainer = updated;
+        return updated;
       });
-      return {
-        containers,
-        lastSimulationResult: null,
-      };
+      return { containers };
     });
+
+    const state = get();
+    if (state.lastSimulationResult && targetContainer && targetContainer.contents.length > 0) {
+      try {
+        const consolidated = consolidateContents(targetContainer.contents);
+        const reactants = consolidated.map((c) => ({
+          chemicalId: c.chemicalId,
+          formula: c.formula,
+          amount: c.amount,
+          unit: c.unit,
+          concentrationMolar: c.concentrationMolar,
+        }));
+        const simRes = await reactionsApi.simulate(reactants, { ...state.conditions, temperatureC: 25 });
+        if (simRes && simRes.resolution) {
+          const calorimetry = simRes.calorimetry ?? simRes.resolution.calorimetry;
+          const nextTemp = calorimetry ? calorimetry.finalTemperatureC : targetContainer.temperatureC;
+          set((s) => ({
+            lastSimulationResult: simRes,
+            containers: s.containers.map((c) =>
+              c.id === containerId ? { ...c, temperatureC: nextTemp } : c
+            ),
+          }));
+        }
+      } catch {
+        // Keep current state
+      }
+    }
   },
 
   removeContent: (containerId, chemicalId) => {
@@ -470,14 +534,10 @@ export const useLabStore = create<LabState>((set, get) => ({
                 : "Reaction not confidently supported.",
           actionType: "RUN_REACTION",
         };
-        const nextConditions = calorimetry && container.id === s.activeContainerId
-          ? { ...s.conditions, temperatureC: calorimetry.finalTemperatureC }
-          : s.conditions;
         return {
           history: [...s.history, snapshot(s)],
           containers,
           timeline: [...s.timeline, entry],
-          conditions: nextConditions,
           lastSimulationResult: simulationResult,
           lastReactionContainerId: container.id,
           isLoading: false,
@@ -553,14 +613,23 @@ export const useLabStore = create<LabState>((set, get) => ({
                   const isGas =
                     state === "gas" ||
                     ["h2", "o2", "co2", "n2", "cl2", "nh3", "ch4"].includes(r.chemicalId.toLowerCase());
+                  const isWater =
+                    ["water", "h2o"].includes(r.chemicalId.toLowerCase()) ||
+                    r.formula?.toUpperCase() === "H2O";
                   return {
                     chemicalId: r.chemicalId,
                     commonName: r.commonName,
                     formula: r.formula,
                     substanceColor: r.substanceColor || getChemicalColor(r.chemicalId, r.formula, r.commonName),
-                    amount: isSolid ? 10 * (r.coefficient || 1) : isGas ? (r.coefficient || 1) : 25 * (r.coefficient || 1),
+                    amount: isWater
+                      ? 50
+                      : isSolid
+                        ? 10 * (r.coefficient || 1)
+                        : isGas
+                          ? (r.coefficient || 1)
+                          : 25 * (r.coefficient || 1),
                     unit: (isSolid ? "g" : isGas ? "mol" : "mL") as Unit,
-                    concentrationMolar: !isSolid && !isGas ? 1.0 : undefined,
+                    concentrationMolar: !isSolid && !isGas && !isWater ? 1.0 : undefined,
                   };
                 });
 

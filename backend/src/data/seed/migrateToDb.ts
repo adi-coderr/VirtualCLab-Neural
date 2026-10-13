@@ -1,5 +1,5 @@
 import { PrismaClient } from "@prisma/client";
-import { SEED_REACTIONS, type SeedReaction } from "./reactions.js";
+import { SEED_REACTIONS, type SeedReaction, enrichReactionsWithTemperatureData } from "./reactions.js";
 import { REACTIONS_BATCH_5 } from "./reactionsBatch5.js";
 import { REACTIONS_BATCH_6 } from "./reactionsBatch6.js";
 import { REACTIONS_BATCH_7 } from "./reactionsBatch7.js";
@@ -102,7 +102,7 @@ async function migrate() {
   console.log("   MIGRATING CHEMICAL REACTIONS TO SQLITE DB     ");
   console.log("=================================================\n");
 
-  const combinedReactions: SeedReaction[] = [
+  const combinedReactions: SeedReaction[] = enrichReactionsWithTemperatureData([
     ...SEED_REACTIONS,
     ...REACTIONS_BATCH_5,
     ...REACTIONS_BATCH_6,
@@ -110,7 +110,7 @@ async function migrate() {
     ...REACTIONS_BATCH_8,
     ...REACTIONS_BATCH_9,
     ...REACTIONS_BATCH_10,
-  ];
+  ]);
   console.log(`Total candidate reactions to process: ${combinedReactions.length}`);
   console.log(`  - SEED_REACTIONS: ${SEED_REACTIONS.length}`);
   console.log(`  - REACTIONS_BATCH_5: ${REACTIONS_BATCH_5.length}`);

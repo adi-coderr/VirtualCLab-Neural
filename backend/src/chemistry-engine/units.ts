@@ -74,17 +74,19 @@ export function toMoles(input: ReactionInputSpecies, molarMass: number): MolesRe
   }
 
   if (unit === "mL" || unit === "L") {
+    const chemIdLower = (input.chemicalId || "").toLowerCase();
+    const formulaUpper = (input.formula || "").toUpperCase();
+    if (chemIdLower === "water" || chemIdLower === "h2o" || formulaUpper === "H2O") {
+      const liters = volumeToLiters(amount, unit);
+      const massGrams = liters * 1000;
+      return { moles: massGrams / molarMass, massGrams };
+    }
+
     if (input.concentrationMolar === undefined) {
-      if (input.chemicalId === "water") {
-        const liters = volumeToLiters(amount, unit);
-        const massGrams = liters * 1000;
-        return { moles: massGrams / molarMass, massGrams };
-      }
       throw new ChemistryEngineError(
-        `A volume ("${amount} ${unit}") was given without a concentration. Provide concentrationMolar ` +
-          `(mol/L) for a solution, or specify the amount as mass or moles instead.`,
+        "Volume was provided without a concentration. Specify concentrationMolar or pass mass/moles instead.",
         "MISSING_CONCENTRATION",
-        { amount, unit }
+        { chemicalId: input.chemicalId, unit, amount }
       );
     }
     if (input.concentrationMolar <= 0) {

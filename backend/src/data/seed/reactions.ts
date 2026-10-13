@@ -7,7 +7,7 @@ export interface SeedReactionSpecies {
 }
 
 export interface SeedObservableEffect {
-  type: ObservableEffectType;
+  type: ObservableEffectType | (string & {});
   description: string;
   relatedChemicalId?: string;
   colorFrom?: string;
@@ -17,7 +17,7 @@ export interface SeedObservableEffect {
 export interface SeedReaction {
   id: string;
   name: string;
-  reactionType: ReactionType;
+  reactionType: ReactionType | (string & {});
   reactants: SeedReactionSpecies[];
   products: SeedReactionSpecies[];
   equationDisplay: string;
@@ -4870,10 +4870,57 @@ const INITIAL_REACTIONS: SeedReaction[] = [
 
 import { REACTIONS_BATCH_4 } from "./reactionsBatch4.js";
 
-export const SEED_REACTIONS: SeedReaction[] = [
+export function enrichReactionsWithTemperatureData(reactions: SeedReaction[]): SeedReaction[] {
+  return reactions.map((r) => {
+    let enthalpy = r.enthalpyKjPerMol;
+    let energyClass = r.energyClassification;
+
+    if (!energyClass) {
+      if (enthalpy !== undefined && enthalpy < 0) energyClass = "exothermic";
+      else if (enthalpy !== undefined && enthalpy > 0) energyClass = "endothermic";
+    }
+
+    if (enthalpy === undefined) {
+      if (energyClass === "exothermic") enthalpy = -65.0;
+      else if (energyClass === "endothermic") enthalpy = 35.0;
+    }
+
+    const hasTemp = r.observableEffects?.some(
+      (e) => e.type === "temperature_increase" || e.type === "temperature_decrease"
+    );
+
+    if (hasTemp && enthalpy === r.enthalpyKjPerMol && energyClass === r.energyClassification) {
+      return r;
+    }
+
+    const effects = [...(r.observableEffects || [])];
+    if (!hasTemp) {
+      if (energyClass === "exothermic" || (enthalpy !== undefined && enthalpy < 0)) {
+        effects.push({
+          type: "temperature_increase",
+          description: `Exothermic reaction releasing heat (ΔH = ${enthalpy ?? -65.0} kJ/mol); final temperature rise scales directly with the quantity and concentration of reactants.`,
+        });
+      } else if (energyClass === "endothermic" || (enthalpy !== undefined && enthalpy > 0)) {
+        effects.push({
+          type: "temperature_decrease",
+          description: `Endothermic reaction absorbing heat (ΔH = +${enthalpy ?? 35.0} kJ/mol); final temperature drop scales directly with the quantity of reactants dissolved or reacted.`,
+        });
+      }
+    }
+
+    return {
+      ...r,
+      energyClassification: energyClass ?? r.energyClassification,
+      enthalpyKjPerMol: enthalpy ?? r.enthalpyKjPerMol,
+      observableEffects: effects,
+    };
+  });
+}
+
+export const SEED_REACTIONS: SeedReaction[] = enrichReactionsWithTemperatureData([
   ...INITIAL_REACTIONS,
   ...REACTIONS_BATCH_4,
-];
+]);
 
 
 

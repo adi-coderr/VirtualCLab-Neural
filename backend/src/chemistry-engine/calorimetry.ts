@@ -21,7 +21,9 @@ export function computeCalorimetry(options: CalorimetryOptions): CalorimetryResu
 
   for (const input of inputs) {
     const unit = (input.unit || "").toLowerCase();
-    if (input.chemicalId === "water" || unit === "ml" || unit === "l") {
+    const chemIdLower = (input.chemicalId || "").toLowerCase();
+    const formulaUpper = (input.formula || "").toUpperCase();
+    if (chemIdLower === "water" || chemIdLower === "h2o" || formulaUpper === "H2O" || unit === "ml" || unit === "l") {
       hasSolvent = true;
     }
 

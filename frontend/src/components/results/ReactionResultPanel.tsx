@@ -82,12 +82,19 @@ export function ReactionResultPanel({ result }: { result: SimulationResult }) {
     <div className="reaction-result">
       {/* 1. Header with Confidence & Reaction Type */}
       <div className="reaction-result__headline">
-        <ConfidenceBadge
-          tier={resolution.confidenceTier}
-          score={resolution.confidenceScore}
-          aiProvider={resolution.aiProvider}
-          isAiPredicted={resolution.isAiPredicted}
-        />
+        <div className="reaction-result__headline-left">
+          <ConfidenceBadge
+            tier={resolution.confidenceTier}
+            score={resolution.confidenceScore}
+            aiProvider={resolution.aiProvider}
+            isAiPredicted={resolution.isAiPredicted}
+          />
+          {resolution.aiProvider && resolution.isAiPredicted && (
+            <span className="reaction-result__provider-badge" title={`Reaction synthesized via ${resolution.aiProvider}`}>
+              {resolution.aiProvider}
+            </span>
+          )}
+        </div>
         {resolution.reactionType && (
           <span className="reaction-result__type">{resolution.reactionType.replace(/_/g, " ")}</span>
         )}

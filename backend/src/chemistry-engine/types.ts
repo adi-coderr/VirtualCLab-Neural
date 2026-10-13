@@ -33,6 +33,7 @@ export type ChemicalClass =
   | "nonmetal"
   | "molecular_element"
   | "organic"
+  | "organic_compound"
   | "ion"
   | "other";
 
@@ -65,6 +66,7 @@ export type EnergyClassification = "exothermic" | "endothermic" | "unknown";
 export type ObservableEffectType =
   | "color_change"
   | "precipitation"
+  | "precipitate_formation"
   | "gas_evolution"
   | "temperature_increase"
   | "temperature_decrease"

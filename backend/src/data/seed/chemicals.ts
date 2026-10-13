@@ -45,7 +45,7 @@ export interface SeedChemical {
   acidBaseStrength?: AcidBaseStrength;
   pKa?: number;
   pKb?: number;
-  chemicalClass: ChemicalClass;
+  chemicalClass: ChemicalClass | (string & {});
   charge?: number;
   substanceColor?: string;
   isElemental?: boolean;

@@ -24,6 +24,7 @@ export function ReactionControls({ pendingChemical, onAdded }: { pendingChemical
   const searchBoxRef = useRef<HTMLDivElement>(null);
 
   const addChemical = useLabStore((s) => s.addChemical);
+  const clearContainer = useLabStore((s) => s.clearContainer);
   const isLoading = useLabStore((s) => s.isLoading);
   const conditions = useLabStore((s) => s.conditions);
   const setConditions = useLabStore((s) => s.setConditions);
@@ -86,6 +87,7 @@ export function ReactionControls({ pendingChemical, onAdded }: { pendingChemical
     if (!activeContainer) return;
     setLoadingPreset(true);
     try {
+      clearContainer(activeContainer.id);
       setConditions({
         temperatureC: rx.temperatureMinC !== undefined && rx.temperatureMinC > 25 ? rx.temperatureMinC : 25,
         solvent: rx.solvent ?? "water",
@@ -105,7 +107,7 @@ export function ReactionControls({ pendingChemical, onAdded }: { pendingChemical
           amt = Math.max(1, 10 * (r.coefficient || 1) * scale);
           u = "g";
           conc = undefined;
-        } else if (chem.id === "water") {
+        } else if (chem.id.toLowerCase() === "water" || chem.id.toLowerCase() === "h2o" || chem.formula?.toUpperCase() === "H2O") {
           amt = 50;
           u = "mL";
           conc = undefined;
@@ -263,26 +265,38 @@ export function ReactionControls({ pendingChemical, onAdded }: { pendingChemical
                     key={sc.val}
                     type="button"
                     className={`reaction-controls__scale-chip ${presetScale === sc.val ? "reaction-controls__scale-chip--active" : ""}`}
-                    onClick={() => setPresetScale(sc.val)}
+                    onClick={() => {
+                      setPresetScale(sc.val);
+                      if (activeContainer && activeContainer.contents.length > 0) {
+                        handleLoadReaction(selectedReaction, true, sc.val);
+                      }
+                    }}
                   >
                     {sc.label}
                   </button>
                 ))}
               </div>
+              {selectedReaction.enthalpyKjPerMol !== undefined && (
+                <div className="reaction-controls__preset-scale-summary">
+                  <span className="reaction-controls__scale-badge">
+                    Scale: {presetScale}× &bull; {selectedReaction.enthalpyKjPerMol < 0 ? "🔥 Exothermic warming" : "❄️ Endothermic cooling"} scales with reactant quantity
+                  </span>
+                </div>
+              )}
               <div className="reaction-controls__preset-buttons">
                 <Button
                   variant="secondary"
                   disabled={isLoading || loadingPreset || !activeContainer}
-                  onClick={() => handleLoadReaction(selectedReaction, false)}
+                  onClick={() => handleLoadReaction(selectedReaction, false, presetScale)}
                 >
                   Load to container
                 </Button>
                 <Button
                   variant="primary"
                   disabled={isLoading || loadingPreset || !activeContainer}
-                  onClick={() => handleLoadReaction(selectedReaction, true)}
+                  onClick={() => handleLoadReaction(selectedReaction, true, presetScale)}
                 >
-                  {loadingPreset ? "Loading\u2026" : "Load & React"}
+                  {loadingPreset ? "Loading…" : "Load & React"}
                 </Button>
               </div>
             </div>

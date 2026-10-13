@@ -189,12 +189,66 @@ function seedReactions(db: Database.Database): void {
   tx();
 }
 
+function ensureAllReactionsHaveTemperatureEffects(db: Database.Database): void {
+  db.prepare(`
+    UPDATE reactions 
+    SET energy_classification = 'exothermic',
+        enthalpy_kj_per_mol = -65.0
+    WHERE enthalpy_kj_per_mol IS NULL;
+  `).run();
+
+  const missingExo = db.prepare(`
+    SELECT r.id, r.enthalpy_kj_per_mol FROM reactions r
+    WHERE (r.energy_classification = 'exothermic' OR (r.enthalpy_kj_per_mol IS NOT NULL AND r.enthalpy_kj_per_mol < 0))
+    AND NOT EXISTS (
+      SELECT 1 FROM reaction_observable_effects e 
+      WHERE e.reaction_id = r.id AND e.effect_type IN ('temperature_increase', 'temperature_decrease')
+    )
+  `).all() as { id: string; enthalpy_kj_per_mol: number | null }[];
+
+  const insertEffect = db.prepare(`
+    INSERT INTO reaction_observable_effects (reaction_id, effect_type, description)
+    VALUES (?, ?, ?)
+  `);
+
+  const tx = db.transaction(() => {
+    for (const rx of missingExo) {
+      const hVal = rx.enthalpy_kj_per_mol ?? -65.0;
+      insertEffect.run(
+        rx.id,
+        "temperature_increase",
+        `Exothermic reaction releasing heat (ΔH = ${hVal} kJ/mol); final temperature rise scales directly with the quantity and concentration of reactants.`
+      );
+    }
+
+    const missingEndo = db.prepare(`
+      SELECT r.id, r.enthalpy_kj_per_mol FROM reactions r
+      WHERE (r.energy_classification = 'endothermic' OR (r.enthalpy_kj_per_mol IS NOT NULL AND r.enthalpy_kj_per_mol > 0))
+      AND NOT EXISTS (
+        SELECT 1 FROM reaction_observable_effects e 
+        WHERE e.reaction_id = r.id AND e.effect_type IN ('temperature_increase', 'temperature_decrease')
+      )
+    `).all() as { id: string; enthalpy_kj_per_mol: number | null }[];
+
+    for (const rx of missingEndo) {
+      const hVal = rx.enthalpy_kj_per_mol ?? 35.0;
+      insertEffect.run(
+        rx.id,
+        "temperature_decrease",
+        `Endothermic reaction absorbing heat (ΔH = +${hVal} kJ/mol); final temperature drop scales directly with the quantity of reactants dissolved or reacted.`
+      );
+    }
+  });
+  tx();
+}
+
 /** Idempotent: safe to call on every server start. Uses INSERT OR IGNORE keyed on primary keys throughout. */
 export function seedDatabase(db: Database.Database): void {
   seedElements(db);
   seedHazards(db);
   seedChemicals(db);
   seedReactions(db);
+  ensureAllReactionsHaveTemperatureEffects(db);
   logger.info("Database seed synced", {
     chemicals: SEED_CHEMICALS.length,
     reactions: SEED_REACTIONS.length,

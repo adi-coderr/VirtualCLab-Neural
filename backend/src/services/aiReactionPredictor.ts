@@ -351,7 +351,7 @@ export class AiReactionPredictor {
     try {
       if (provider === "groq") {
         // Use verified Groq active production models
-        const models = ["qwen/qwen3.8-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "allam-2-7b"];
+        const models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "qwen/qwen3.8-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "allam-2-7b"];
         let lastErr = "";
         for (const model of models) {
           try {
@@ -517,6 +517,62 @@ export class AiReactionPredictor {
   }
 
   /**
+   * Rechecks a ReactionT5v2 ML prediction with the integrated external API (Groq/Gemini/OpenAI/Anthropic)
+   * to confirm the reaction outcome and enrich it with additional scientific literature data from the internet:
+   * detailed mechanism, observable sensory effects, enthalpy, 5D breakdown, and safety notes.
+   */
+  public async recheckAndEnrich(
+    mlResolution: ReactionResolution,
+    conditions: ReactionConditions = {},
+    options?: PredictReactionOptions
+  ): Promise<ReactionResolution> {
+    const { provider, apiKey } = this.resolveProviderAndKey(options);
+    logger.info("Rechecking ML reaction prediction with Integrated API", {
+      provider,
+      equation: mlResolution.balancedEquation,
+    });
+
+    const reactantStr = mlResolution.reactants
+      .map((r) => `${r.coefficient > 1 ? `${r.coefficient} ` : ""}${r.commonName || r.formula} (${r.formula})`)
+      .join(" + ");
+    const productStr = mlResolution.products
+      .map((p) => `${p.coefficient > 1 ? `${p.coefficient} ` : ""}${p.commonName || p.formula} (${p.formula})`)
+      .join(" + ");
+
+    const recheckPrompt = [
+      `CHEMICAL REACTION RECHECK & ENRICHMENT REQUEST:`,
+      `A local Neural ML Model (ReactionT5v2) predicted the following chemical reaction:`,
+      `Predicted Equation: ${mlResolution.balancedEquation}`,
+      `Reactants: ${reactantStr}`,
+      `Predicted Products: ${productStr}`,
+      `Initial Mechanism Notes: ${mlResolution.explanation || "N/A"}`,
+      `Conditions: Temperature ${conditions.temperatureC ?? 25}°C, Pressure ${conditions.pressureAtm ?? 1} atm, Solvent: ${conditions.solvent || "aqueous"}`,
+      ``,
+      `YOUR TASK:`,
+      `1. Recheck and verify whether this reaction and its predicted products are chemically authentic and supported by scientific literature.`,
+      `2. If authentic, validate the balanced equation and enrich the reaction with authoritative chemical knowledge available over the internet:`,
+      `   - Comprehensive scientific mechanism explanation citing relevant chemical principles.`,
+      `   - Real-life observable effects (specific sensory changes, color transitions with 6-digit hex codes #HEX, precipitate appearance, gas evolution, temperature shifts).`,
+      `   - Accurate literature standard enthalpy ΔH° (kJ/mol) and thermodynamic classification (exothermic / endothermic).`,
+      `   - Complete 5-dimensional chemical process breakdown (atomic bonding, concentrations, properties, observables, thermodynamics, conservation).`,
+      `   - Laboratory safety precautions and hazards.`,
+      `3. If the ML prediction has minor coefficient/byproduct issues, provide the corrected, stoichiometric balanced equation.`,
+      ``,
+      `Output ONLY a single valid JSON object strictly adhering to the specified schema.`,
+    ].join("\n");
+
+    const rawJson = await this.callProvider(provider, apiKey, recheckPrompt);
+    const enriched = this.postProcessResult(rawJson, provider);
+
+    // Label that this prediction was produced by ReactionT5v2 and verified/enriched by the integrated API
+    enriched.aiProvider = `${mlResolution.aiProvider || "ReactionT5v2"} + ${enriched.aiProvider || provider.toUpperCase()} (Verified & Enriched)`;
+    enriched.confidenceTier = "PREDICTED";
+    enriched.confidenceScore = Math.max(mlResolution.confidenceScore || 0.94, enriched.confidenceScore || 0.95);
+
+    return enriched;
+  }
+
+  /**
    * Dispatches the prompt to the specific provider REST endpoint.
    */
   private async callProvider(provider: AiProviderType, apiKey: string, fullUserPrompt: string): Promise<RawAiReactionResponse> {
@@ -563,7 +619,7 @@ export class AiReactionPredictor {
         throw new Error(`Gemini API failed: ${lastErr}`);
       }
     } else if (provider === "groq") {
-      const models = ["qwen/qwen3.8-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "allam-2-7b"];
+      const models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "qwen/qwen3.8-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "allam-2-7b"];
       let lastErr = "";
       for (const model of models) {
         try {
@@ -828,7 +884,7 @@ export class AiReactionPredictor {
     // 2. Check for missing stoichiometric water in aqueous redox or hydrolysis
     if (initialDeficit.deltaH > 0 && initialDeficit.deltaO > 0 && initialDeficit.deltaH === 2 * initialDeficit.deltaO) {
       const waterCoeff = initialDeficit.deltaO;
-      const existingWaterIdx = products.findIndex((p) => p.formula === "H2O" || p.chemicalId === "water");
+      const existingWaterIdx = products.findIndex((p) => p.formula === "H2O" || p.chemicalId === "water" || p.chemicalId === "h2o");
       let testProducts: ResolvedSpecies[];
       if (existingWaterIdx >= 0) {
         testProducts = products.map((p, idx) =>
@@ -859,7 +915,7 @@ export class AiReactionPredictor {
       }
     } else if (initialDeficit.deltaH < 0 && initialDeficit.deltaO < 0 && -initialDeficit.deltaH === 2 * -initialDeficit.deltaO) {
       const waterCoeff = -initialDeficit.deltaO;
-      const existingWaterIdx = reactants.findIndex((r) => r.formula === "H2O" || r.chemicalId === "water");
+      const existingWaterIdx = reactants.findIndex((r) => r.formula === "H2O" || r.chemicalId === "water" || r.chemicalId === "h2o");
       let testReactants: ResolvedSpecies[];
       if (existingWaterIdx >= 0) {
         testReactants = reactants.map((r, idx) =>

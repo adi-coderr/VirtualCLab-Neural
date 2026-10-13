@@ -14,6 +14,25 @@
   gap: var(--space-3);
 }
 
+.reaction-result__headline-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.reaction-result__provider-badge {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-weight: 500;
+  color: var(--brand-700, #1d4ed8);
+  background: var(--brand-50, #eff6ff);
+  border: 1px solid var(--brand-200, #bfdbfe);
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
 .reaction-result__type {
   font-size: var(--text-xs);
   font-weight: 600;
