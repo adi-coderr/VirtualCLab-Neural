@@ -3,6 +3,7 @@ import { useLabStore } from "./state/experimentStore";
 import { useSettingsStore } from "./state/settingsStore";
 import { AppShell } from "./components/layout/AppShell";
 import { ChemicalSearch } from "./components/search/ChemicalSearch";
+import { AddToContainerControl } from "./components/controls/AddToContainerControl";
 import { EquipmentPanel } from "./components/equipment/EquipmentPanel";
 import { ReactionControls } from "./components/controls/ReactionControls";
 import { LabBench } from "./components/lab/LabBench";
@@ -23,11 +24,11 @@ export default function App() {
   const error = useLabStore((s) => s.error);
   const clearError = useLabStore((s) => s.clearError);
   const addEquipment = useLabStore((s) => s.addEquipment);
+  const activeContainer = useLabStore((s) => s.containers.find((c) => c.id === s.activeContainerId));
   const loadSettings = useSettingsStore((s) => s.loadSettings);
 
   const [pendingChemical, setPendingChemical] = useState<ChemicalSummary | null>(null);
   const [activeTabId, setActiveTabId] = useState("result");
-
 
   useEffect(() => {
     initExperiment();
@@ -57,17 +58,27 @@ export default function App() {
         onReset={() => resetExperiment()}
         left={
           <div className="app-left">
-            <section>
+            <section className="app-left__section app-left__search-section">
               <h4 className="app-panel-title">Search chemicals</h4>
               <ChemicalSearch onSelect={setPendingChemical} />
             </section>
-            <section>
+            <section className="app-left__section app-left__add-section">
+              <h4 className="app-panel-title">
+                {activeContainer ? `Add to ${activeContainer.name}` : "Add to beaker"}
+              </h4>
+              <AddToContainerControl
+                pendingChemical={pendingChemical}
+                onAdded={() => setPendingChemical(null)}
+                onCancel={() => setPendingChemical(null)}
+              />
+            </section>
+            <section className="app-left__section app-left__equipment-section">
               <h4 className="app-panel-title">Equipment</h4>
               <EquipmentPanel onAdd={addEquipment} />
             </section>
-            <section>
-              <h4 className="app-panel-title">Add &amp; react</h4>
-              <ReactionControls pendingChemical={pendingChemical} onAdded={() => setPendingChemical(null)} />
+            <section className="app-left__section app-left__reaction-section">
+              <h4 className="app-panel-title">Reaction &amp; presets</h4>
+              <ReactionControls />
             </section>
           </div>
         }

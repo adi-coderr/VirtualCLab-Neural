@@ -1,0 +1,316 @@
+.add-to-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border-radius: var(--radius-md);
+  transition: all 0.2s ease;
+}
+
+/* Empty state styling */
+.add-to-container--empty {
+  padding: var(--space-3);
+  background: var(--paper-50);
+  border: 1px dashed var(--paper-300, #cbd5e1);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.add-to-container__empty-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.add-to-container__empty-title {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--graphite-700, #334155);
+  margin-bottom: 2px;
+}
+
+.add-to-container__empty-desc {
+  font-size: var(--text-xs);
+  color: var(--graphite-500, #64748b);
+  line-height: 1.4;
+  margin: 0;
+}
+
+.add-to-container__vessel-status {
+  margin-top: 4px;
+  padding: 4px 8px;
+  background: var(--paper-100);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  color: var(--graphite-600);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.add-to-container__vessel-status strong {
+  color: var(--azure-700);
+}
+
+/* Active chemical selection card */
+.add-to-container--active {
+  background: var(--paper-0);
+  border: 1px solid var(--azure-300, #93c5fd);
+  padding: var(--space-3);
+  box-shadow: 0 2px 8px rgba(30, 64, 175, 0.06);
+}
+
+.add-to-container__card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--paper-200);
+}
+
+.add-to-container__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.add-to-container__identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.add-to-container__swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  flex-shrink: 0;
+}
+
+.add-to-container__titles {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.add-to-container__formula {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--ink-950);
+}
+
+.add-to-container__common-name {
+  font-size: var(--text-xs);
+  color: var(--graphite-600);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.add-to-container__cancel-btn {
+  background: transparent;
+  border: none;
+  font-size: 12px;
+  color: var(--graphite-400);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+}
+
+.add-to-container__cancel-btn:hover {
+  background: var(--red-100);
+  color: var(--red-600);
+}
+
+.add-to-container__meta-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--graphite-500);
+}
+
+.add-to-container__class-badge {
+  text-transform: capitalize;
+  background: var(--paper-100);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+}
+
+/* Form controls */
+.add-to-container__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-1);
+}
+
+.add-to-container__field-row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+
+.add-to-container__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.add-to-container__field--unit {
+  min-width: 96px;
+  width: 96px;
+  flex: 0 0 96px;
+}
+
+.add-to-container__field-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--graphite-600);
+}
+
+.add-to-container__input {
+  height: 38px;
+  min-height: 38px;
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid var(--paper-300, #cbd5e1);
+  border-radius: var(--radius-sm);
+  padding: 0 10px;
+  font-size: var(--text-sm);
+  font-family: inherit;
+  font-weight: 500;
+  background: var(--paper-0);
+  color: var(--ink-950);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.add-to-container__select-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.add-to-container__select {
+  height: 38px;
+  min-height: 38px;
+  box-sizing: border-box;
+  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  border: 1px solid var(--paper-300, #cbd5e1);
+  border-radius: var(--radius-sm);
+  padding: 0 28px 0 10px;
+  font-size: var(--text-sm);
+  font-family: inherit;
+  font-weight: 600;
+  background-color: var(--paper-0);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 12px;
+  color: var(--ink-950);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.add-to-container__select:hover {
+  border-color: var(--azure-400, #60a5fa);
+  background-color: var(--paper-50);
+}
+
+.add-to-container__input:focus,
+.add-to-container__select:focus {
+  border-color: var(--azure-500, #3b82f6);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.18);
+}
+
+/* Quick chips */
+.add-to-container__chips-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.add-to-container__chips-row--units {
+  padding-bottom: 2px;
+}
+
+.add-to-container__chips-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--graphite-400);
+  margin-right: 2px;
+}
+
+.add-to-container__chip {
+  background: var(--paper-100);
+  border: 1px solid transparent;
+  color: var(--graphite-600);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.add-to-container__chip:hover {
+  background: var(--paper-200);
+  color: var(--ink-950);
+}
+
+.add-to-container__chip--active {
+  background: var(--azure-100);
+  color: var(--azure-700);
+  border-color: var(--azure-500);
+  font-weight: 600;
+}
+
+.add-to-container__chip--unit {
+  font-weight: 600;
+  font-family: inherit;
+}
+
+.add-to-container__chip:hover {
+  background: var(--paper-200);
+  color: var(--ink-950);
+}
+
+.add-to-container__chip--active {
+  background: var(--azure-100);
+  color: var(--azure-700);
+  border-color: var(--azure-500);
+  font-weight: 600;
+}
+
+.add-to-container__conc-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-2);
+  background: var(--paper-50);
+  border-radius: var(--radius-sm);
+}
+
+.add-to-container__submit-wrapper {
+  width: 100%;
+}
+
+.add-to-container__submit-wrapper .btn {
+  width: 100%;
+  justify-content: center;
+  padding: 8px 12px;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}

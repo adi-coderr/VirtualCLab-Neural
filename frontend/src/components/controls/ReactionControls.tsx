@@ -10,7 +10,13 @@ import "./ReactionControls.css";
 const UNITS: Unit[] = ["mL", "L", "g", "kg", "mg", "mol", "mmol"];
 const VOLUME_UNITS: Unit[] = ["mL", "L"];
 
-export function ReactionControls({ pendingChemical, onAdded }: { pendingChemical: ChemicalSummary | null; onAdded: () => void }) {
+export function ReactionControls({
+  pendingChemical,
+  onAdded,
+}: {
+  pendingChemical?: ChemicalSummary | null;
+  onAdded?: () => void;
+} = {}) {
   const [amount, setAmount] = useState<number | "">(20);
   const [unit, setUnit] = useState<Unit>("mL");
   const [concentration, setConcentration] = useState<number | "">(0.1);
@@ -304,62 +310,61 @@ export function ReactionControls({ pendingChemical, onAdded }: { pendingChemical
         </div>
       )}
 
-      <div className="reaction-controls__divider" />
-
-      {pendingChemical ? (
-        <div className="reaction-controls__add-form">
-          <p className="reaction-controls__add-title">
-            Add <span className="formula">{formatFormula(pendingChemical.formula)}</span> ({pendingChemical.commonName})
-          </p>
-          <div className="reaction-controls__row">
-            <label>
-              Amount
-              <input
-                type="number"
-                min={0}
-                step="any"
-                value={amount}
-                placeholder="Amount"
-                onChange={(e) => setAmount(e.target.value === "" ? "" : parseFloat(e.target.value))}
-              />
-            </label>
-            <label>
-              Unit
-              <select value={unit} onChange={(e) => setUnit(e.target.value as Unit)}>
-                {UNITS.map((u) => (
-                  <option key={u} value={u}>
-                    {u}
-                  </option>
-                ))}
-              </select>
-            </label>
+      {pendingChemical && (
+        <>
+          <div className="reaction-controls__divider" />
+          <div className="reaction-controls__add-form">
+            <p className="reaction-controls__add-title">
+              Add <span className="formula">{formatFormula(pendingChemical.formula)}</span> ({pendingChemical.commonName})
+            </p>
+            <div className="reaction-controls__row">
+              <label>
+                Amount
+                <input
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={amount}
+                  placeholder="Amount"
+                  onChange={(e) => setAmount(e.target.value === "" ? "" : parseFloat(e.target.value))}
+                />
+              </label>
+              <label>
+                Unit
+                <select value={unit} onChange={(e) => setUnit(e.target.value as Unit)}>
+                  {UNITS.map((u) => (
+                    <option key={u} value={u}>
+                      {u}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {needsConcentration && (
+              <label className="reaction-controls__conc">
+                Concentration (mol/L)
+                <input
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={concentration}
+                  onChange={(e) => setConcentration(e.target.value === "" ? "" : parseFloat(e.target.value))}
+                />
+              </label>
+            )}
+            <Button
+              variant="primary"
+              disabled={isLoading || amount === "" || amount <= 0 || (needsConcentration && (concentration === "" || concentration <= 0))}
+              onClick={async () => {
+                if (amount === "" || amount <= 0) return;
+                await addChemical(pendingChemical, amount, unit, needsConcentration ? (concentration as number) : undefined);
+                onAdded?.();
+              }}
+            >
+              Add to container
+            </Button>
           </div>
-          {needsConcentration && (
-            <label className="reaction-controls__conc">
-              Concentration (mol/L)
-              <input
-                type="number"
-                min={0}
-                step="any"
-                value={concentration}
-                onChange={(e) => setConcentration(e.target.value === "" ? "" : parseFloat(e.target.value))}
-              />
-            </label>
-          )}
-          <Button
-            variant="primary"
-            disabled={isLoading || amount === "" || amount <= 0 || (needsConcentration && (concentration === "" || concentration <= 0))}
-            onClick={async () => {
-              if (amount === "" || amount <= 0) return;
-              await addChemical(pendingChemical, amount, unit, needsConcentration ? (concentration as number) : undefined);
-              onAdded();
-            }}
-          >
-            Add to container
-          </Button>
-        </div>
-      ) : (
-        <p className="reaction-controls__hint">Search and select a chemical to add it to the active container.</p>
+        </>
       )}
 
       <div className="reaction-controls__divider" />
