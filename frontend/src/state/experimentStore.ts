@@ -288,8 +288,7 @@ export const useLabStore = create<LabState>((set, get) => ({
     }
   },
 
-  updateContentAmount: async (containerId, chemicalId, deltaAmount) => {
-    let targetContainer: Container | undefined;
+  updateContentAmount: (containerId, chemicalId, deltaAmount) => {
     set((s) => {
       const containers = s.containers.map((c) => {
         if (c.id !== containerId) return c;
@@ -298,43 +297,21 @@ export const useLabStore = create<LabState>((set, get) => ({
           const newAmt = Math.max(0.1, parseFloat((item.amount + deltaAmount).toFixed(3)));
           return { ...item, amount: newAmt };
         });
-        const updated = { ...c, contents: nextContents };
-        targetContainer = updated;
-        return updated;
+        return {
+          ...c,
+          contents: nextContents,
+          temperatureC: s.conditions.temperatureC ?? 25,
+          appearanceColor: undefined,
+        };
       });
-      return { containers };
+      return {
+        containers,
+        lastSimulationResult: null,
+      };
     });
-
-    const state = get();
-    if (state.lastSimulationResult && targetContainer && targetContainer.contents.length > 0) {
-      try {
-        const consolidated = consolidateContents(targetContainer.contents);
-        const reactants = consolidated.map((c) => ({
-          chemicalId: c.chemicalId,
-          formula: c.formula,
-          amount: c.amount,
-          unit: c.unit,
-          concentrationMolar: c.concentrationMolar,
-        }));
-        const simRes = await reactionsApi.simulate(reactants, { ...state.conditions, temperatureC: 25 });
-        if (simRes && simRes.resolution) {
-          const calorimetry = simRes.calorimetry ?? simRes.resolution.calorimetry;
-          const nextTemp = calorimetry ? calorimetry.finalTemperatureC : targetContainer.temperatureC;
-          set((s) => ({
-            lastSimulationResult: simRes,
-            containers: s.containers.map((c) =>
-              c.id === containerId ? { ...c, temperatureC: nextTemp } : c
-            ),
-          }));
-        }
-      } catch {
-        // Keep current state
-      }
-    }
   },
 
-  updateContentConcentration: async (containerId, chemicalId, newConcentration) => {
-    let targetContainer: Container | undefined;
+  updateContentConcentration: (containerId, chemicalId, newConcentration) => {
     set((s) => {
       const containers = s.containers.map((c) => {
         if (c.id !== containerId) return c;
@@ -342,39 +319,18 @@ export const useLabStore = create<LabState>((set, get) => ({
           if (item.chemicalId !== chemicalId) return item;
           return { ...item, concentrationMolar: Math.max(0.01, parseFloat(newConcentration.toFixed(2))) };
         });
-        const updated = { ...c, contents: nextContents };
-        targetContainer = updated;
-        return updated;
+        return {
+          ...c,
+          contents: nextContents,
+          temperatureC: s.conditions.temperatureC ?? 25,
+          appearanceColor: undefined,
+        };
       });
-      return { containers };
+      return {
+        containers,
+        lastSimulationResult: null,
+      };
     });
-
-    const state = get();
-    if (state.lastSimulationResult && targetContainer && targetContainer.contents.length > 0) {
-      try {
-        const consolidated = consolidateContents(targetContainer.contents);
-        const reactants = consolidated.map((c) => ({
-          chemicalId: c.chemicalId,
-          formula: c.formula,
-          amount: c.amount,
-          unit: c.unit,
-          concentrationMolar: c.concentrationMolar,
-        }));
-        const simRes = await reactionsApi.simulate(reactants, { ...state.conditions, temperatureC: 25 });
-        if (simRes && simRes.resolution) {
-          const calorimetry = simRes.calorimetry ?? simRes.resolution.calorimetry;
-          const nextTemp = calorimetry ? calorimetry.finalTemperatureC : targetContainer.temperatureC;
-          set((s) => ({
-            lastSimulationResult: simRes,
-            containers: s.containers.map((c) =>
-              c.id === containerId ? { ...c, temperatureC: nextTemp } : c
-            ),
-          }));
-        }
-      } catch {
-        // Keep current state
-      }
-    }
   },
 
   removeContent: (containerId, chemicalId) => {

@@ -268,7 +268,7 @@ export function ReactionControls({ pendingChemical, onAdded }: { pendingChemical
                     onClick={() => {
                       setPresetScale(sc.val);
                       if (activeContainer && activeContainer.contents.length > 0) {
-                        handleLoadReaction(selectedReaction, true, sc.val);
+                        handleLoadReaction(selectedReaction, false, sc.val);
                       }
                     }}
                   >
