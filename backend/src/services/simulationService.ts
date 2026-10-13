@@ -481,8 +481,10 @@ export class SimulationService {
           molarMassLookup: (id) => this.getMolarMass(id),
         });
 
+        let hasTempEffect = false;
         const augmentedEffects = resolution.observableEffects.map((effect) => {
           if (effect.type === "temperature_decrease" || effect.type === "temperature_increase") {
+            hasTempEffect = true;
             const isDecrease = calorimetry!.temperatureDeltaC < 0;
             const changeLabel = isDecrease
               ? `Temperature decreased by ${Math.abs(calorimetry!.temperatureDeltaC).toFixed(1)} °C (from ${calorimetry!.initialTemperatureC.toFixed(1)} °C to ${calorimetry!.finalTemperatureC.toFixed(1)} °C).`
@@ -490,16 +492,29 @@ export class SimulationService {
                 ? `Temperature increased by ${calorimetry!.temperatureDeltaC.toFixed(1)} °C (from ${calorimetry!.initialTemperatureC.toFixed(1)} °C to ${calorimetry!.finalTemperatureC.toFixed(1)} °C).`
                 : `No significant temperature change (${calorimetry!.initialTemperatureC.toFixed(1)} °C).`;
 
+            const cleanDesc = effect.description.replace(/^Temperature (?:decreased|increased)[^.]*\.\s*/, "");
             return {
               ...effect,
+              type: isDecrease ? "temperature_decrease" : "temperature_increase",
               temperatureDeltaC: calorimetry!.temperatureDeltaC,
               initialTemperatureC: calorimetry!.initialTemperatureC,
               finalTemperatureC: calorimetry!.finalTemperatureC,
-              description: `${changeLabel} ${effect.description}`,
+              description: `${changeLabel} ${cleanDesc}`,
             };
           }
           return effect;
         });
+
+        if (!hasTempEffect && Math.abs(calorimetry!.temperatureDeltaC) >= 0.1) {
+          const isDecrease = calorimetry!.temperatureDeltaC < 0;
+          augmentedEffects.push({
+            type: isDecrease ? "temperature_decrease" : "temperature_increase",
+            temperatureDeltaC: calorimetry!.temperatureDeltaC,
+            initialTemperatureC: calorimetry!.initialTemperatureC,
+            finalTemperatureC: calorimetry!.finalTemperatureC,
+            description: calorimetry!.summaryText,
+          });
+        }
 
         augmentedResolution = {
           ...resolution,
@@ -724,49 +739,125 @@ export class SimulationService {
     const molarityRegex = /(\d+(?:\.\d+)?)\s*M\s+([a-zA-Z0-9_\-\+]+)/gi;
     const parsedAmounts = new Map<string, { amount: number; unit: string; concentrationMolar?: number }>();
 
-    let match;
-    while ((match = amountRegex.exec(query)) !== null) {
-      const amt = parseFloat(match[1]);
-      const u = match[2];
-      const chem = match[3].toLowerCase();
-      parsedAmounts.set(chem, { amount: amt, unit: u });
-    }
-    while ((match = molarityRegex.exec(query)) !== null) {
-      const conc = parseFloat(match[1]);
-      const chem = match[2].toLowerCase();
-      const existing = parsedAmounts.get(chem);
-      if (existing) {
-        existing.concentrationMolar = conc;
-      } else {
-        parsedAmounts.set(chem, { amount: 25, unit: "mL", concentrationMolar: conc });
+    // Split by + or comma into reagent segments
+    const segments = query.split(/\s*[\+,]\s*|\s+\.\s+/).map((s) => s.trim()).filter(Boolean);
+    for (const segment of segments) {
+      // 1. Volume + optional molarity + chemical name (e.g. "25ml 2M sodium hydroxide", "50 mL water")
+      const mVolConc = segment.match(/(\d+(?:\.\d+)?)\s*(ml|l)\s*(?:of\s+)?(?:(\d+(?:\.\d+)?)\s*m\s+)?(.*)/i);
+      if (mVolConc) {
+        const amt = parseFloat(mVolConc[1]);
+        const u = mVolConc[2].toLowerCase() === "ml" ? "mL" : "L";
+        const conc = mVolConc[3] ? parseFloat(mVolConc[3]) : undefined;
+        const rawChem = mVolConc[4].trim().toLowerCase();
+        if (rawChem) {
+          parsedAmounts.set(rawChem, { amount: amt, unit: u, concentrationMolar: conc });
+          parsedAmounts.set(rawChem.replace(/[^a-z0-9]/g, "_"), { amount: amt, unit: u, concentrationMolar: conc });
+        }
+        continue;
       }
+
+      // 2. Mass / moles + chemical name (e.g. "15g urea", "2 mol zinc")
+      const mMass = segment.match(/(\d+(?:\.\d+)?)\s*(g|mg|kg|mol|mmol)\s+(.*)/i);
+      if (mMass) {
+        const amt = parseFloat(mMass[1]);
+        const u = mMass[2].toLowerCase();
+        const rawChem = mMass[3].trim().toLowerCase();
+        if (rawChem) {
+          parsedAmounts.set(rawChem, { amount: amt, unit: u });
+          parsedAmounts.set(rawChem.replace(/[^a-z0-9]/g, "_"), { amount: amt, unit: u });
+        }
+        continue;
+      }
+
+      // 3. Standalone molarity + chemical name (e.g. "2M HCl")
+      const mMolar = segment.match(/(\d+(?:\.\d+)?)\s*m\s+(.*)/i);
+      if (mMolar) {
+        const conc = parseFloat(mMolar[1]);
+        const rawChem = mMolar[2].trim().toLowerCase();
+        if (rawChem) {
+          parsedAmounts.set(rawChem, { amount: 25, unit: "mL", concentrationMolar: conc });
+          parsedAmounts.set(rawChem.replace(/[^a-z0-9]/g, "_"), { amount: 25, unit: "mL", concentrationMolar: conc });
+        }
+      }
+    }
+
+    if (reactants.length === 0) {
+      const tokens = query
+        .replace(/\b\d+(?:\.\d+)?\s*(g|mg|kg|ml|l|mol|mmol|M)\b/gi, "")
+        .split(/\s*[\+,]\s*|\s+\.\s+/)
+        .map((t) => t.trim())
+        .filter(Boolean);
+
+      const result: ReactionInputSpecies[] = [];
+      for (const tok of tokens) {
+        const cleanTok = tok.toLowerCase().replace(/[^a-z0-9]/g, "_");
+        const chem =
+          this.chemicalRepo.getById(cleanTok) ||
+          this.chemicalRepo.getByFormula(tok) ||
+          this.chemicalRepo.getById(tok);
+        const chemId = chem ? chem.id : cleanTok;
+        const parsed =
+          parsedAmounts.get(chemId.toLowerCase()) ||
+          (chem && parsedAmounts.get(chem.formula.toLowerCase())) ||
+          (chem && parsedAmounts.get(chem.commonName.toLowerCase())) ||
+          parsedAmounts.get(cleanTok) ||
+          parsedAmounts.get(tok.toLowerCase());
+
+        if (parsed) {
+          result.push({
+            chemicalId: chemId,
+            formula: chem?.formula,
+            amount: parsed.amount,
+            unit: parsed.unit as any,
+            concentrationMolar: parsed.concentrationMolar,
+          });
+        } else {
+          const isSolid = chem?.physicalState === "solid";
+          const isGas = chem?.physicalState === "gas";
+          result.push({
+            chemicalId: chemId,
+            formula: chem?.formula,
+            amount: isSolid ? 10 : isGas ? 1 : 25,
+            unit: (isSolid ? "g" : isGas ? "mol" : "mL") as any,
+            concentrationMolar: !isSolid && !isGas ? 1.0 : undefined,
+          });
+        }
+      }
+      return result;
     }
 
     return reactants.map((r) => {
       const key = r.chemicalId.toLowerCase();
-      const parsed = parsedAmounts.get(key);
+      const chem = this.chemicalRepo.getById(r.chemicalId) || this.chemicalRepo.getByFormula(r.chemicalId);
+      const parsed =
+        parsedAmounts.get(key) ||
+        (chem && parsedAmounts.get(chem.formula.toLowerCase())) ||
+        (chem && parsedAmounts.get(chem.commonName.toLowerCase())) ||
+        (chem && parsedAmounts.get(chem.commonName.toLowerCase().replace(/[^a-z0-9]/g, "")));
+
       if (parsed) {
         return {
           chemicalId: r.chemicalId,
+          formula: chem?.formula,
           amount: parsed.amount,
           unit: parsed.unit as any,
           concentrationMolar: parsed.concentrationMolar,
         };
       }
 
-      const chem = this.chemicalRepo.getById(r.chemicalId);
       const coeff = r.coefficient || 1;
       if (r.chemicalId === "water" || r.chemicalId === "h2o") {
-        return { chemicalId: r.chemicalId, amount: 50, unit: "mL" };
+        return { chemicalId: r.chemicalId, formula: "H2O", amount: 50, unit: "mL" };
       }
       if (chem?.physicalState === "solid") {
-        return { chemicalId: r.chemicalId, amount: 10 * coeff, unit: "g" };
+        return { chemicalId: r.chemicalId, formula: chem.formula, amount: 10 * coeff, unit: "g" };
       }
       if (chem?.physicalState === "gas") {
-        return { chemicalId: r.chemicalId, amount: 1 * coeff, unit: "mol" };
+        return { chemicalId: r.chemicalId, formula: chem.formula, amount: 1 * coeff, unit: "mol" };
       }
       return {
         chemicalId: r.chemicalId,
+        formula: chem?.formula,
         amount: 25 * coeff,
         unit: "mL",
         concentrationMolar: 1.0,
@@ -847,21 +938,29 @@ export class SimulationService {
         reactionType: matchedRow.reactionType as any,
         balancedEquation: matchedRow.equation,
         netIonicEquation: matchedRow.netIonicEquation ?? undefined,
-        reactants: reactants.map((r: any) => ({
-          chemicalId: r.chemicalId,
-          formula: r.chemicalId.toUpperCase(),
-          commonName: r.chemicalId,
-          coefficient: r.coefficient,
-          isRegistered: true,
-        })),
-        products: products.map((p: any) => ({
-          chemicalId: p.chemicalId,
-          formula: p.chemicalId.toUpperCase(),
-          commonName: p.chemicalId,
-          coefficient: p.coefficient,
-          isByproduct: !!p.isByproduct,
-          isRegistered: true,
-        })),
+        reactants: reactants.map((r: any) => {
+          const chem = this.chemicalRepo.getById(r.chemicalId) || this.chemicalRepo.getByFormula(r.chemicalId);
+          return {
+            chemicalId: r.chemicalId,
+            formula: chem?.formula || r.formula || r.chemicalId,
+            commonName: chem?.commonName || r.commonName || r.chemicalId,
+            coefficient: r.coefficient || 1,
+            isRegistered: true,
+            substanceColor: chem?.substanceColor,
+          };
+        }),
+        products: products.map((p: any) => {
+          const chem = this.chemicalRepo.getById(p.chemicalId) || this.chemicalRepo.getByFormula(p.chemicalId);
+          return {
+            chemicalId: p.chemicalId,
+            formula: chem?.formula || p.formula || p.chemicalId,
+            commonName: chem?.commonName || p.commonName || p.chemicalId,
+            coefficient: p.coefficient || 1,
+            isByproduct: !!p.isByproduct,
+            isRegistered: true,
+            substanceColor: chem?.substanceColor,
+          };
+        }),
         observableEffects: obs as ObservableEffect[],
         energyClassification: cond.energyClassification,
         enthalpyKjPerMol: cond.enthalpyKjPerMol,
@@ -879,8 +978,10 @@ export class SimulationService {
       );
 
       if (calorimetry) {
+        let hasTempEffect = false;
         const augmentedEffects = resolution.observableEffects.map((effect) => {
           if (effect.type === "temperature_decrease" || effect.type === "temperature_increase") {
+            hasTempEffect = true;
             const isDecrease = calorimetry.temperatureDeltaC < 0;
             const changeLabel = isDecrease
               ? `Temperature decreased by ${Math.abs(calorimetry.temperatureDeltaC).toFixed(1)} °C (from ${calorimetry.initialTemperatureC.toFixed(1)} °C to ${calorimetry.finalTemperatureC.toFixed(1)} °C).`
@@ -888,16 +989,29 @@ export class SimulationService {
                 ? `Temperature increased by ${calorimetry.temperatureDeltaC.toFixed(1)} °C (from ${calorimetry.initialTemperatureC.toFixed(1)} °C to ${calorimetry.finalTemperatureC.toFixed(1)} °C).`
                 : `No significant temperature change (${calorimetry.initialTemperatureC.toFixed(1)} °C).`;
 
+            const cleanDesc = effect.description.replace(/^Temperature (?:decreased|increased)[^.]*\.\s*/, "");
             return {
               ...effect,
+              type: isDecrease ? "temperature_decrease" : "temperature_increase",
               temperatureDeltaC: calorimetry.temperatureDeltaC,
               initialTemperatureC: calorimetry.initialTemperatureC,
               finalTemperatureC: calorimetry.finalTemperatureC,
-              description: `${changeLabel} ${effect.description}`,
+              description: `${changeLabel} ${cleanDesc}`,
             };
           }
           return effect;
         });
+
+        if (!hasTempEffect && Math.abs(calorimetry.temperatureDeltaC) >= 0.1) {
+          const isDecrease = calorimetry.temperatureDeltaC < 0;
+          augmentedEffects.push({
+            type: isDecrease ? "temperature_decrease" : "temperature_increase",
+            temperatureDeltaC: calorimetry.temperatureDeltaC,
+            initialTemperatureC: calorimetry.initialTemperatureC,
+            finalTemperatureC: calorimetry.finalTemperatureC,
+            description: calorimetry.summaryText,
+          });
+        }
 
         resolution = {
           ...resolution,
@@ -916,6 +1030,22 @@ export class SimulationService {
         },
         source: "curated_database",
       };
+    }
+
+    // 1b. Check local deterministic chemistry engine & curated chemical repository before ML
+    try {
+      const parsedInputs = this.parseOrBuildInputsForPredict(clean, []);
+      if (parsedInputs.length >= 1) {
+        const localSim = this.simulate(parsedInputs, conditions);
+        if (localSim.resolution.status === "REACTION") {
+          return {
+            simulationResult: localSim,
+            source: "curated_database",
+          };
+        }
+      }
+    } catch {
+      // Continue to ML/AI prediction
     }
 
     // 2. Not in database: Try Local Neural ML Model (ReactionT5v2) unless an external provider was requested

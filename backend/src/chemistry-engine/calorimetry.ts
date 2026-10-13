@@ -20,12 +20,13 @@ export function computeCalorimetry(options: CalorimetryOptions): CalorimetryResu
   let hasSolvent = false;
 
   for (const input of inputs) {
-    if (input.chemicalId === "water" || input.unit === "mL" || input.unit === "L") {
+    const unit = (input.unit || "").toLowerCase();
+    if (input.chemicalId === "water" || unit === "ml" || unit === "l") {
       hasSolvent = true;
     }
 
     let mass = 0;
-    switch (input.unit) {
+    switch (unit) {
       case "g":
         mass = input.amount;
         break;
@@ -35,17 +36,17 @@ export function computeCalorimetry(options: CalorimetryOptions): CalorimetryResu
       case "mg":
         mass = input.amount / 1000;
         break;
-      case "mL":
+      case "ml":
         // Assume density ~ 1.0 g/mL for aqueous solutions/liquids
         mass = input.amount * 1.0;
         break;
-      case "L":
+      case "l":
         mass = input.amount * 1000;
         break;
       case "mol":
       case "mmol": {
         const molarMass = molarMassLookup?.(input.chemicalId) ?? 50;
-        const moles = input.unit === "mol" ? input.amount : input.amount / 1000;
+        const moles = unit === "mol" ? input.amount : input.amount / 1000;
         mass = moles * molarMass;
         break;
       }

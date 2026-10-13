@@ -11,23 +11,41 @@ import type { ReactionInputSpecies } from "./types.js";
  * using PV = nRT for your specific conditions, or provide mass/moles directly.
  */
 
-export function massToGrams(amount: number, unit: "g" | "kg" | "mg"): number {
-  switch (unit) {
+export function normalizeUnit(rawUnit: string): "g" | "kg" | "mg" | "mL" | "L" | "mol" | "mmol" {
+  const u = (rawUnit || "").trim();
+  const lower = u.toLowerCase();
+  if (lower === "ml") return "mL";
+  if (lower === "l") return "L";
+  if (lower === "g") return "g";
+  if (lower === "kg") return "kg";
+  if (lower === "mg") return "mg";
+  if (lower === "mol") return "mol";
+  if (lower === "mmol") return "mmol";
+  return u as any;
+}
+
+export function massToGrams(amount: number, unit: string): number {
+  const norm = normalizeUnit(unit);
+  switch (norm) {
     case "g":
       return amount;
     case "kg":
       return amount * 1000;
     case "mg":
       return amount / 1000;
+    default:
+      return amount;
   }
 }
 
-export function molesFromUnit(amount: number, unit: "mol" | "mmol"): number {
-  return unit === "mol" ? amount : amount / 1000;
+export function molesFromUnit(amount: number, unit: string): number {
+  const norm = normalizeUnit(unit);
+  return norm === "mol" ? amount : amount / 1000;
 }
 
-export function volumeToLiters(amount: number, unit: "mL" | "L"): number {
-  return unit === "L" ? amount : amount / 1000;
+export function volumeToLiters(amount: number, unit: string): number {
+  const norm = normalizeUnit(unit);
+  return norm === "L" ? amount : amount / 1000;
 }
 
 export interface MolesResult {
@@ -37,7 +55,8 @@ export interface MolesResult {
 
 /** Resolves the number of moles supplied by a reaction input, given the chemical's molar mass. */
 export function toMoles(input: ReactionInputSpecies, molarMass: number): MolesResult {
-  const { amount, unit } = input;
+  const { amount } = input;
+  const unit = normalizeUnit(input.unit);
   if (amount <= 0) {
     throw new ChemistryEngineError(`Amount must be a positive number (got ${amount}).`, "INVALID_AMOUNT", {
       amount,
