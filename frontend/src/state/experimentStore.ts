@@ -435,56 +435,23 @@ export const useLabStore = create<LabState>((set, get) => ({
             (e) => (e.type === "color_change" || e.type === "precipitation") && e.colorTo
           );
 
-          const productContents: ContainerContent[] = resolution.products
-            .map((p, idx) => {
-              const line = stoichByChemicalId.get(p.chemicalId);
-              const mass = line?.theoreticalYieldMass ?? 0;
-              // Real chemical color lookup
-              let color = (p as any).substanceColor || getChemicalColor(p.chemicalId, p.formula, p.commonName);
-              // If reaction explicitly produces an observable precipitate/color, apply to target product
-              const isTargetSpecies = primaryColorEffect?.relatedChemicalId
-                ? primaryColorEffect.relatedChemicalId.toLowerCase() === p.chemicalId.toLowerCase() ||
-                  primaryColorEffect.relatedChemicalId.toLowerCase() === p.formula.toLowerCase()
-                : !p.isByproduct && !["h2o", "water", "nacl", "kno3", "nano3", "kcl"].includes(p.chemicalId.toLowerCase());
-              if (primaryColorEffect?.colorTo && isTargetSpecies) {
-                color = primaryColorEffect.colorTo;
-              }
-              return {
-                chemicalId: p.chemicalId,
-                commonName: p.commonName,
-                formula: p.formula,
-                substanceColor: color,
-                amount: mass > 0 ? parseFloat(mass.toFixed(4)) : Math.max(0.1, (p.coefficient || 1) * 2),
-                unit: "g" as Unit,
-              };
-            })
-            .filter((c) => c.amount > 0);
+          // Determine visual appearance color from reaction effects or product mixture
+          const productContents: ContainerContent[] = resolution.products.map((p) => ({
+            chemicalId: p.chemicalId,
+            commonName: p.commonName,
+            formula: p.formula,
+            substanceColor: (p as any).substanceColor || getChemicalColor(p.chemicalId, p.formula, p.commonName),
+            amount: Math.max(0.1, (p.coefficient || 1) * 2),
+            unit: "g" as Unit,
+          }));
 
-          // Keep any unreacted excess reactants (where remainingMass > 0.001)
-          const excessReactants: ContainerContent[] = (simulationResult.stoichiometry ?? [])
-            .filter((line) => line.role === "reactant" && (line.remainingMass ?? 0) > 0.001)
-            .map((line) => ({
-              chemicalId: line.chemicalId,
-              commonName: line.commonName,
-              formula: line.formula,
-              substanceColor: getChemicalColor(line.chemicalId, line.formula, line.commonName),
-              amount: parseFloat((line.remainingMass ?? 0).toFixed(4)),
-              unit: "g" as Unit,
-            }));
-
-          // Keep spectators (any chemical in container not involved in reaction)
-          const activeIds = new Set([
-            ...resolution.reactants.map((r) => r.chemicalId),
-            ...resolution.products.map((p) => p.chemicalId),
-          ]);
-          const spectators = container.contents.filter((c) => !activeIds.has(c.chemicalId));
-
-          const newContents = consolidateContents([...productContents, ...excessReactants, ...spectators]);
-          const appearanceColor = primaryColorEffect?.colorTo || calculateMixtureColor(newContents);
+          const appearanceColor = primaryColorEffect?.colorTo || calculateMixtureColor(productContents.length > 0 ? productContents : container.contents);
           const calorimetry = simulationResult.calorimetry ?? resolution.calorimetry;
           const nextTemp = calorimetry ? calorimetry.finalTemperatureC : container.temperatureC;
+
+          // The beaker section strictly keeps only the reactants. Products are displayed in the Results Panel.
           containers = s.containers.map((c) =>
-            c.id === container.id ? { ...c, contents: newContents, temperatureC: nextTemp, appearanceColor } : c
+            c.id === container.id ? { ...c, contents: container.contents, temperatureC: nextTemp, appearanceColor } : c
           );
         }
         const calorimetry = simulationResult.calorimetry ?? resolution.calorimetry;
@@ -574,13 +541,35 @@ export const useLabStore = create<LabState>((set, get) => ({
             })
             .filter((c) => c.amount > 0);
 
+          // The beaker section strictly keeps only the reactants. Products are displayed in the Results Panel.
+          const reactantContents: ContainerContent[] =
+            activeContainer.contents.length > 0
+              ? activeContainer.contents
+              : resolution.reactants.map((r) => {
+                  const state = (r as any).physicalState?.toLowerCase() || "";
+                  const isSolid =
+                    ["powder", "crystal", "solid"].includes(state) ||
+                    ["urea", "na", "k", "c", "fe", "cu", "zn", "mg", "ag"].includes(r.chemicalId.toLowerCase());
+                  const isGas =
+                    state === "gas" ||
+                    ["h2", "o2", "co2", "n2", "cl2", "nh3", "ch4"].includes(r.chemicalId.toLowerCase());
+                  return {
+                    chemicalId: r.chemicalId,
+                    commonName: r.commonName,
+                    formula: r.formula,
+                    substanceColor: r.substanceColor || getChemicalColor(r.chemicalId, r.formula, r.commonName),
+                    amount: isSolid ? 10 * (r.coefficient || 1) : isGas ? (r.coefficient || 1) : 25 * (r.coefficient || 1),
+                    unit: (isSolid ? "g" : isGas ? "mol" : "mL") as Unit,
+                    concentrationMolar: !isSolid && !isGas ? 1.0 : undefined,
+                  };
+                });
+
           const calorimetry = simulationResult.calorimetry ?? resolution.calorimetry;
           const nextTemp = calorimetry ? calorimetry.finalTemperatureC : activeContainer.temperatureC;
-          const consolidatedProducts = consolidateContents(productContents);
-          const appearanceColor = primaryColorEffect?.colorTo || calculateMixtureColor(consolidatedProducts);
+          const appearanceColor = primaryColorEffect?.colorTo || calculateMixtureColor(productContents);
           containers = s.containers.map((c) =>
             c.id === activeContainer.id
-              ? { ...c, contents: consolidatedProducts, temperatureC: nextTemp, appearanceColor }
+              ? { ...c, contents: reactantContents, temperatureC: nextTemp, appearanceColor }
               : c
           );
         }

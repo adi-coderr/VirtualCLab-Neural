@@ -129,6 +129,11 @@ export function ContainerView({
 
       {/* Chemical Contents & Volume Readout */}
       <div className="container-view__details">
+        {hasContents && (
+          <div className="container-view__contents-label">
+            <span>Reactants</span>
+          </div>
+        )}
         <ul className="container-view__contents">
           {container.contents.map((c, i) => {
             const chemColor = c.substanceColor || getChemicalColor(c.chemicalId, c.formula, c.commonName);
