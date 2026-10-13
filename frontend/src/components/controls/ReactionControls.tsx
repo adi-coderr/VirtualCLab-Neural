@@ -20,6 +20,7 @@ export function ReactionControls({ pendingChemical, onAdded }: { pendingChemical
   const [reactionSearchQuery, setReactionSearchQuery] = useState("");
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [loadingPreset, setLoadingPreset] = useState(false);
+  const [presetScale, setPresetScale] = useState<number>(1);
   const searchBoxRef = useRef<HTMLDivElement>(null);
 
   const addChemical = useLabStore((s) => s.addChemical);
@@ -81,7 +82,7 @@ export function ReactionControls({ pendingChemical, onAdded }: { pendingChemical
     curatedReactions.find((r) => r.id === selectedReactionId) ||
     searchResults.find((r) => r.id === selectedReactionId);
 
-  const handleLoadReaction = async (rx: CuratedReaction, autoRun: boolean) => {
+  const handleLoadReaction = async (rx: CuratedReaction, autoRun: boolean, scale = presetScale) => {
     if (!activeContainer) return;
     setLoadingPreset(true);
     try {
@@ -92,16 +93,16 @@ export function ReactionControls({ pendingChemical, onAdded }: { pendingChemical
 
       for (const r of rx.reactants) {
         const chem = await chemicalsApi.getById(r.chemicalId);
-        let amt = 20;
+        let amt = 25;
         let u: Unit = "mL";
-        let conc: number | undefined = 0.1;
+        let conc: number | undefined = 1.0;
 
         if (chem.physicalState === "gas") {
-          amt = r.coefficient || 1;
+          amt = (r.coefficient || 1) * scale;
           u = "mol";
           conc = undefined;
         } else if (chem.physicalState === "solid") {
-          amt = 2 * (r.coefficient || 1);
+          amt = Math.max(1, 10 * (r.coefficient || 1) * scale);
           u = "g";
           conc = undefined;
         } else if (chem.id === "water") {
@@ -109,9 +110,9 @@ export function ReactionControls({ pendingChemical, onAdded }: { pendingChemical
           u = "mL";
           conc = undefined;
         } else {
-          amt = 20 * (r.coefficient || 1);
+          amt = 25 * (r.coefficient || 1);
           u = "mL";
-          conc = 0.1;
+          conc = Math.max(0.1, parseFloat((1.0 * scale).toFixed(2)));
         }
 
         await addChemical(chem, amt, u, conc);
@@ -249,6 +250,24 @@ export function ReactionControls({ pendingChemical, onAdded }: { pendingChemical
                   {selectedReaction.energyClassification}
                   {selectedReaction.enthalpyKjPerMol !== undefined && ` (${selectedReaction.enthalpyKjPerMol > 0 ? "+" : ""}${selectedReaction.enthalpyKjPerMol} kJ/mol)`}
                 </span>
+              </div>
+              <div className="reaction-controls__preset-scale-row">
+                <span className="reaction-controls__preset-scale-label">Quantity / Scale:</span>
+                {[
+                  { label: "0.5× (Mild)", val: 0.5 },
+                  { label: "1× (Standard)", val: 1.0 },
+                  { label: "2× (Double)", val: 2.0 },
+                  { label: "3× (Maximum)", val: 3.0 },
+                ].map((sc) => (
+                  <button
+                    key={sc.val}
+                    type="button"
+                    className={`reaction-controls__scale-chip ${presetScale === sc.val ? "reaction-controls__scale-chip--active" : ""}`}
+                    onClick={() => setPresetScale(sc.val)}
+                  >
+                    {sc.label}
+                  </button>
+                ))}
               </div>
               <div className="reaction-controls__preset-buttons">
                 <Button

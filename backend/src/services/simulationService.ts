@@ -716,6 +716,64 @@ export class SimulationService {
   }
 
 
+  private parseOrBuildInputsForPredict(
+    query: string,
+    reactants: { chemicalId: string; coefficient?: number }[]
+  ): ReactionInputSpecies[] {
+    const amountRegex = /(\d+(?:\.\d+)?)\s*(g|mg|kg|ml|l|mol|mmol)\s+([a-zA-Z0-9_\-\+]+)/gi;
+    const molarityRegex = /(\d+(?:\.\d+)?)\s*M\s+([a-zA-Z0-9_\-\+]+)/gi;
+    const parsedAmounts = new Map<string, { amount: number; unit: string; concentrationMolar?: number }>();
+
+    let match;
+    while ((match = amountRegex.exec(query)) !== null) {
+      const amt = parseFloat(match[1]);
+      const u = match[2];
+      const chem = match[3].toLowerCase();
+      parsedAmounts.set(chem, { amount: amt, unit: u });
+    }
+    while ((match = molarityRegex.exec(query)) !== null) {
+      const conc = parseFloat(match[1]);
+      const chem = match[2].toLowerCase();
+      const existing = parsedAmounts.get(chem);
+      if (existing) {
+        existing.concentrationMolar = conc;
+      } else {
+        parsedAmounts.set(chem, { amount: 25, unit: "mL", concentrationMolar: conc });
+      }
+    }
+
+    return reactants.map((r) => {
+      const key = r.chemicalId.toLowerCase();
+      const parsed = parsedAmounts.get(key);
+      if (parsed) {
+        return {
+          chemicalId: r.chemicalId,
+          amount: parsed.amount,
+          unit: parsed.unit as any,
+          concentrationMolar: parsed.concentrationMolar,
+        };
+      }
+
+      const chem = this.chemicalRepo.getById(r.chemicalId);
+      const coeff = r.coefficient || 1;
+      if (r.chemicalId === "water" || r.chemicalId === "h2o") {
+        return { chemicalId: r.chemicalId, amount: 50, unit: "mL" };
+      }
+      if (chem?.physicalState === "solid") {
+        return { chemicalId: r.chemicalId, amount: 10 * coeff, unit: "g" };
+      }
+      if (chem?.physicalState === "gas") {
+        return { chemicalId: r.chemicalId, amount: 1 * coeff, unit: "mol" };
+      }
+      return {
+        chemicalId: r.chemicalId,
+        amount: 25 * coeff,
+        unit: "mL",
+        concentrationMolar: 1.0,
+      };
+    });
+  }
+
   /**
    * Predicts a reaction from free text (e.g. "KMnO4 + H2O2 + H2SO4" or "c2h4cl2 + c2h4br2").
    * 1. First checks the curated database records in SQLite dev.db.
@@ -743,23 +801,33 @@ export class SimulationService {
       };
     }
 
+    // Extract clean tokens without amounts for database lookup
+    const cleanWithoutAmounts = clean
+      .replace(/\b\d+(?:\.\d+)?\s*(g|mg|kg|ml|l|mol|mmol|M)\b/gi, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
     // 1. Search dev.db by exact reactantKey
-    const byKey = await prisma.reaction.findUnique({ where: { reactantKey: clean.toLowerCase() } }).catch(() => null);
-    let matchedRow = byKey;
+    let matchedRow = await prisma.reaction.findUnique({ where: { reactantKey: clean.toLowerCase() } }).catch(() => null);
+    if (!matchedRow && cleanWithoutAmounts) {
+      matchedRow = await prisma.reaction.findUnique({ where: { reactantKey: cleanWithoutAmounts.toLowerCase() } }).catch(() => null);
+    }
 
     if (!matchedRow) {
-      const sortedParts = mlTokens.map((t) => t.toLowerCase().replace(/[^a-z0-9]/g, "_")).sort().join("+");
+      const strippedTokens = (cleanWithoutAmounts || clean).split(/\s*[\+,]\s*|\s+\.\s+/).map((t) => t.trim()).filter(Boolean);
+      const sortedParts = strippedTokens.map((t) => t.toLowerCase().replace(/[^a-z0-9]/g, "_")).sort().join("+");
       matchedRow = await prisma.reaction.findUnique({ where: { reactantKey: sortedParts } }).catch(() => null);
     }
 
     // Search by name or id, or by equation if query has an arrow (e.g. "A + B -> C")
     const hasArrow = clean.includes("->") || clean.includes("→");
     if (!matchedRow) {
+      const searchTarget = cleanWithoutAmounts || clean;
       matchedRow = await prisma.reaction.findFirst({
         where: {
           OR: [
-            { name: { contains: clean } },
-            { id: { contains: clean.toLowerCase() } },
+            { name: { contains: searchTarget } },
+            { id: { contains: searchTarget.toLowerCase() } },
             ...(hasArrow ? [{ equation: { contains: clean } }] : []),
           ],
         },
@@ -772,7 +840,7 @@ export class SimulationService {
       const reactants = (matchedRow.reactants as any[]) || [];
       const products = (matchedRow.products as any[]) || [];
 
-      const resolution: ReactionResolution = {
+      let resolution: ReactionResolution = {
         status: "REACTION",
         confidenceTier: "SUPPORTED",
         confidenceScore: matchedRow.confidenceScore,
@@ -803,10 +871,49 @@ export class SimulationService {
         warnings: [],
       };
 
+      const inputs = this.parseOrBuildInputsForPredict(clean, reactants);
+      const { stoichiometry, calorimetry } = this.computeStoichiometryForResolution(
+        resolution,
+        inputs,
+        conditions
+      );
+
+      if (calorimetry) {
+        const augmentedEffects = resolution.observableEffects.map((effect) => {
+          if (effect.type === "temperature_decrease" || effect.type === "temperature_increase") {
+            const isDecrease = calorimetry.temperatureDeltaC < 0;
+            const changeLabel = isDecrease
+              ? `Temperature decreased by ${Math.abs(calorimetry.temperatureDeltaC).toFixed(1)} °C (from ${calorimetry.initialTemperatureC.toFixed(1)} °C to ${calorimetry.finalTemperatureC.toFixed(1)} °C).`
+              : calorimetry.temperatureDeltaC > 0
+                ? `Temperature increased by ${calorimetry.temperatureDeltaC.toFixed(1)} °C (from ${calorimetry.initialTemperatureC.toFixed(1)} °C to ${calorimetry.finalTemperatureC.toFixed(1)} °C).`
+                : `No significant temperature change (${calorimetry.initialTemperatureC.toFixed(1)} °C).`;
+
+            return {
+              ...effect,
+              temperatureDeltaC: calorimetry.temperatureDeltaC,
+              initialTemperatureC: calorimetry.initialTemperatureC,
+              finalTemperatureC: calorimetry.finalTemperatureC,
+              description: `${changeLabel} ${effect.description}`,
+            };
+          }
+          return effect;
+        });
+
+        resolution = {
+          ...resolution,
+          observableEffects: augmentedEffects,
+          calorimetry,
+        };
+      }
+
       resolution.processBreakdown = generateProcessBreakdown(resolution);
 
       return {
-        simulationResult: { resolution },
+        simulationResult: {
+          resolution,
+          stoichiometry,
+          calorimetry,
+        },
         source: "curated_database",
       };
     }

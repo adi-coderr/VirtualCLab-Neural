@@ -312,6 +312,46 @@
   color: #0284c7;
 }
 
+.reaction-controls__preset-scale-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: var(--space-1);
+}
+
+.reaction-controls__preset-scale-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--graphite-500);
+  margin-right: 2px;
+}
+
+.reaction-controls__scale-chip {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--paper-300);
+  background: var(--paper-0);
+  color: var(--graphite-700);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.reaction-controls__scale-chip:hover {
+  background: var(--paper-200);
+  border-color: var(--paper-400);
+}
+
+.reaction-controls__scale-chip--active {
+  background: var(--azure-500);
+  border-color: var(--azure-600);
+  color: #fff;
+}
+
 .reaction-controls__preset-buttons {
   display: flex;
   gap: var(--space-2);

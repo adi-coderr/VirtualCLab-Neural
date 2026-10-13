@@ -1,6 +1,7 @@
 import type { Container } from "../../types/experiment";
 import { formatFormula } from "../../utils/formatFormula";
 import { calculateMixtureColor, getChemicalColor } from "../../utils/chemicalColorMixer";
+import { useLabStore } from "../../state/experimentStore";
 import { GlasswareVessel } from "./GlasswareVessel";
 import "./ContainerView.css";
 
@@ -52,6 +53,10 @@ export function ContainerView({
   onDrop: (chemicalId: string) => void;
   onRemove?: () => void;
 }) {
+  const updateContentAmount = useLabStore((s) => s.updateContentAmount);
+  const updateContentConcentration = useLabStore((s) => s.updateContentConcentration);
+  const removeContent = useLabStore((s) => s.removeContent);
+
   const liquidColor = mixLiquidColor(container);
   const fillPercent = computeFillPercent(container);
   const hasContents = container.contents.length > 0;
@@ -127,18 +132,60 @@ export function ContainerView({
         <ul className="container-view__contents">
           {container.contents.map((c, i) => {
             const chemColor = c.substanceColor || getChemicalColor(c.chemicalId, c.formula, c.commonName);
+            const step = c.unit === "mol" ? 0.2 : c.unit === "g" ? 5 : 10;
             return (
               <li key={`${c.chemicalId}-${i}`} className="container-view__content-item">
                 <div className="container-view__content-chem">
                   {chemColor && chemColor.toLowerCase() !== "#ffffff" && (
                     <span className="container-view__color-dot" style={{ background: chemColor }} />
                   )}
-                  <span className="formula">{formatFormula(c.formula)}</span>
+                  <span className="formula" title={c.commonName}>{formatFormula(c.formula)}</span>
                 </div>
-                <span className="container-view__amount">
-                  {c.amount} {c.unit}
-                  {c.concentrationMolar ? ` @ ${c.concentrationMolar}M` : ""}
-                </span>
+                <div className="container-view__qty-controls" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    className="container-view__qty-btn"
+                    title={`Decrease quantity (-${step}${c.unit})`}
+                    onClick={() => updateContentAmount(container.id, c.chemicalId, -step)}
+                  >
+                    −
+                  </button>
+                  <span className="container-view__amount">
+                    {c.amount} {c.unit}
+                  </span>
+                  <button
+                    type="button"
+                    className="container-view__qty-btn"
+                    title={`Increase quantity (+${step}${c.unit})`}
+                    onClick={() => updateContentAmount(container.id, c.chemicalId, step)}
+                  >
+                    +
+                  </button>
+                  {c.concentrationMolar !== undefined && (
+                    <select
+                      className="container-view__conc-select"
+                      value={c.concentrationMolar}
+                      title="Adjust molar concentration"
+                      onChange={(e) => {
+                        updateContentConcentration(container.id, c.chemicalId, parseFloat(e.target.value));
+                      }}
+                    >
+                      <option value={0.1}>0.1M</option>
+                      <option value={0.5}>0.5M</option>
+                      <option value={1.0}>1.0M</option>
+                      <option value={2.0}>2.0M</option>
+                      <option value={3.0}>3.0M</option>
+                    </select>
+                  )}
+                  <button
+                    type="button"
+                    className="container-view__chem-remove"
+                    title={`Remove ${c.commonName}`}
+                    onClick={() => removeContent(container.id, c.chemicalId)}
+                  >
+                    ✕
+                  </button>
+                </div>
               </li>
             );
           })}

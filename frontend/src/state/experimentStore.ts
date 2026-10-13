@@ -49,6 +49,8 @@ interface LabState {
   removeContainer: (id: string) => void;
   setActiveContainer: (id: string) => void;
   addChemical: (chemical: ChemicalSummary, amount: number, unit: Unit, concentrationMolar?: number) => Promise<void>;
+  updateContentAmount: (containerId: string, chemicalId: string, deltaAmount: number) => void;
+  updateContentConcentration: (containerId: string, chemicalId: string, newConcentration: number) => void;
   removeContent: (containerId: string, chemicalId: string) => void;
   pourInto: (sourceId: string, targetId: string) => void;
   heat: (targetTemperatureC: number) => Promise<void>;
@@ -274,6 +276,41 @@ export const useLabStore = create<LabState>((set, get) => ({
     } catch (err) {
       set({ isLoading: false, error: err instanceof Error ? err.message : "Failed to add chemical" });
     }
+  },
+
+  updateContentAmount: (containerId, chemicalId, deltaAmount) => {
+    set((s) => {
+      const containers = s.containers.map((c) => {
+        if (c.id !== containerId) return c;
+        const nextContents = c.contents.map((item) => {
+          if (item.chemicalId !== chemicalId) return item;
+          const newAmt = Math.max(0.1, parseFloat((item.amount + deltaAmount).toFixed(3)));
+          return { ...item, amount: newAmt };
+        });
+        return { ...c, contents: nextContents };
+      });
+      return {
+        containers,
+        lastSimulationResult: null,
+      };
+    });
+  },
+
+  updateContentConcentration: (containerId, chemicalId, newConcentration) => {
+    set((s) => {
+      const containers = s.containers.map((c) => {
+        if (c.id !== containerId) return c;
+        const nextContents = c.contents.map((item) => {
+          if (item.chemicalId !== chemicalId) return item;
+          return { ...item, concentrationMolar: Math.max(0.01, parseFloat(newConcentration.toFixed(2))) };
+        });
+        return { ...c, contents: nextContents };
+      });
+      return {
+        containers,
+        lastSimulationResult: null,
+      };
+    });
   },
 
   removeContent: (containerId, chemicalId) => {

@@ -173,6 +173,19 @@ function tryGasEvolution(a: Chemical, b: Chemical, lookup: ChemicalLookupPort): 
     },
   ];
 
+  const isBicarbonate = anionFormula === "HCO3";
+  if (isBicarbonate) {
+    effects.push({
+      type: "temperature_decrease",
+      description: "Endothermic decomposition absorbs heat from solution, causing a noticeable temperature drop.",
+    });
+  } else {
+    effects.push({
+      type: "temperature_increase",
+      description: "Neutralization of carbonate releases heat into solution.",
+    });
+  }
+
   return {
     status: "REACTION",
     confidenceTier: "PREDICTED",
@@ -182,9 +195,10 @@ function tryGasEvolution(a: Chemical, b: Chemical, lookup: ChemicalLookupPort): 
     reactants: [toSpecies(acid, balance.reactantCoefficients[a.isAcid ? 0 : 1] as number), toSpecies(carbonateLike, balance.reactantCoefficients[a.isAcid ? 1 : 0] as number)],
     products,
     observableEffects: effects,
-    energyClassification: "unknown",
+    energyClassification: isBicarbonate ? "endothermic" : "exothermic",
+    enthalpyKjPerMol: isBicarbonate ? 12.7 : -20.0,
     explanation:
-      `Applied the general rule "acid + carbonate/bicarbonate \u2192 salt + water + carbon dioxide" and balanced ` +
+      `Applied the general rule "acid + carbonate/bicarbonate → salt + water + carbon dioxide" and balanced ` +
       `the resulting equation from element conservation. This rule is well established in general chemistry ` +
       `but this specific pairing is not individually curated in the database.` +
       (saltChem ? "" : ` The predicted salt (${saltIon.formula}) is not yet a registered chemical, so its properties are unavailable.`),
@@ -249,9 +263,9 @@ function tryAcidBase(a: Chemical, b: Chemical, lookup: ChemicalLookupPort): Reac
     balancedEquation: balance.balancedEquationText,
     reactants: [toSpecies(acid, balance.reactantCoefficients[0] as number), toSpecies(base, balance.reactantCoefficients[1] as number)],
     products,
-    observableEffects: bothStrong ? [{ type: "temperature_increase", description: "Neutralization releases heat (exothermic)." }] : [],
-    energyClassification: bothStrong ? "exothermic" : "unknown",
-    enthalpyKjPerMol: bothStrong ? -57.1 : undefined,
+    observableEffects: [{ type: "temperature_increase", description: "Neutralization releases heat (exothermic)." }],
+    energyClassification: "exothermic",
+    enthalpyKjPerMol: bothStrong ? -57.1 : -54.0,
     explanation,
     ruleApplied: bothStrong ? "rule:strong_acid_strong_base_neutralization" : "rule:weak_acid_or_base_neutralization_approximate",
     warnings: balance.warnings,
@@ -310,6 +324,20 @@ function tryMetalPlusAcid(a: Chemical, b: Chemical, lookup: ChemicalLookupPort):
 
   const transfer = describeElementTransfer(metalSymbol, true, metal.commonCationCharge);
 
+  const METAL_ACID_ENTHALPIES: Record<string, number> = {
+    K: -436.0,
+    Ca: -544.0,
+    Na: -240.0,
+    Mg: -462.0,
+    Al: -524.5,
+    Zn: -153.0,
+    Fe: -88.0,
+    Ni: -64.0,
+    Sn: -14.0,
+    Pb: -12.0,
+  };
+  const metalEnthalpy = METAL_ACID_ENTHALPIES[metalSymbol] ?? -150.0;
+
   return {
     status: "REACTION",
     confidenceTier: "PREDICTED",
@@ -325,8 +353,10 @@ function tryMetalPlusAcid(a: Chemical, b: Chemical, lookup: ChemicalLookupPort):
     ],
     observableEffects: [
       { type: "gas_evolution", description: `Hydrogen gas bubbles form as ${metal.commonName} dissolves.`, relatedChemicalId: h2.id },
+      { type: "temperature_increase", description: `Vigorous exothermic reaction between ${metal.commonName} and acid releases significant heat.` },
     ],
     energyClassification: "exothermic",
+    enthalpyKjPerMol: metalEnthalpy,
     explanation:
       `${metal.commonName} is above hydrogen in the reactivity series (${transfer ? `oxidation state ${transfer.fromOxidationState} \u2192 ${transfer.toOxidationState}` : "oxidized"}), ` +
       `so it displaces H2 from ${acid.commonName}. Applied the general metal-activity-series rule and balanced ` +
@@ -409,8 +439,13 @@ function trySingleDisplacement(a: Chemical, b: Chemical, lookup: ChemicalLookupP
         colorFrom: salt.substanceColor || "#F5F5F5",
         colorTo: displacedMetalChem.substanceColor || "#C0C0C0",
       },
+      {
+        type: "temperature_increase",
+        description: `Exothermic displacement of ${displacedMetalChem.commonName} by ${metal.commonName} releases heat.`,
+      },
     ],
     energyClassification: "exothermic",
+    enthalpyKjPerMol: metalSymbol === "mg" || metalSymbol === "Mg" ? -531.0 : metalSymbol === "zn" || metalSymbol === "Zn" ? -218.7 : -150.0,
     explanation:
       `${metal.commonName} is more reactive than ${displacedMetalChem.commonName} in the standard activity ` +
       `series, so it displaces it from ${salt.commonName}. Applied the general activity-series rule and balanced ` +
@@ -503,8 +538,13 @@ function tryPrecipitation(a: Chemical, b: Chemical, lookup: ChemicalLookupPort):
         colorFrom: a.substanceColor || b.substanceColor || "#F5F5F5",
         colorTo: precipitateChem?.substanceColor || "#FFFFFF",
       },
+      {
+        type: "temperature_increase",
+        description: "Lattice energy release during precipitation mildly warms the mixture.",
+      },
     ],
-    energyClassification: "unknown",
+    energyClassification: "exothermic",
+    enthalpyKjPerMol: -25.0,
     explanation:
       `Checked the double-displacement products against standard solubility rules: ${precipitateIon.formula} is ` +
       `${precipitateTier.replace("_", " ")} (${precipitateRule}), so it precipitates. Applied the general ` +
@@ -549,6 +589,7 @@ function tryCombustion(a: Chemical, b: Chemical, lookup: ChemicalLookupPort): Re
       { type: "temperature_increase", description: "Combustion releases substantial heat and (with a real flame) light." },
     ],
     energyClassification: "exothermic",
+    enthalpyKjPerMol: -(150.0 + 600.0 * (fuel.composition["C"] || 1) + 120.0 * (fuel.composition["H"] || 4) - 100.0 * (fuel.composition["O"] || 0)),
     explanation:
       `Applied the general complete-combustion rule (hydrocarbon + O2 \u2192 CO2 + H2O) and balanced the equation ` +
       `from element conservation. This assumes complete combustion with excess oxygen; incomplete combustion ` +
