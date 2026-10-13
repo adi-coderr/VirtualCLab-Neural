@@ -40,7 +40,9 @@ export function computeStoichiometry(
   inputs: ReactionInputSpecies[]
 ): StoichiometryResult {
   const reactantMoles = reactants.map((r) => {
-    const matchingInputs = inputs.filter((i) => i.chemicalId === r.chemicalId);
+    const matchingInputs = inputs.filter(
+      (i) => i.chemicalId === r.chemicalId || (i.formula && r.formula && i.formula.toLowerCase() === r.formula.toLowerCase())
+    );
     if (matchingInputs.length === 0) {
       throw new ChemistryEngineError(
         `No quantity was provided for reactant "${r.commonName}" (${r.formula}), which this reaction requires.`,
