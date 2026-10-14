@@ -68,9 +68,6 @@ export function AddToContainerControl({
   if (!pendingChemical) {
     return (
       <div className="add-to-container add-to-container--empty">
-        <div className="add-to-container__empty-icon" aria-hidden="true">
-          ⚗️
-        </div>
         <div className="add-to-container__empty-text">
           <p className="add-to-container__empty-title">Ready to add chemicals</p>
           <p className="add-to-container__empty-desc">
