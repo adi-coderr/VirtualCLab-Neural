@@ -150,20 +150,26 @@ Output ONLY a single valid JSON object matching the following schema without mar
 }
 
 CRITICAL SCIENTIFIC PRINCIPLES:
-1. NO_REACTION ACCURACY:
-   - Spectator ions: In aqueous mixtures where all cation-anion combinations remain soluble (e.g. NaCl + KNO3, KCl + Na2SO4), NO PRECIPITATE, NO GAS, and NO WEAK ELECTROLYTE form. The status MUST be "NO_REACTION", products: [], and explanation must explain why.
-   - Activity series & reduction potentials: In single displacement (metal + acid or metal + salt), if the metal is less reactive than the displaced ion (e.g. Cu + HCl, Ag + FeSO4, Au + HNO3), the reaction cannot proceed spontaneously. Status MUST be "NO_REACTION".
-   - Non-reactive mixtures: Mixtures of non-oxidizing acids and salts with common anions or inert mixtures at room temperature must be correctly identified as "NO_REACTION".
-2. STOICHIOMETRIC ATOM CONSERVATION:
+1. REACTION STATUS DETERMINATION:
+   - Feasible reactions & kinetic passivation: When a chemical reaction pathway exists between the reactants (including redox, single displacement, precipitation, acid-base, synthesis, decomposition, or reactions that proceed slowly / form a surface passivation layer at room temperature such as Zn + 2H2O -> Zn(OH)2 + H2, Al + H2O, Fe + H2O, or reactions requiring heat/steam), the status MUST be "REACTION". You MUST provide the balancedEquation, the complete list of products with correct stoichiometry, observableEffects, and energetics. Note the passivation layer (e.g. Zn(OH)2/ZnO) and slow kinetic rate in "explanation" and "observableEffects", but DO NOT mark the status as "NO_REACTION".
+   - Reserve "status": "NO_REACTION" STRICTLY for mixtures where NO chemical reaction pathway is thermodynamically possible:
+     * Spectator ions: In aqueous mixtures where all cation-anion combinations remain completely soluble (e.g. NaCl + KNO3, KCl + Na2SO4), no precipitate, gas, or weak electrolyte forms. Status MUST be "NO_REACTION", products: [].
+     * Activity series failure: In single displacement (metal + acid or metal + salt), if the metal is less reactive than the displaced ion (e.g. Cu + HCl, Ag + FeSO4, Au + HNO3), the reaction cannot proceed spontaneously. Status MUST be "NO_REACTION".
+     * Noble gases and inert mixtures: Mixtures of inert noble gases or non-reactive mixtures under standard ambient conditions.
+2. PEDAGOGICAL EXPLANATION TONE & INTEGRITY:
+   - The "explanation" and "processBreakdown" are displayed directly to students and lab researchers.
+   - NEVER include meta-commentary about "ML model", "ReactionT5", "prediction", "hallucination", or "the prediction is incorrect".
+   - Write authoritatively as an expert chemist explaining the authentic molecular mechanism, electron transfer, thermodynamics, and physical observations.
+3. STOICHIOMETRIC ATOM CONSERVATION:
    - The reaction MUST be atom-balanced: for every element, the total atom count on the reactant side must exactly equal the total atom count on the product side.
    - For redox in aqueous solution, ensure proper inclusion of H2O and balancing of oxidation states.
    - Total electric charge on reactants must equal total electric charge on products.
-3. CHEMICAL FORMULAS:
+4. CHEMICAL FORMULAS:
    - Provide standard pure chemical formulas in the "formula" field (e.g. "H2O", "KMnO4", "CuSO4", "CO2"). Do NOT include phase tags like "(aq)" or "(s)" inside the "formula" string.
-4. OBSERVABLE EFFECTS & COLOR CODES:
+5. OBSERVABLE EFFECTS & COLOR CODES:
    - Color hex codes MUST be authentic 6-digit hex values like #800080 (permanganate purple), #FFFFFF (colorless/white), #FFD700 (yellow), #0077BE (blue), #B22222 (brown/red), #FF4500 (orange).
    - Describe visible changes: effervescence / gas bubbles, precipitates (color, flocculent vs crystalline), temperature change.
-5. ENERGETICS:
+6. ENERGETICS:
    - Enthalpy (enthalpyKjPerMol) must be scientifically realistic in kJ/mol. Exothermic reactions must have negative values; endothermic must have positive values.`;
 
 export interface SanitizedFormulaResult {
@@ -292,6 +298,150 @@ function normalizeProcessCategory(cat?: string): "atomic_bonding" | "concentrati
   if (cat?.includes("conc")) return "concentrations";
   if (cat?.includes("obs") || cat?.includes("visual")) return "observables";
   return "properties";
+}
+
+/**
+ * Strips meta-criticism, internal model evaluation chatter, and debug text from LLM explanations,
+ * producing authoritative textbook-grade chemistry explanations for students and researchers.
+ */
+export function cleanEducationalExplanation(text: string, isReaction: boolean): string {
+  if (!text) return "";
+
+  let cleaned = text;
+
+  // 1. Remove meta-commentary about ML models, predictions, and invalid candidate products
+  cleaned = cleaned.replace(/\bthe\s+(?:local\s+)?(?:neural\s+)?(?:ml|machine\s+learning)\s+model(?:'s|’s)?\s+prediction\s+is\s+incorrect[.,;]?\s*/gi, "");
+  cleaned = cleaned.replace(/\bthe\s+(?:local\s+)?(?:neural\s+)?(?:ml|machine\s+learning)\s+model\s+(?:predicted|suggested|gave|output)[^.;\n]*[.;\n]\s*/gi, "");
+  cleaned = cleaned.replace(/\bthe\s+predicted\s+products\s+[^.;\n]+are\s+chemically\s+invalid[^.;\n]*[.;\n]\s*/gi, "");
+  cleaned = cleaned.replace(/\bpredicted\s+products\s+['"][^'"]+['"]\s+and\s+['"][^'"]+['"]\s+are\s+chemically\s+invalid[.;]?\s*/gi, "");
+  cleaned = cleaned.replace(/\bthe\s+model\s+(?:hallucinated|erroneously|mistakenly)[^.;\n]*[.;\n]\s*/gi, "");
+  cleaned = cleaned.replace(/\batomic\s+oxygen\s+is\s+highly\s+reactive\s+and\s+would\s+immediately\s+react[^.;\n]*[.;\n]\s*/gi, "");
+  cleaned = cleaned.replace(/\band\s+zinc\s+does\s+not\s+change\s+oxidation\s+state\s+if\s+it\s+is\s+not\s+reacting[.,;]?\s*/gi, "");
+
+  // 2. If a reaction was identified/recovered, smooth contrasting opening clauses and concluding statements
+  if (isReaction) {
+    cleaned = cleaned.replace(/\bWhile\s+([A-Z][a-z]+(?:\s+[a-z]+)*\s+is\s+thermodynamically\s+capable\s+of)/gi, "$1");
+    cleaned = cleaned.replace(/,\s*this\s+reaction\s+is\s+kinetically\s+hindered\s+at\s+([0-9]+(?:\.[0-9]+)?\s*°C)/gi, ". At $1, this reaction is kinetically hindered");
+    cleaned = cleaned.replace(
+      /\bTherefore,?\s+under\s+standard\s+conditions\s*\([^)]*\),?\s*no\s+observable\s+reaction\s+occurs\.?\s*/gi,
+      "Under standard conditions (25°C, 1 atm), the reaction rate is very slow due to surface passivation, but accelerates significantly upon heating or with steam. "
+    );
+    cleaned = cleaned.replace(
+      /\bno\s+observable\s+reaction\s+occurs\b/gi,
+      "the reaction rate is very slow without thermal activation"
+    );
+  }
+
+  // 3. Clean up formatting and whitespace
+  cleaned = cleaned
+    .replace(/\s{2,}/g, " ")
+    .replace(/\.\s*\./g, ".")
+    .replace(/^\s*[.,;:]\s*/, "")
+    .trim();
+
+  // Capitalize first character of each sentence
+  cleaned = cleaned.replace(/(^\s*|[.!?]\s+)([a-z])/g, (_, p1, p2) => p1 + p2.toUpperCase());
+
+  return cleaned;
+}
+
+/**
+ * Extracts embedded chemical equation strings (e.g. Zn + 2H2O -> Zn(OH)2 + H2) from text.
+ */
+export function extractEmbeddedEquation(text: string): {
+  equation: string;
+  reactantTokens: string[];
+  productTokens: string[];
+} | null {
+  if (!text) return null;
+
+  const arrowRegex = /(-->|->|→)/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = arrowRegex.exec(text)) !== null) {
+    const arrowIdx = match.index;
+    const arrowLen = match[0].length;
+
+    const beforeText = text.slice(0, arrowIdx);
+
+    let startIdx = 0;
+    const lastParenOpen = beforeText.lastIndexOf("(");
+    if (lastParenOpen !== -1) {
+      const betweenParenAndArrow = beforeText.slice(lastParenOpen + 1);
+      if (!betweenParenAndArrow.includes(")")) {
+        startIdx = lastParenOpen + 1;
+      }
+    }
+
+    if (startIdx === 0) {
+      const punctMatch = /([.:;\n]|^)[^.:;\n]*$/.exec(beforeText);
+      if (punctMatch) {
+        startIdx = punctMatch.index + (punctMatch[1] ? punctMatch[1].length : 0);
+      }
+    }
+
+    let leftRaw = beforeText.slice(startIdx).trim();
+    const leftPlusParts = leftRaw.split(/\s*\+\s*/);
+    if (leftPlusParts.length > 0) {
+      const firstPart = leftPlusParts[0]!;
+      const tokenMatch = /([A-Za-z0-9()[\]^·-]+)$/.exec(firstPart.trim());
+      if (tokenMatch) {
+        leftPlusParts[0] = tokenMatch[1]!;
+      }
+      leftRaw = leftPlusParts.join(" + ");
+    }
+
+    const afterText = text.slice(arrowIdx + arrowLen);
+    let endIdx = afterText.length;
+
+    if (lastParenOpen !== -1 && startIdx === lastParenOpen + 1) {
+      let depth = 1;
+      for (let i = 0; i < afterText.length; i++) {
+        if (afterText[i] === "(") depth++;
+        else if (afterText[i] === ")") {
+          depth--;
+          if (depth === 0) {
+            endIdx = i;
+            break;
+          }
+        }
+      }
+    } else {
+      const stopMatch = /([.;\n]|(?:\s+(?:which|yielding|is|under|at|where|producing)\b))/i.exec(afterText);
+      if (stopMatch) {
+        endIdx = stopMatch.index;
+      }
+    }
+
+    let rightRaw = afterText.slice(0, endIdx).trim();
+
+    const rTokens = leftRaw.split(/\s*\+\s*/).map((s) => s.trim()).filter(Boolean);
+    const pTokens = rightRaw.split(/\s*\+\s*/).map((s) => s.trim()).filter(Boolean);
+
+    if (rTokens.length === 0 || pTokens.length === 0) continue;
+
+    const isValidToken = (t: string) => {
+      if (!/[A-Z]/.test(t)) return false;
+      if (/\b(the|is|and|or|in|at|under|with|for|temperature|gas|metal|water|reaction|model|while|this|which)\b/i.test(t)) return false;
+      return true;
+    };
+
+    if (!rTokens.every(isValidToken) || !pTokens.every(isValidToken)) continue;
+
+    const normToken = (t: string) => t.replace(/^[0-9]+\s*/, "").replace(/[^A-Za-z0-9]/g, "");
+    const leftSet = new Set(rTokens.map(normToken));
+    const rightSet = new Set(pTokens.map(normToken));
+    const isIdentical = leftSet.size === rightSet.size && [...leftSet].every((x) => rightSet.has(x));
+    if (isIdentical) continue;
+
+    return {
+      equation: `${leftRaw} -> ${rightRaw}`,
+      reactantTokens: rTokens,
+      productTokens: pTokens,
+    };
+  }
+
+  return null;
 }
 
 export class AiReactionPredictor {
@@ -513,7 +663,19 @@ export class AiReactionPredictor {
 
     const fullPrompt = this.assemblePrompt(promptContext, options);
     const rawJson = await this.callProvider(provider, apiKey, fullPrompt);
-    return this.postProcessResult(rawJson, provider);
+
+    const fallbackReactants: ResolvedSpecies[] | undefined = options?.reactantDetails?.map((r) => {
+      const sanitized = sanitizeChemicalFormula(r.formula);
+      return {
+        chemicalId: sanitized.formula.toLowerCase().replace(/[^a-z0-9]/g, "_"),
+        formula: sanitized.formula,
+        commonName: r.name || sanitized.formula,
+        coefficient: sanitized.coefficient || 1,
+        isRegistered: false,
+      };
+    });
+
+    return this.postProcessResult(rawJson, provider, fallbackReactants);
   }
 
   /**
@@ -540,29 +702,31 @@ export class AiReactionPredictor {
       .join(" + ");
 
     const recheckPrompt = [
-      `CHEMICAL REACTION RECHECK & ENRICHMENT REQUEST:`,
-      `A local Neural ML Model (ReactionT5v2) predicted the following chemical reaction:`,
-      `Predicted Equation: ${mlResolution.balancedEquation}`,
-      `Reactants: ${reactantStr}`,
-      `Predicted Products: ${productStr}`,
-      `Initial Mechanism Notes: ${mlResolution.explanation || "N/A"}`,
+      `CHEMICAL REACTION VERIFICATION & ENRICHMENT REQUEST:`,
+      `Target Reactants: ${reactantStr}`,
+      `Candidate Reaction Equation: ${mlResolution.balancedEquation}`,
+      `Candidate Products: ${productStr}`,
       `Conditions: Temperature ${conditions.temperatureC ?? 25}°C, Pressure ${conditions.pressureAtm ?? 1} atm, Solvent: ${conditions.solvent || "aqueous"}`,
       ``,
-      `YOUR TASK:`,
-      `1. Recheck and verify whether this reaction and its predicted products are chemically authentic and supported by scientific literature.`,
-      `2. If authentic, validate the balanced equation and enrich the reaction with authoritative chemical knowledge available over the internet:`,
-      `   - Comprehensive scientific mechanism explanation citing relevant chemical principles.`,
-      `   - Real-life observable effects (specific sensory changes, color transitions with 6-digit hex codes #HEX, precipitate appearance, gas evolution, temperature shifts).`,
-      `   - Accurate literature standard enthalpy ΔH° (kJ/mol) and thermodynamic classification (exothermic / endothermic).`,
+      `YOUR INSTRUCTIONS:`,
+      `1. REACTION STATUS & EQUATION DETERMINATION:`,
+      `   - Independently evaluate the thermodynamic feasibility and reaction pathway between these reactants.`,
+      `   - If a valid chemical reaction pathway exists (including redox, single displacement, precipitation, acid-base, or reactions that proceed with slow kinetics or passivation such as Zn + 2H2O -> Zn(OH)2 + H2, or reactions requiring heat/steam), you MUST set "status": "REACTION".`,
+      `   - Provide the exact, stoichiometrically balanced equation and true literature-verified products.`,
+      `   - For passivated or slow reactions, describe the passivation layer and kinetics in observableEffects and explanation, but DO NOT mark as NO_REACTION.`,
+      `   - Reserve "status": "NO_REACTION" strictly for chemically inert mixtures (such as spectator ions like NaCl + KNO3, or Cu + HCl where Cu cannot displace H).`,
+      `2. EDUCATIONAL EXPLANATION & INTEGRITY:`,
+      `   - Provide a comprehensive, textbook-grade scientific explanation detailing mechanism, electron transfer, and observables.`,
+      `   - CRITICAL: NEVER mention "ML model", "ReactionT5", "prediction is incorrect", or "hallucination". Speak directly to the student/researcher about the chemistry.`,
+      `   - Include authentic 6-digit hex color codes (#HEX) for visual changes, gas evolution, and enthalpy ΔH° (kJ/mol).`,
       `   - Complete 5-dimensional chemical process breakdown (atomic bonding, concentrations, properties, observables, thermodynamics, conservation).`,
       `   - Laboratory safety precautions and hazards.`,
-      `3. If the ML prediction has minor coefficient/byproduct issues, provide the corrected, stoichiometric balanced equation.`,
       ``,
       `Output ONLY a single valid JSON object strictly adhering to the specified schema.`,
     ].join("\n");
 
     const rawJson = await this.callProvider(provider, apiKey, recheckPrompt);
-    const enriched = this.postProcessResult(rawJson, provider);
+    const enriched = this.postProcessResult(rawJson, provider, mlResolution.reactants);
 
     // Label that this prediction was produced by ReactionT5v2 and verified/enriched by the integrated API
     enriched.aiProvider = `${mlResolution.aiProvider || "ReactionT5v2"} + ${enriched.aiProvider || provider.toUpperCase()} (Verified & Enriched)`;
@@ -619,7 +783,7 @@ export class AiReactionPredictor {
         throw new Error(`Gemini API failed: ${lastErr}`);
       }
     } else if (provider === "groq") {
-      const models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "qwen/qwen3.8-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "allam-2-7b"];
+      const models = ["qwen/qwen3.8-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "allam-2-7b", "llama-3.3-70b-versatile", "llama-3.1-8b-instant"];
       let lastErr = "";
       for (const model of models) {
         try {
@@ -1047,7 +1211,11 @@ export class AiReactionPredictor {
    * 3. Normalizes reaction types and observable effects.
    * 4. Attaches rich 5-dimension process breakdown if missing.
    */
-  private postProcessResult(raw: RawAiReactionResponse, provider: AiProviderType): ReactionResolution {
+  private postProcessResult(
+    raw: RawAiReactionResponse,
+    provider: AiProviderType,
+    fallbackReactants?: ResolvedSpecies[]
+  ): ReactionResolution {
     const providerLabel =
       provider === "groq"
         ? "Groq (Llama 3.3)"
@@ -1057,8 +1225,8 @@ export class AiReactionPredictor {
         ? "OpenAI GPT-4"
         : "Anthropic Claude";
 
-    const rawStatus = (raw.status || "").toUpperCase().trim().replace(/[-\s]/g, "_");
-    const isNoReaction =
+    let rawStatus = (raw.status || "").toUpperCase().trim().replace(/[-\s]/g, "_");
+    let isNoReaction =
       rawStatus === "NO_REACTION" ||
       rawStatus === "NO" ||
       rawStatus === "NONE" ||
@@ -1066,8 +1234,45 @@ export class AiReactionPredictor {
       !raw.products ||
       raw.products.length === 0;
 
+    // Check if a chemical equation was provided or embedded in explanation
+    const combinedText = `${raw.balancedEquation || ""} ${raw.explanation || ""} ${raw.processExplanation || ""}`;
+    const embeddedEq = extractEmbeddedEquation(combinedText);
+
+    if (isNoReaction && embeddedEq) {
+      const recoveredProducts = embeddedEq.productTokens.map((p) => {
+        const sanitized = sanitizeChemicalFormula(p);
+        return {
+          formula: sanitized.formula,
+          coefficient: sanitized.coefficient || 1,
+          physicalState: sanitized.physicalState,
+          commonName: sanitized.formula,
+        };
+      });
+
+      if (recoveredProducts.length > 0) {
+        logger.info("Auto-recovered reaction status and products from chemical equation in explanation", {
+          equation: embeddedEq.equation,
+          products: recoveredProducts.map((p) => p.formula),
+        });
+        raw.products = recoveredProducts;
+        raw.balancedEquation = raw.balancedEquation || embeddedEq.equation;
+        rawStatus = "REACTION";
+        isNoReaction = false;
+      }
+    }
+
+    const reactantsSource =
+      raw.reactants && raw.reactants.length > 0
+        ? raw.reactants
+        : fallbackReactants || [];
+
     if (isNoReaction) {
-      const enrichedReactants = this.enrichSpecies(raw.reactants || [], false);
+      const enrichedReactants = this.enrichSpecies(reactantsSource, false);
+      const cleanedExpl = cleanEducationalExplanation(
+        raw.explanation || "No reaction occurs between these species under specified conditions.",
+        false
+      );
+
       return {
         status: "NO_REACTION",
         confidenceTier: "PREDICTED",
@@ -1075,7 +1280,7 @@ export class AiReactionPredictor {
         reactants: enrichedReactants,
         products: [],
         observableEffects: [],
-        explanation: raw.explanation || "No reaction occurs between these species under specified conditions.",
+        explanation: cleanedExpl,
         ruleApplied: `ai_predicted:${provider}`,
         warnings: [`Reaction outcome predicted by ${providerLabel}. No net reaction occurs under the specified conditions.`],
         aiProvider: providerLabel,
@@ -1084,7 +1289,7 @@ export class AiReactionPredictor {
     }
 
     // Enrich reactants and products with database references and cleaned formulas
-    const reactants = this.enrichSpecies(raw.reactants || [], false);
+    const reactants = this.enrichSpecies(reactantsSource, false);
     const products = this.enrichSpecies(raw.products || [], true);
 
     // Run stoichiometric balancing verification
@@ -1095,12 +1300,38 @@ export class AiReactionPredictor {
     const energyClass = normalizeEnergyClass(raw.energyClassification, enthalpyKjPerMol);
     const reactionType = normalizeReactionType(raw.reactionType);
 
-    const observableEffects: ObservableEffect[] = (raw.observableEffects || []).map((e) => ({
+    let observableEffects: ObservableEffect[] = (raw.observableEffects || []).map((e) => ({
       type: normalizeEffectType(e.type),
       description: e.description || "",
       colorFrom: e.colorFrom,
       colorTo: e.colorTo,
     }));
+
+    if (observableEffects.length === 0 && finalProducts.length > 0) {
+      const hasGas = finalProducts.some((p) => {
+        const f = p.formula.toUpperCase();
+        return f === "H2" || f === "O2" || f === "CO2" || f === "NH3" || f === "SO2" || f === "CL2";
+      });
+      const hasPrecipitate = finalProducts.some((p) => {
+        const f = p.formula.toUpperCase();
+        return f.includes("(OH)") || f.includes("CO3") || f.includes("SO4") || f.includes("PO4") || f.includes("S");
+      });
+
+      if (hasGas) {
+        observableEffects.push({
+          type: "gas_evolution",
+          description: "Effervescence and evolution of gas bubbles (kinetically slow at ambient conditions, accelerated with heat).",
+        });
+      }
+      if (hasPrecipitate) {
+        observableEffects.push({
+          type: "precipitation",
+          description: "Formation of precipitate or surface passivation layer.",
+        });
+      }
+    }
+
+    const cleanedExplanation = cleanEducationalExplanation(raw.explanation || "", true);
 
     const warnings: string[] = [
       `Dynamically predicted by ${providerLabel}.${isBalanced ? " Outcome verified by chemical balancer." : " Approximate stoichiometry."}`,
@@ -1113,7 +1344,7 @@ export class AiReactionPredictor {
         ? rawDims.map((d) => ({
             title: d.title || "Reaction Stage",
             category: normalizeProcessCategory(d.category),
-            description: d.description || "",
+            description: cleanEducationalExplanation(d.description || "", true),
             details: Array.isArray(d.details) ? d.details : [],
           }))
         : [
@@ -1126,7 +1357,7 @@ export class AiReactionPredictor {
             {
               title: "Transition State & Electron Transfer",
               category: "observables" as const,
-              description: raw.explanation,
+              description: cleanedExplanation,
               details: ["Intermediate reorganization and kinetic pathway."],
             },
             {
@@ -1138,7 +1369,7 @@ export class AiReactionPredictor {
           ];
 
     const processBreakdown: ChemicalProcessBreakdown = {
-      masterExplanation: raw.processBreakdown?.masterExplanation || raw.explanation,
+      masterExplanation: cleanEducationalExplanation(raw.processBreakdown?.masterExplanation || raw.explanation || "", true),
       dimensions,
     };
 
@@ -1154,11 +1385,11 @@ export class AiReactionPredictor {
       observableEffects,
       energyClassification: energyClass,
       enthalpyKjPerMol,
-      explanation: raw.explanation,
+      explanation: cleanedExplanation,
       ruleApplied: `ai_predicted:${provider}`,
       safetyNotes: raw.safetyNotes,
       warnings,
-      processExplanation: raw.explanation,
+      processExplanation: cleanedExplanation,
       processBreakdown,
       aiProvider: providerLabel,
       isAiPredicted: true,

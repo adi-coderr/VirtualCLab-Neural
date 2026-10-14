@@ -912,10 +912,11 @@ export class SimulationService {
               conditions,
               options
             );
-            if (enrichedResolution && enrichedResolution.status === "REACTION") {
+            if (enrichedResolution) {
               finalResolution = enrichedResolution;
               logger.info("Integrated API successfully rechecked reaction and added literature data", {
                 equation: finalResolution.balancedEquation,
+                status: finalResolution.status,
               });
             }
           } catch (apiErr: any) {
@@ -923,6 +924,10 @@ export class SimulationService {
               error: apiErr.message,
             });
             // Fallback to pure ML predicted output as final output
+          }
+
+          if (finalResolution.status !== "REACTION") {
+            return { resolution: finalResolution };
           }
 
           const stoichResult = this.computeStoichiometryForResolution(
@@ -1298,10 +1303,11 @@ export class SimulationService {
               conditions,
               options
             );
-            if (enrichedResolution && enrichedResolution.status === "REACTION") {
+            if (enrichedResolution) {
               finalResolution = enrichedResolution;
               logger.info("Integrated API successfully rechecked reaction in predictAny", {
                 equation: finalResolution.balancedEquation,
+                status: finalResolution.status,
               });
             }
           } catch (apiErr: any) {
@@ -1309,6 +1315,13 @@ export class SimulationService {
               error: apiErr.message,
             });
             // Fallback to pure ML predicted output as final output
+          }
+
+          if (finalResolution.status !== "REACTION") {
+            return {
+              simulationResult: { resolution: finalResolution },
+              source: "ai_predicted",
+            };
           }
 
           const actualInputs = this.parseOrBuildInputsForPredict(

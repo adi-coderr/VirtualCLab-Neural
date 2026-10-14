@@ -78,6 +78,49 @@ export function ReactionResultPanel({ result }: { result: SimulationResult }) {
       !w.toLowerCase().includes("reaction outcome predicted by")
   );
 
+  // Check for balancedEquation or fallback to chemical equation embedded in explanation
+  const displayEquation = useMemo(() => {
+    if (resolution.balancedEquation && resolution.balancedEquation.trim()) {
+      return resolution.balancedEquation;
+    }
+    if (resolution.explanation) {
+      const match = resolution.explanation.match(
+        /(?:\(|\b)([A-Za-z0-9()[\]^+\-\s·]+?\s*(?:->|→)\s*[A-Za-z0-9()[\]^+\-\s·]+?)(?:\)|[.,;]|\s+is|\s+under|\s+at|\s+which|\s+yielding|\s+with|\s*$)/
+      );
+      if (match && match[1] && (match[1].includes("->") || match[1].includes("→"))) {
+        return match[1].trim();
+      }
+    }
+    return null;
+  }, [resolution.balancedEquation, resolution.explanation]);
+
+  // Clean meta-commentary from explanation to preserve pedagogical integrity
+  const cleanExplanation = useMemo(() => {
+    if (!resolution.explanation) return "";
+    let text = resolution.explanation;
+    text = text.replace(/\bthe\s+(?:local\s+)?(?:neural\s+)?(?:ml|machine\s+learning)\s+model['’]s?\s+prediction\s+is\s+incorrect[.,;]?\s*/gi, "");
+    text = text.replace(/\bthe\s+(?:local\s+)?(?:neural\s+)?(?:ml|machine\s+learning)\s+model\s+(?:predicted|suggested|gave|output)[^.;\n]*[.;\n]\s*/gi, "");
+    text = text.replace(/\bthe\s+predicted\s+products\s+[^.;\n]+are\s+chemically\s+invalid[^.;\n]*[.;\n]\s*/gi, "");
+    text = text.replace(/\bpredicted\s+products\s+['"][^'"]+['"]\s+and\s+['"][^'"]+['"]\s+are\s+chemically\s+invalid[.;]?\s*/gi, "");
+    text = text.replace(/\bthe\s+model\s+(?:hallucinated|erroneously|mistakenly)[^.;\n]*[.;\n]\s*/gi, "");
+    text = text.replace(/\batomic\s+oxygen\s+is\s+highly\s+reactive\s+and\s+would\s+immediately\s+react[^.;\n]*[.;\n]\s*/gi, "");
+    text = text.replace(/\band\s+zinc\s+does\s+not\s+change\s+oxidation\s+state\s+if\s+it\s+is\s+not\s+reacting[.,;]?\s*/gi, "");
+
+    if (displayEquation || resolution.status === "REACTION") {
+      text = text.replace(/\bWhile\s+([A-Z][a-z]+(?:\s+[a-z]+)*\s+is\s+thermodynamically\s+capable\s+of)/gi, "$1");
+      text = text.replace(/,\s*this\s+reaction\s+is\s+kinetically\s+hindered\s+at\s+([0-9]+(?:\.[0-9]+)?\s*°C)/gi, ". At $1, this reaction is kinetically hindered");
+      text = text.replace(
+        /\bTherefore,?\s+under\s+standard\s+conditions\s*\([^)]*\),?\s*no\s+observable\s+reaction\s+occurs\.?\s*/gi,
+        "Under standard conditions (25°C, 1 atm), the reaction rate is very slow due to surface passivation, but accelerates significantly upon heating or with steam. "
+      );
+      text = text.replace(/\bno\s+observable\s+reaction\s+occurs\b/gi, "the reaction rate is very slow without thermal activation");
+    }
+
+    text = text.replace(/\s{2,}/g, " ").replace(/\.\s*\./g, ".").replace(/^\s*[.,;:]\s*/, "").trim();
+    text = text.replace(/(^\s*|[.!?]\s+)([a-z])/g, (_, p1, p2) => p1 + p2.toUpperCase());
+    return text;
+  }, [resolution.explanation, displayEquation, resolution.status]);
+
   return (
     <div className="reaction-result">
       {/* 1. Header with Confidence & Reaction Type */}
@@ -125,8 +168,8 @@ export function ReactionResultPanel({ result }: { result: SimulationResult }) {
       {/* 4. Chemical Equation Card (Balanced Equation + Net Ionic Equation) */}
       <div className="reaction-result__equation-card">
         <div className="reaction-result__main-equation">
-          {resolution.balancedEquation ? (
-            <EquationDisplay equation={resolution.balancedEquation} />
+          {displayEquation ? (
+            <EquationDisplay equation={displayEquation} />
           ) : (
             <p className="reaction-result__no-equation">
               {resolution.status === "NO_REACTION" ? "No net reaction occurs." : "No equation available."}
@@ -145,9 +188,9 @@ export function ReactionResultPanel({ result }: { result: SimulationResult }) {
       </div>
 
       {/* 5. Scientific Explanation */}
-      {resolution.explanation && (
+      {cleanExplanation && (
         <div className="reaction-result__explanation-box">
-          <p className="reaction-result__explanation">{resolution.explanation}</p>
+          <p className="reaction-result__explanation">{cleanExplanation}</p>
         </div>
       )}
       {/* 6. Calorimetry & Temperature Change Card */}

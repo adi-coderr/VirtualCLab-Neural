@@ -160,6 +160,18 @@ export function auditReactionChemistry(
     }
   }
 
+  // Reject chemically unviable isolated non-metal monoatomic radical gases (O, H, N, F, Cl, Br, I) as stable reaction products
+  const UNVIABLE_MONOATOMIC_RADICALS = new Set(["O", "H", "N", "F", "Cl", "Br", "I"]);
+  for (const p of pComps) {
+    if (UNVIABLE_MONOATOMIC_RADICALS.has(p.formula.trim())) {
+      return {
+        passed: false,
+        isInertAlkanes: false,
+        failureReason: `Chemically invalid isolated radical product "${p.formula}" detected; non-metal elemental gases must be molecular (e.g. O2, H2, N2, Cl2).`,
+      };
+    }
+  }
+
   // 2. Element Conservation Audit (Conservation of Mass)
   const rElements = new Set<string>();
   for (const r of rComps) {

@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   aiReactionPredictor,
   sanitizeChemicalFormula,
+  cleanEducationalExplanation,
+  extractEmbeddedEquation,
 } from "../../src/services/aiReactionPredictor.js";
 import { getDb } from "../../src/data/db.js";
 import { seedDatabase } from "../../src/data/seed/index.js";
@@ -267,6 +269,62 @@ describe("AI Predictor Accuracy and Post-Processing Engine", () => {
       expect(res.explanation).toContain("Copper has a positive standard reduction potential");
       const cu = res.reactants.find((r) => r.formula === "Cu");
       expect(cu?.isRegistered).toBe(true);
+    });
+
+    it("auto-recovers status REACTION and products when model mistakenly tags NO_REACTION but explains an equation", async () => {
+      const rawText =
+        "The ML model’s prediction is incorrect. While Zinc is thermodynamically capable of reducing water to hydrogen gas (Zn + 2H2O -> Zn(OH)2 + H2), this reaction is kinetically hindered at 25°C. The surface of the zinc metal becomes passivated by a thin layer of zinc hydroxide (Zn(OH)2) or zinc oxide (ZnO), which prevents further contact between the metal and the water. Additionally, the activation energy for the reduction of water by zinc at room temperature is too high for a significant reaction rate to be observed. Therefore, under standard conditions (25°C, 1 atm), no observable reaction occurs. The predicted products ’O’ and ’Zn’ are chemically invalid; atomic oxygen is highly reactive and would immediately react with water or zinc, and zinc does not change oxidation state if it is not reacting.";
+
+      vi.spyOn(aiReactionPredictor as any, "callProvider").mockResolvedValueOnce({
+        status: "NO_REACTION",
+        reactants: [
+          { formula: "Zn", commonName: "Zinc" },
+          { formula: "H2O", commonName: "Water" },
+        ],
+        products: [],
+        explanation: rawText,
+      });
+
+      const res = await aiReactionPredictor.predict("Zn + H2O", {
+        provider: "gemini",
+        apiKey: "fake_gemini_key",
+      });
+
+      // Crucial: Must be auto-recovered to REACTION with balanced equation!
+      expect(res.status).toBe("REACTION");
+      expect(res.balancedEquation).toContain("Zn + 2 H2O → Zn(OH)2 + H2");
+      expect(res.products.length).toBeGreaterThanOrEqual(2);
+      expect(res.products.some((p) => p.formula === "Zn(OH)2")).toBe(true);
+      expect(res.products.some((p) => p.formula === "H2")).toBe(true);
+
+      // Must sanitize all ML debugging meta-talk
+      expect(res.explanation).not.toContain("The ML model’s prediction is incorrect");
+      expect(res.explanation).not.toContain("The ML model");
+      expect(res.explanation).not.toContain("chemically invalid");
+      expect(res.explanation).toContain("Zinc is thermodynamically capable of reducing water to hydrogen gas");
+      expect(res.observableEffects.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe("Educational Explanation Sanitizer & Equation Extractor", () => {
+    it("extracts embedded chemical equations from complex text", () => {
+      const text =
+        "While Zinc is capable of reducing water (Zn + 2H2O -> Zn(OH)2 + H2), it is passivated.";
+      const eq = extractEmbeddedEquation(text);
+      expect(eq).not.toBeNull();
+      expect(eq?.equation).toBe("Zn + 2H2O -> Zn(OH)2 + H2");
+      expect(eq?.productTokens).toEqual(["Zn(OH)2", "H2"]);
+    });
+
+    it("cleans ML model meta-criticism and contradictory phrases", () => {
+      const raw =
+        "The ML model’s prediction is incorrect. While Zinc is thermodynamically capable of reducing water to hydrogen gas (Zn + 2H2O -> Zn(OH)2 + H2), this reaction is kinetically hindered at 25°C. Therefore, under standard conditions (25°C, 1 atm), no observable reaction occurs. The predicted products ’O’ and ’Zn’ are chemically invalid.";
+      const cleaned = cleanEducationalExplanation(raw, true);
+      expect(cleaned).not.toContain("ML model");
+      expect(cleaned).not.toContain("chemically invalid");
+      expect(cleaned).not.toContain("While Zinc");
+      expect(cleaned).toContain("Zinc is thermodynamically capable");
+      expect(cleaned).toContain("Under standard conditions (25°C, 1 atm), the reaction rate is very slow");
     });
   });
 });
