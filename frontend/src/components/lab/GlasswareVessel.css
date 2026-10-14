@@ -82,11 +82,67 @@
   100% { opacity: 0.85; }
 }
 
-/* Liquid transition and bubbles */
+/* Liquid transition and meniscus */
 .glass-liquid-rect {
   transition: y 0.4s cubic-bezier(0.4, 0, 0.2, 1), height 0.4s cubic-bezier(0.4, 0, 0.2, 1), fill 0.3s ease;
 }
 
+.beaker-meniscus-surface {
+  transition: cy 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+
+/* Photorealistic Glass Graduations - Lab-Grade Black Ceramic Enamel */
+.glass-graduations {
+  user-select: none;
+  pointer-events: none;
+  filter: drop-shadow(0 0.5px 1px rgba(255, 255, 255, 0.55));
+}
+
+.glass-graduations text {
+  font-feature-settings: "tnum";
+  letter-spacing: -0.2px;
+}
+
+/* Buoyant Effervescent Bubbles (Matching reference photograph) */
+.beaker-bubble-group {
+  animation: buoyantBubble 3.2s infinite ease-in-out;
+  transform-origin: center;
+  pointer-events: none;
+}
+
+.beaker-bubble-group.b1 { animation-duration: 2.8s; }
+.beaker-bubble-group.b2 { animation-duration: 3.5s; }
+.beaker-bubble-group.b3 { animation-duration: 2.6s; }
+.beaker-bubble-group.b4 { animation-duration: 3.8s; }
+.beaker-bubble-group.b5 { animation-duration: 4.1s; }
+.beaker-bubble-group.b6 { animation-duration: 2.9s; }
+.beaker-bubble-group.b7 { animation-duration: 3.3s; }
+.beaker-bubble-group.b8 { animation-duration: 3.7s; }
+.beaker-bubble-group.b9 { animation-duration: 2.5s; }
+.beaker-bubble-group.b10 { animation-duration: 3.6s; }
+.beaker-bubble-group.b11 { animation-duration: 3.1s; }
+
+@keyframes buoyantBubble {
+  0% {
+    transform: translateY(0px) translateX(0px) scale(0.92);
+    opacity: 0.75;
+  }
+  30% {
+    transform: translateY(-8px) translateX(1.5px) scale(1.0);
+    opacity: 0.95;
+  }
+  65% {
+    transform: translateY(-16px) translateX(-1.2px) scale(1.04);
+    opacity: 0.85;
+  }
+  100% {
+    transform: translateY(-24px) translateX(0.5px) scale(1.08);
+    opacity: 0.35;
+  }
+}
+
+/* Classic fallback bubbles for other glassware */
 .bubble {
   animation: bubbleRise 2.5s infinite ease-in;
 }

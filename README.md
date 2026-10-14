@@ -6,8 +6,7 @@ A scientifically grounded virtual chemistry laboratory where you can select real
 
 ## Key Capabilities
 
-1. **Neural ML Reaction Predictor (`ReactionT5v2`)**:
-   - **Architecture**: ReactionT5 (`sagawa/ReactionT5v2-forward`, T5 Seq2Seq architecture, 248M parameters).
+1. **Neural ML Reaction Predictor**
    - **Pre-trained Knowledge**: Pre-trained on the **Open Reaction Database (ORD)** and fine-tuned on the USPTO chemical reaction dataset (*Journal of Cheminformatics*, 2025).
    - **Hardware Acceleration**: Automatic Apple Silicon Metal (`mps`) GPU acceleration with CPU fallback, running inference in ~800–1200 ms.
    - **Web Interface**: Integrated **"Reaction ML Model"** tab with quick reaction presets (esterification, halogenation, Diels-Alder, aldol condensation), custom SMILES input, and beam-search controls.
@@ -24,14 +23,14 @@ A scientifically grounded virtual chemistry laboratory where you can select real
 
 ```
 VirtualCLab/
-├── virtual_chem_lab_modelV2/ # ReactionT5v2 forward prediction model weights & tokenizer
+├── virtual_chem_lab_modelV2/
 ├── backend/                # Node.js + Express API, SQLite data layer, & Python ML service
 │   ├── src/ai/             # ML inference server (FastAPI) & assistant NLU
 │   ├── src/chemistry-engine/ # Deterministic balancing, stoichiometry, thermodynamics
 │   ├── src/data/           # SQLite database (chemlab.db)
 │   └── src/services/       # Simulation, ML model manager, and assistant services
 ├── frontend/               # React + TypeScript + Vite web application
-│   ├── src/components/ml/  # ReactionT5v2 Neural ML Model Panel
+│   ├── src/components/ml/  # Neural ML Model Panel
 │   ├── src/components/lab/ # Interactive glassware vessels & 3D lab bench
 │   └── src/components/results/ # Reaction outcome, equation, & effect panels
 ├── .venv/                  # Python virtual environment (PyTorch, Transformers, FastAPI)

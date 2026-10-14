@@ -200,7 +200,7 @@ export function ReactionControls({
                   >
                     <div className="reaction-controls__suggestion-header">
                       <span className="reaction-controls__suggestion-name">
-                        ⚗️ React Equation: &ldquo;{reactionSearchQuery.trim()}&rdquo;
+                        React Equation: &ldquo;{reactionSearchQuery.trim()}&rdquo;
                       </span>
                       <span className="reaction-controls__suggestion-type">3-tier engine</span>
                     </div>
