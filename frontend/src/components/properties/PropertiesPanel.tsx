@@ -1,6 +1,6 @@
 import type { Chemical } from "../../types/chemistry";
 import { formatFormula } from "../../utils/formatFormula";
-import { getPhaseIcon, getPhaseLabel } from "../../utils/phaseUtils";
+import { getPhaseLabel } from "../../utils/phaseUtils";
 import "./PropertiesPanel.css";
 
 function Row({ label, value }: { label: string; value?: string | number | null }) {
@@ -28,7 +28,7 @@ export function PropertiesPanel({ chemical }: { chemical: Chemical }) {
         label="Physical form"
         value={
           chemical.physicalForm
-            ? `${getPhaseIcon(chemical.physicalForm)} ${getPhaseLabel(chemical.physicalForm)}${
+            ? `${getPhaseLabel(chemical.physicalForm)}${
                 chemical.physicalState && chemical.physicalState !== chemical.physicalForm
                   ? ` (${chemical.physicalState})`
                   : ""

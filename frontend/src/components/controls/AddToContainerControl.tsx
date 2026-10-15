@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useLabStore } from "../../state/experimentStore";
 import type { ChemicalSummary, Unit } from "../../types/chemistry";
 import { formatFormula } from "../../utils/formatFormula";
-import { getPhaseIcon, getPhaseLabel } from "../../utils/phaseUtils";
+import { getPhaseLabel } from "../../utils/phaseUtils";
 import { Button } from "../common/Badge";
 import "./AddToContainerControl.css";
 
@@ -151,7 +151,7 @@ export function AddToContainerControl({
             <>
               <span>&bull;</span>
               <span className="add-to-container__phase-badge" title={`Form: ${getPhaseLabel(pendingChemical.physicalForm)}`}>
-                {getPhaseIcon(pendingChemical.physicalForm)} {getPhaseLabel(pendingChemical.physicalForm)}
+                {getPhaseLabel(pendingChemical.physicalForm)}
               </span>
             </>
           )}

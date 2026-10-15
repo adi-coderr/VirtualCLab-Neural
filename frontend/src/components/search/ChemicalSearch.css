@@ -85,6 +85,17 @@
   opacity: 0.6;
 }
 
+.chemical-search__form {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--azure-700, #1d4ed8);
+  background: rgba(37, 99, 235, 0.08);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm, 4px);
+  text-transform: capitalize;
+  letter-spacing: 0.02em;
+}
+
 .chemical-search__empty {
   font-size: var(--text-xs);
   color: var(--graphite-400);

@@ -3,7 +3,7 @@ import { chemicalsApi } from "../../api/chemicals";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import type { ChemicalSummary } from "../../types/chemistry";
 import { formatFormula } from "../../utils/formatFormula";
-import { getPhaseIcon, getPhaseLabel } from "../../utils/phaseUtils";
+import { getPhaseLabel } from "../../utils/phaseUtils";
 import { Spinner } from "../common/Badge";
 import "./ChemicalSearch.css";
 
@@ -70,7 +70,7 @@ export function ChemicalSearch({ onSelect }: { onSelect: (chemical: ChemicalSumm
                       <>
                         <span className="chemical-search__dot">&middot;</span>
                         <span className="chemical-search__form">
-                          {getPhaseIcon(chemical.physicalForm)} {getPhaseLabel(chemical.physicalForm)}
+                          {getPhaseLabel(chemical.physicalForm)}
                         </span>
                       </>
                     )}
@@ -98,7 +98,7 @@ export function ChemicalSearch({ onSelect }: { onSelect: (chemical: ChemicalSumm
               onSelect(custom);
             }}
           >
-            ✨ Select &ldquo;{debouncedQuery}&rdquo; as custom chemical
+            Select &ldquo;{debouncedQuery}&rdquo; as custom chemical
           </button>
         </div>
       )}

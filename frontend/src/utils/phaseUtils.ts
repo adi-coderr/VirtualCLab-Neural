@@ -110,35 +110,23 @@ export function derivePhysicalForm(
   return "powder";
 }
 
-export function getPhaseIcon(form?: PhysicalForm): string {
-  switch (form) {
-    case "crystal":
-      return "💎";
-    case "powder":
-      return "🧂";
-    case "solid":
-      return "🪙";
-    case "gas":
-      return "💨";
-    case "liquid":
-    default:
-      return "💧";
-  }
+export function getPhaseIcon(_form?: PhysicalForm): string {
+  return "";
 }
 
 export function getPhaseLabel(form?: PhysicalForm): string {
   switch (form) {
     case "crystal":
-      return "Crystalline";
+      return "Crystal";
     case "powder":
-      return "Fine Powder";
+      return "Powder";
     case "solid":
-      return "Metal / Solid";
+      return "Solid";
     case "gas":
       return "Gas";
     case "liquid":
     default:
-      return "Liquid Solution";
+      return "Liquid";
   }
 }
 

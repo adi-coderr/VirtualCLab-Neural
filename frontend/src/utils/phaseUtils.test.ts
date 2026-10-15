@@ -44,19 +44,19 @@ describe("phaseUtils", () => {
   });
 
   describe("getPhaseIcon and getPhaseLabel", () => {
-    it("returns distinct visual icons for all physical phases", () => {
-      expect(getPhaseIcon("crystal")).toBe("💎");
-      expect(getPhaseIcon("powder")).toBe("🧂");
-      expect(getPhaseIcon("solid")).toBe("🪙");
-      expect(getPhaseIcon("liquid")).toBe("💧");
-      expect(getPhaseIcon("gas")).toBe("💨");
+    it("returns clean icon without emojis", () => {
+      expect(getPhaseIcon("crystal")).toBe("");
+      expect(getPhaseIcon("powder")).toBe("");
+      expect(getPhaseIcon("solid")).toBe("");
+      expect(getPhaseIcon("liquid")).toBe("");
+      expect(getPhaseIcon("gas")).toBe("");
     });
 
-    it("returns human-readable labels", () => {
-      expect(getPhaseLabel("crystal")).toBe("Crystalline");
-      expect(getPhaseLabel("powder")).toBe("Fine Powder");
-      expect(getPhaseLabel("solid")).toBe("Metal / Solid");
-      expect(getPhaseLabel("liquid")).toBe("Liquid Solution");
+    it("returns concise human-readable labels", () => {
+      expect(getPhaseLabel("crystal")).toBe("Crystal");
+      expect(getPhaseLabel("powder")).toBe("Powder");
+      expect(getPhaseLabel("solid")).toBe("Solid");
+      expect(getPhaseLabel("liquid")).toBe("Liquid");
       expect(getPhaseLabel("gas")).toBe("Gas");
     });
   });

@@ -1,7 +1,7 @@
 import type { Container } from "../../types/experiment";
 import { formatFormula } from "../../utils/formatFormula";
 import { calculateMixtureColor, getChemicalColor } from "../../utils/chemicalColorMixer";
-import { getPhaseIcon, getPhaseLabel } from "../../utils/phaseUtils";
+import { getPhaseLabel } from "../../utils/phaseUtils";
 import { useLabStore } from "../../state/experimentStore";
 import { GlasswareVessel } from "./GlasswareVessel";
 import "./ContainerView.css";
@@ -96,7 +96,6 @@ export function ContainerView({
             }`}
             title={`Current temperature: ${container.temperatureC}°C`}
           >
-            {container.temperatureC <= 18 ? "❄️ " : container.temperatureC >= 45 ? "🔥 " : ""}
             {container.temperatureC}{"\u00b0C"}
           </span>
 
@@ -149,7 +148,7 @@ export function ContainerView({
                   <span className="formula" title={c.commonName}>{formatFormula(c.formula)}</span>
                   {c.physicalForm && (
                     <span className="container-view__phase-pill" title={`Phase: ${getPhaseLabel(c.physicalForm)}`}>
-                      {getPhaseIcon(c.physicalForm)}
+                      {getPhaseLabel(c.physicalForm)}
                     </span>
                   )}
                 </div>
