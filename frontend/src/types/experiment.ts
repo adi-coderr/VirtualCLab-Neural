@@ -1,4 +1,4 @@
-import type { ReactionConditions, ReactionInputSpecies, SimulationResult, Unit } from "./chemistry";
+import type { PhysicalForm, PhysicalState, ReactionConditions, ReactionInputSpecies, SimulationResult, Unit } from "./chemistry";
 
 export type ExperimentActionType = "ADD_CHEMICAL" | "MIX" | "HEAT" | "COOL" | "REMOVE" | "MEASURE" | "RUN_REACTION" | "RESET";
 
@@ -29,6 +29,8 @@ export interface ContainerContent {
   amount: number;
   unit: Unit;
   concentrationMolar?: number;
+  physicalState?: PhysicalState;
+  physicalForm?: PhysicalForm;
 }
 
 export interface Container {

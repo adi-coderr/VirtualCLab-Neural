@@ -252,6 +252,23 @@
   flex-shrink: 0;
 }
 
+.container-view__phase-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  line-height: 1;
+  opacity: 0.85;
+  user-select: none;
+  cursor: default;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.container-view__phase-pill:hover {
+  transform: scale(1.18);
+  opacity: 1;
+}
+
 .container-view__amount {
   color: var(--graphite-500);
   font-family: var(--font-mono);

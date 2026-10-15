@@ -1,4 +1,4 @@
-import type { AcidBaseStrength, ChemicalClass, PhysicalState } from "../../chemistry-engine/types.js";
+import type { AcidBaseStrength, ChemicalClass, PhysicalForm, PhysicalState } from "../../chemistry-engine/types.js";
 
 export interface SeedAtom {
   element: string;
@@ -36,6 +36,7 @@ export interface SeedChemical {
   smiles?: string;
   inchiKey?: string;
   physicalState: PhysicalState;
+  physicalForm?: PhysicalForm;
   density?: number;
   meltingPointC?: number;
   boilingPointC?: number;

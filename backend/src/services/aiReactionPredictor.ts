@@ -59,6 +59,7 @@ interface RawAiReactionResponse {
   energyClassification?: EnergyClassification;
   enthalpyKjPerMol?: number;
   explanation: string;
+  processExplanation?: string;
   observableEffects?: {
     type: "color_change" | "precipitation" | "gas_evolution" | "temperature_increase" | "temperature_decrease" | "dissolution" | "phase_change" | "effervescence";
     description: string;

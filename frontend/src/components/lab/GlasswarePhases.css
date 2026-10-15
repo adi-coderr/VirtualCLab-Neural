@@ -1,0 +1,50 @@
+/* =========================================================================
+ * GLASSWARE PHASES (POWDER, CRYSTAL, SOLID METAL) STYLING & ANIMATIONS
+ * ========================================================================= */
+
+.glassware-phases {
+  transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glassware-phases--submerged {
+  filter: drop-shadow(0 2px 4px rgba(15, 23, 42, 0.18));
+}
+
+/* Crystal Diamond Glints Sparkle Animations */
+.crystal-glint {
+  animation: crystalSparkle 3.2s infinite ease-in-out;
+  transform-origin: center;
+}
+
+.crystal-glint.g1 {
+  animation-delay: 0s;
+}
+
+.crystal-glint.g2 {
+  animation-delay: 1.1s;
+}
+
+.crystal-glint.g3 {
+  animation-delay: 2.2s;
+}
+
+@keyframes crystalSparkle {
+  0%, 100% {
+    opacity: 0.35;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.35);
+  }
+}
+
+/* Metal Solid Specular Gleam Pulse */
+.metal-solid {
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.22));
+}
+
+/* Powder Mound Soft Ambient Drop Shadow */
+.powder-mound {
+  filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.12));
+}

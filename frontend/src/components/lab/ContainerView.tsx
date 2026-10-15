@@ -1,6 +1,7 @@
 import type { Container } from "../../types/experiment";
 import { formatFormula } from "../../utils/formatFormula";
 import { calculateMixtureColor, getChemicalColor } from "../../utils/chemicalColorMixer";
+import { getPhaseIcon, getPhaseLabel } from "../../utils/phaseUtils";
 import { useLabStore } from "../../state/experimentStore";
 import { GlasswareVessel } from "./GlasswareVessel";
 import "./ContainerView.css";
@@ -124,6 +125,7 @@ export function ContainerView({
           liquidColor={liquidColor}
           temperatureC={container.temperatureC}
           hasContents={hasContents}
+          contents={container.contents}
         />
       </div>
 
@@ -145,6 +147,11 @@ export function ContainerView({
                     <span className="container-view__color-dot" style={{ background: chemColor }} />
                   )}
                   <span className="formula" title={c.commonName}>{formatFormula(c.formula)}</span>
+                  {c.physicalForm && (
+                    <span className="container-view__phase-pill" title={`Phase: ${getPhaseLabel(c.physicalForm)}`}>
+                      {getPhaseIcon(c.physicalForm)}
+                    </span>
+                  )}
                 </div>
                 <div className="container-view__qty-controls" onClick={(e) => e.stopPropagation()}>
                   <button

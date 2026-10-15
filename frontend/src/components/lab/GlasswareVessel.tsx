@@ -1,5 +1,7 @@
 import React from "react";
-import type { EquipmentType } from "../../types/experiment";
+import type { ContainerContent, EquipmentType } from "../../types/experiment";
+import { analyzeVesselPhases, type VesselSolid } from "../../utils/phaseUtils";
+import { GlasswarePhases } from "./GlasswarePhases";
 import "./GlasswareVessel.css";
 
 interface GlasswareVesselProps {
@@ -9,6 +11,7 @@ interface GlasswareVesselProps {
   liquidColor: string;
   temperatureC: number;
   hasContents: boolean;
+  contents?: ContainerContent[];
 }
 
 export function GlasswareVessel({
@@ -18,13 +21,18 @@ export function GlasswareVessel({
   liquidColor,
   temperatureC,
   hasContents,
+  contents,
 }: GlasswareVesselProps) {
   const isHot = temperatureC >= 45;
   const isBoiling = temperatureC >= 80;
   const isCold = temperatureC <= 18;
 
-  // Compute liquid top y position based on fillPercent (0% to 100%)
-  const clampedFill = Math.max(0, Math.min(100, fillPercent));
+  // Multi-phase state analysis (liquid, powder, crystal, solid metal)
+  const phases = analyzeVesselPhases(contents || [], equipmentType, liquidColor);
+  const effectiveLiquidFill = contents && contents.length > 0 ? phases.liquidFillPercent : fillPercent;
+  const effectiveLiquidColor = phases.liquidColor || liquidColor;
+  const clampedFill = Math.max(0, Math.min(100, effectiveLiquidFill));
+  const hasLiquid = phases.hasLiquid || (!contents && hasContents && fillPercent > 0);
   const gradId = `liq-grad-${containerId || equipmentType}`;
 
   return (
@@ -85,10 +93,10 @@ export function GlasswareVessel({
 
           {/* Liquid Depth Lighting Gradient (Natural authentic aqueous solution) */}
           <linearGradient id={gradId} x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor={liquidColor} stopOpacity="0.80" />
-            <stop offset="30%" stopColor={liquidColor} stopOpacity="0.90" />
-            <stop offset="80%" stopColor={liquidColor} stopOpacity="0.98" />
-            <stop offset="100%" stopColor={liquidColor} stopOpacity="0.92" />
+            <stop offset="0%" stopColor={effectiveLiquidColor} stopOpacity="0.80" />
+            <stop offset="30%" stopColor={effectiveLiquidColor} stopOpacity="0.90" />
+            <stop offset="80%" stopColor={effectiveLiquidColor} stopOpacity="0.98" />
+            <stop offset="100%" stopColor={effectiveLiquidColor} stopOpacity="0.92" />
           </linearGradient>
 
           {/* Liquid Meniscus Wetting Edge Glow */}
@@ -102,8 +110,8 @@ export function GlasswareVessel({
           {/* Liquid Meniscus Surface 3D Oval */}
           <radialGradient id="meniscus-surface-grad" cx="50%" cy="40%" r="55%">
             <stop offset="0%" stopColor="#ffffff" stopOpacity="0.55" />
-            <stop offset="50%" stopColor={liquidColor} stopOpacity="0.65" />
-            <stop offset="100%" stopColor={liquidColor} stopOpacity="0.95" />
+            <stop offset="50%" stopColor={effectiveLiquidColor} stopOpacity="0.65" />
+            <stop offset="100%" stopColor={effectiveLiquidColor} stopOpacity="0.95" />
           </radialGradient>
 
           {/* Beaker Interior Clip Path for Liquid Containment */}
@@ -128,32 +136,83 @@ export function GlasswareVessel({
           </clipPath>
         </defs>
 
-        {/* Render specific glassware vessel */}
+        {/* Render specific glassware vessel with phase support */}
         {equipmentType === "erlenmeyer_flask" && (
-          <ErlenmeyerSvg fillPercent={clampedFill} hasContents={hasContents} gradId={gradId} />
+          <ErlenmeyerSvg
+            fillPercent={clampedFill}
+            hasContents={hasContents}
+            hasLiquid={hasLiquid}
+            solids={phases.solids}
+            gradId={gradId}
+            containerId={containerId}
+          />
         )}
         {equipmentType === "test_tube" && (
-          <TestTubeSvg fillPercent={clampedFill} hasContents={hasContents} gradId={gradId} />
+          <TestTubeSvg
+            fillPercent={clampedFill}
+            hasContents={hasContents}
+            hasLiquid={hasLiquid}
+            solids={phases.solids}
+            gradId={gradId}
+            containerId={containerId}
+          />
         )}
         {equipmentType === "graduated_cylinder" && (
-          <GraduatedCylinderSvg fillPercent={clampedFill} hasContents={hasContents} gradId={gradId} />
+          <GraduatedCylinderSvg
+            fillPercent={clampedFill}
+            hasContents={hasContents}
+            hasLiquid={hasLiquid}
+            solids={phases.solids}
+            gradId={gradId}
+            containerId={containerId}
+          />
         )}
         {equipmentType === "burette" && (
-          <BuretteSvg fillPercent={clampedFill} hasContents={hasContents} gradId={gradId} />
+          <BuretteSvg
+            fillPercent={clampedFill}
+            hasContents={hasContents}
+            hasLiquid={hasLiquid}
+            solids={phases.solids}
+            gradId={gradId}
+            containerId={containerId}
+          />
         )}
         {(equipmentType === "beaker" ||
           !["erlenmeyer_flask", "test_tube", "graduated_cylinder", "burette"].includes(equipmentType)) && (
-          <BeakerSvg fillPercent={clampedFill} hasContents={hasContents} gradId={gradId} />
+          <BeakerSvg
+            fillPercent={clampedFill}
+            hasContents={hasContents}
+            hasLiquid={hasLiquid}
+            solids={phases.solids}
+            gradId={gradId}
+            containerId={containerId}
+          />
         )}
       </svg>
     </div>
   );
 }
 
+interface VesselSvgProps {
+  fillPercent: number;
+  hasContents: boolean;
+  hasLiquid: boolean;
+  solids?: VesselSolid[];
+  gradId?: string;
+  containerId?: string;
+}
+
 /* =========================================================================
  * BEAKER SVG COMPONENT - ULTRA-REALISTIC BOROSILICATE GLASSWARE
  * ========================================================================= */
-function BeakerSvg({ fillPercent, hasContents, gradId = "liq-grad-beaker" }: { fillPercent: number; hasContents: boolean; gradId?: string }) {
+function BeakerSvg({
+  fillPercent,
+  hasContents,
+  hasLiquid,
+  solids,
+  gradId = "liq-grad-beaker",
+  containerId,
+}: VesselSvgProps) {
   // Height in beaker: from interior floor y = 179 to max liquid level y = 35 = 144px span
   const liquidHeight = (144 * fillPercent) / 100;
   const liquidY = 179 - liquidHeight;
@@ -210,77 +269,94 @@ function BeakerSvg({ fillPercent, hasContents, gradId = "liq-grad-beaker" }: { f
         fill="url(#glass-base-caustic)"
       />
 
-      {/* 4. Liquid Body (Clipped inside inner vessel cavity) */}
-      {hasContents && fillPercent > 0 && (
+      {/* 4. Contents Body (Solids & Liquid Clipped inside inner vessel cavity) */}
+      {(hasContents || (solids && solids.length > 0)) && (
         <g clipPath="url(#clip-beaker)">
-          {/* Main Translucent Volumetric Aqueous Fluid */}
-          <rect
-            x="24"
-            y={liquidY}
-            width="112"
-            height={liquidHeight + 12}
-            fill={`url(#${gradId})`}
-            className="glass-liquid-rect"
-          />
+          {/* Solid mounds, crystals, metal chunks resting on vessel floor */}
+          {solids && solids.length > 0 && (
+            <GlasswarePhases
+              solids={solids}
+              cx={80}
+              floorY={179}
+              baseWidth={104}
+              isSubmerged={hasLiquid && fillPercent > 0}
+              containerId={containerId}
+            />
+          )}
 
-          {/* Meniscus Top Surface Ellipse (3D Fluid Interface) */}
-          <ellipse
-            cx="80"
-            cy={liquidY}
-            rx="53"
-            ry="4.5"
-            fill="url(#meniscus-surface-grad)"
-            className="beaker-meniscus-surface"
-          />
+          {/* Liquid Body */}
+          {hasLiquid && fillPercent > 0 && (
+            <>
+              {/* Main Translucent Volumetric Aqueous Fluid */}
+              <rect
+                x="24"
+                y={liquidY}
+                width="112"
+                height={liquidHeight + 12}
+                fill={`url(#${gradId})`}
+                className="glass-liquid-rect"
+              />
 
-          {/* Meniscus Wetting Edge Glow Line */}
-          <path
-            d={`M 27 ${liquidY} Q 80 ${liquidY + 4.5} 133 ${liquidY}`}
-            stroke="url(#meniscus-glow)"
-            strokeWidth="2.2"
-            fill="none"
-            opacity="0.95"
-          />
-          <path
-            d={`M 27 ${liquidY} Q 80 ${liquidY - 4.0} 133 ${liquidY}`}
-            stroke="rgba(255, 255, 255, 0.40)"
-            strokeWidth="1.0"
-            fill="none"
-          />
+              {/* Meniscus Top Surface Ellipse (3D Fluid Interface) */}
+              <ellipse
+                cx="80"
+                cy={liquidY}
+                rx="53"
+                ry="4.5"
+                fill="url(#meniscus-surface-grad)"
+                className="beaker-meniscus-surface"
+              />
 
-          {/* Spherical Refractive Bubbles (Matching reference photograph) */}
-          {bubbleList.map((b, i) => {
-            const bubbleY = liquidY + liquidHeight * b.yRatio;
-            if (bubbleY < liquidY + 6 || bubbleY > 175) return null;
-            return (
-              <g key={i} className={`beaker-bubble-group ${b.cls}`} style={{ animationDelay: b.delay }}>
-                {/* Bubble translucent outer bubble sphere */}
-                <circle
-                  cx={b.x}
-                  cy={bubbleY}
-                  r={b.r}
-                  fill="rgba(255, 255, 255, 0.16)"
-                  stroke="rgba(255, 255, 255, 0.85)"
-                  strokeWidth="0.8"
-                />
-                {/* Specular pinpoint highlight glint on top-left */}
-                <circle
-                  cx={b.x - b.r * 0.35}
-                  cy={bubbleY - b.r * 0.35}
-                  r={Math.max(0.65, b.r * 0.3)}
-                  fill="#ffffff"
-                  fillOpacity="0.98"
-                />
-                {/* Lower-right refraction shadow arc */}
-                <path
-                  d={`M ${b.x - b.r * 0.65} ${bubbleY + b.r * 0.3} Q ${b.x} ${bubbleY + b.r * 0.85} ${b.x + b.r * 0.65} ${bubbleY + b.r * 0.3}`}
-                  stroke="rgba(15, 23, 42, 0.28)"
-                  strokeWidth="0.65"
-                  fill="none"
-                />
-              </g>
-            );
-          })}
+              {/* Meniscus Wetting Edge Glow Line */}
+              <path
+                d={`M 27 ${liquidY} Q 80 ${liquidY + 4.5} 133 ${liquidY}`}
+                stroke="url(#meniscus-glow)"
+                strokeWidth="2.2"
+                fill="none"
+                opacity="0.95"
+              />
+              <path
+                d={`M 27 ${liquidY} Q 80 ${liquidY - 4.0} 133 ${liquidY}`}
+                stroke="rgba(255, 255, 255, 0.40)"
+                strokeWidth="1.0"
+                fill="none"
+              />
+
+              {/* Spherical Refractive Bubbles (Matching reference photograph) */}
+              {bubbleList.map((b, i) => {
+                const bubbleY = liquidY + liquidHeight * b.yRatio;
+                if (bubbleY < liquidY + 6 || bubbleY > 175) return null;
+                return (
+                  <g key={i} className={`beaker-bubble-group ${b.cls}`} style={{ animationDelay: b.delay }}>
+                    {/* Bubble translucent outer bubble sphere */}
+                    <circle
+                      cx={b.x}
+                      cy={bubbleY}
+                      r={b.r}
+                      fill="rgba(255, 255, 255, 0.16)"
+                      stroke="rgba(255, 255, 255, 0.85)"
+                      strokeWidth="0.8"
+                    />
+                    {/* Specular pinpoint highlight glint on top-left */}
+                    <circle
+                      cx={b.x - b.r * 0.35}
+                      cy={bubbleY - b.r * 0.35}
+                      r={Math.max(0.65, b.r * 0.3)}
+                      fill="#ffffff"
+                      fillOpacity="0.98"
+                    />
+                    {/* Lower-right refraction shadow arc */}
+                    <path
+                      d={`M ${b.x - b.r * 0.65} ${bubbleY + b.r * 0.3} Q ${b.x} ${bubbleY + b.r * 0.85} ${b.x + b.r * 0.65} ${bubbleY + b.r * 0.3}`}
+                      stroke="rgba(15, 23, 42, 0.28)"
+                      strokeWidth="0.65"
+                      fill="none"
+                    />
+                  </g>
+                );
+              })}
+            </>
+          )}
         </g>
       )}
 
@@ -470,7 +546,14 @@ function BeakerSvg({ fillPercent, hasContents, gradId = "liq-grad-beaker" }: { f
 /* =========================================================================
  * ERLENMEYER FLASK SVG COMPONENT - ULTRA-REALISTIC CONICAL BOROSILICATE
  * ========================================================================= */
-function ErlenmeyerSvg({ fillPercent, hasContents, gradId = "liq-grad-erlenmeyer_flask" }: { fillPercent: number; hasContents: boolean; gradId?: string }) {
+function ErlenmeyerSvg({
+  fillPercent,
+  hasContents,
+  hasLiquid,
+  solids,
+  gradId = "liq-grad-erlenmeyer_flask",
+  containerId,
+}: VesselSvgProps) {
   // Height from interior base y = 179 to neck junction y = 54 = 125px span
   const liquidHeight = (125 * fillPercent) / 100;
   const liquidY = 179 - liquidHeight;
@@ -529,70 +612,87 @@ function ErlenmeyerSvg({ fillPercent, hasContents, gradId = "liq-grad-erlenmeyer
         fill="url(#glass-base-caustic)"
       />
 
-      {/* 4. Liquid Body (Clipped inside inner conical glass cavity) */}
-      {hasContents && fillPercent > 0 && (
+      {/* 4. Contents Body (Solids & Liquid Clipped inside inner conical glass cavity) */}
+      {(hasContents || (solids && solids.length > 0)) && (
         <g clipPath="url(#clip-erlenmeyer)">
-          <rect
-            x="15"
-            y={liquidY}
-            width="130"
-            height={liquidHeight + 12}
-            fill={`url(#${gradId})`}
-            className="glass-liquid-rect"
-          />
+          {/* Solid mounds, crystals, metal chunks resting on conical floor */}
+          {solids && solids.length > 0 && (
+            <GlasswarePhases
+              solids={solids}
+              cx={80}
+              floorY={179}
+              baseWidth={104}
+              isSubmerged={hasLiquid && fillPercent > 0}
+              containerId={containerId}
+            />
+          )}
 
-          <ellipse
-            cx="80"
-            cy={liquidY}
-            rx={halfW}
-            ry={meniscusRy}
-            fill="url(#meniscus-surface-grad)"
-            className="beaker-meniscus-surface"
-          />
+          {/* Liquid Body */}
+          {hasLiquid && fillPercent > 0 && (
+            <>
+              <rect
+                x="15"
+                y={liquidY}
+                width="130"
+                height={liquidHeight + 12}
+                fill={`url(#${gradId})`}
+                className="glass-liquid-rect"
+              />
 
-          <path
-            d={`M ${leftX} ${liquidY} Q 80 ${liquidY + meniscusRy} ${rightX} ${liquidY}`}
-            stroke="url(#meniscus-glow)"
-            strokeWidth="2.2"
-            fill="none"
-            opacity="0.95"
-          />
-          <path
-            d={`M ${leftX} ${liquidY} Q 80 ${liquidY - meniscusRy * 0.8} ${rightX} ${liquidY}`}
-            stroke="rgba(255, 255, 255, 0.40)"
-            strokeWidth="1.0"
-            fill="none"
-          />
+              <ellipse
+                cx="80"
+                cy={liquidY}
+                rx={halfW}
+                ry={meniscusRy}
+                fill="url(#meniscus-surface-grad)"
+                className="beaker-meniscus-surface"
+              />
 
-          {flaskBubbles.map((b, i) => {
-            const bubbleY = liquidY + liquidHeight * b.yRatio;
-            if (bubbleY < liquidY + 6 || bubbleY > 175) return null;
-            return (
-              <g key={i} className={`beaker-bubble-group ${b.cls}`} style={{ animationDelay: b.delay }}>
-                <circle
-                  cx={b.x}
-                  cy={bubbleY}
-                  r={b.r}
-                  fill="rgba(255, 255, 255, 0.16)"
-                  stroke="rgba(255, 255, 255, 0.85)"
-                  strokeWidth="0.8"
-                />
-                <circle
-                  cx={b.x - b.r * 0.35}
-                  cy={bubbleY - b.r * 0.35}
-                  r={Math.max(0.65, b.r * 0.3)}
-                  fill="#ffffff"
-                  fillOpacity="0.98"
-                />
-                <path
-                  d={`M ${b.x - b.r * 0.65} ${bubbleY + b.r * 0.3} Q ${b.x} ${bubbleY + b.r * 0.85} ${b.x + b.r * 0.65} ${bubbleY + b.r * 0.3}`}
-                  stroke="rgba(15, 23, 42, 0.28)"
-                  strokeWidth="0.65"
-                  fill="none"
-                />
-              </g>
-            );
-          })}
+              <path
+                d={`M ${leftX} ${liquidY} Q 80 ${liquidY + meniscusRy} ${rightX} ${liquidY}`}
+                stroke="url(#meniscus-glow)"
+                strokeWidth="2.2"
+                fill="none"
+                opacity="0.95"
+              />
+              <path
+                d={`M ${leftX} ${liquidY} Q 80 ${liquidY - meniscusRy * 0.8} ${rightX} ${liquidY}`}
+                stroke="rgba(255, 255, 255, 0.40)"
+                strokeWidth="1.0"
+                fill="none"
+              />
+
+              {flaskBubbles.map((b, i) => {
+                const bubbleY = liquidY + liquidHeight * b.yRatio;
+                if (bubbleY < liquidY + 6 || bubbleY > 175) return null;
+                return (
+                  <g key={i} className={`beaker-bubble-group ${b.cls}`} style={{ animationDelay: b.delay }}>
+                    <circle
+                      cx={b.x}
+                      cy={bubbleY}
+                      r={b.r}
+                      fill="rgba(255, 255, 255, 0.16)"
+                      stroke="rgba(255, 255, 255, 0.85)"
+                      strokeWidth="0.8"
+                    />
+                    <circle
+                      cx={b.x - b.r * 0.35}
+                      cy={bubbleY - b.r * 0.35}
+                      r={Math.max(0.65, b.r * 0.3)}
+                      fill="#ffffff"
+                      fillOpacity="0.98"
+                    />
+                    <path
+                      d={`M ${b.x - b.r * 0.65} ${bubbleY + b.r * 0.3} Q ${b.x} ${bubbleY + b.r * 0.85} ${b.x + b.r * 0.65} ${bubbleY + b.r * 0.3}`}
+                      stroke="rgba(15, 23, 42, 0.28)"
+                      strokeWidth="0.65"
+                      fill="none"
+                    />
+                  </g>
+                );
+              })}
+            </>
+          )}
         </g>
       )}
 
@@ -733,7 +833,14 @@ function ErlenmeyerSvg({ fillPercent, hasContents, gradId = "liq-grad-erlenmeyer
 /* =========================================================================
  * TEST TUBE SVG COMPONENT - ULTRA-REALISTIC CYLINDRICAL BOROSILICATE
  * ========================================================================= */
-function TestTubeSvg({ fillPercent, hasContents, gradId = "liq-grad-test_tube" }: { fillPercent: number; hasContents: boolean; gradId?: string }) {
+function TestTubeSvg({
+  fillPercent,
+  hasContents,
+  hasLiquid,
+  solids,
+  gradId = "liq-grad-test_tube",
+  containerId,
+}: VesselSvgProps) {
   // Height from interior bottom curve y = 178 to top y = 28 = 150px span
   const liquidHeight = (150 * fillPercent) / 100;
   const liquidY = 178 - liquidHeight;
@@ -783,70 +890,87 @@ function TestTubeSvg({ fillPercent, hasContents, gradId = "liq-grad-test_tube" }
         fill="url(#glass-base-caustic)"
       />
 
-      {/* 4. Liquid Body (Clipped inside rounded test tube) */}
-      {hasContents && fillPercent > 0 && (
+      {/* 4. Contents Body (Solids & Liquid Clipped inside rounded test tube) */}
+      {(hasContents || (solids && solids.length > 0)) && (
         <g clipPath="url(#clip-test-tube)">
-          <rect
-            x="58"
-            y={liquidY}
-            width="44"
-            height={liquidHeight + 25}
-            fill={`url(#${gradId})`}
-            className="glass-liquid-rect"
-          />
+          {/* Solid mounds, crystals, metal chunks resting on hemispherical bottom */}
+          {solids && solids.length > 0 && (
+            <GlasswarePhases
+              solids={solids}
+              cx={80}
+              floorY={178}
+              baseWidth={34}
+              isSubmerged={hasLiquid && fillPercent > 0}
+              containerId={containerId}
+            />
+          )}
 
-          <ellipse
-            cx="80"
-            cy={liquidY}
-            rx="18"
-            ry="3.2"
-            fill="url(#meniscus-surface-grad)"
-            className="beaker-meniscus-surface"
-          />
+          {/* Liquid Body */}
+          {hasLiquid && fillPercent > 0 && (
+            <>
+              <rect
+                x="58"
+                y={liquidY}
+                width="44"
+                height={liquidHeight + 25}
+                fill={`url(#${gradId})`}
+                className="glass-liquid-rect"
+              />
 
-          <path
-            d={`M 62 ${liquidY} Q 80 ${liquidY + 3.2} 98 ${liquidY}`}
-            stroke="url(#meniscus-glow)"
-            strokeWidth="2.0"
-            fill="none"
-            opacity="0.95"
-          />
-          <path
-            d={`M 62 ${liquidY} Q 80 ${liquidY - 2.8} 98 ${liquidY}`}
-            stroke="rgba(255, 255, 255, 0.40)"
-            strokeWidth="1.0"
-            fill="none"
-          />
+              <ellipse
+                cx="80"
+                cy={liquidY}
+                rx="18"
+                ry="3.2"
+                fill="url(#meniscus-surface-grad)"
+                className="beaker-meniscus-surface"
+              />
 
-          {tubeBubbles.map((b, i) => {
-            const bubbleY = liquidY + liquidHeight * b.yRatio;
-            if (bubbleY < liquidY + 5 || bubbleY > 175) return null;
-            return (
-              <g key={i} className={`beaker-bubble-group ${b.cls}`} style={{ animationDelay: b.delay }}>
-                <circle
-                  cx={b.x}
-                  cy={bubbleY}
-                  r={b.r}
-                  fill="rgba(255, 255, 255, 0.16)"
-                  stroke="rgba(255, 255, 255, 0.85)"
-                  strokeWidth="0.8"
-                />
-                <circle
-                  cx={b.x - b.r * 0.35}
-                  cy={bubbleY - b.r * 0.35}
-                  r={Math.max(0.65, b.r * 0.3)}
-                  fill="#ffffff"
-                  fillOpacity="0.98"
-                />
-                <path
-                  d={`M ${b.x - b.r * 0.65} ${bubbleY + b.r * 0.3} Q ${b.x} ${bubbleY + b.r * 0.85} ${b.x + b.r * 0.65} ${bubbleY + b.r * 0.3}`}
-                  stroke="rgba(15, 23, 42, 0.28)"
-                  strokeWidth="0.65"
-                  fill="none"
-                />
-              </g>
-            );
-          })}
+              <path
+                d={`M 62 ${liquidY} Q 80 ${liquidY + 3.2} 98 ${liquidY}`}
+                stroke="url(#meniscus-glow)"
+                strokeWidth="2.0"
+                fill="none"
+                opacity="0.95"
+              />
+              <path
+                d={`M 62 ${liquidY} Q 80 ${liquidY - 2.8} 98 ${liquidY}`}
+                stroke="rgba(255, 255, 255, 0.40)"
+                strokeWidth="1.0"
+                fill="none"
+              />
+
+              {tubeBubbles.map((b, i) => {
+                const bubbleY = liquidY + liquidHeight * b.yRatio;
+                if (bubbleY < liquidY + 5 || bubbleY > 175) return null;
+                return (
+                  <g key={i} className={`beaker-bubble-group ${b.cls}`} style={{ animationDelay: b.delay }}>
+                    <circle
+                      cx={b.x}
+                      cy={bubbleY}
+                      r={b.r}
+                      fill="rgba(255, 255, 255, 0.16)"
+                      stroke="rgba(255, 255, 255, 0.85)"
+                      strokeWidth="0.8"
+                    />
+                    <circle
+                      cx={b.x - b.r * 0.35}
+                      cy={bubbleY - b.r * 0.35}
+                      r={Math.max(0.65, b.r * 0.3)}
+                      fill="#ffffff"
+                      fillOpacity="0.98"
+                    />
+                    <path
+                      d={`M ${b.x - b.r * 0.65} ${bubbleY + b.r * 0.3} Q ${b.x} ${bubbleY + b.r * 0.85} ${b.x + b.r * 0.65} ${bubbleY + b.r * 0.3}`}
+                      stroke="rgba(15, 23, 42, 0.28)"
+                      strokeWidth="0.65"
+                      fill="none"
+                    />
+                  </g>
+                );
+              })}
+            </>
+          )}
         </g>
       )}
 
@@ -957,7 +1081,14 @@ function TestTubeSvg({ fillPercent, hasContents, gradId = "liq-grad-test_tube" }
 /* =========================================================================
  * GRADUATED CYLINDER SVG COMPONENT - ULTRA-REALISTIC HEAVY GLASS BASE
  * ========================================================================= */
-function GraduatedCylinderSvg({ fillPercent, hasContents, gradId = "liq-grad-graduated_cylinder" }: { fillPercent: number; hasContents: boolean; gradId?: string }) {
+function GraduatedCylinderSvg({
+  fillPercent,
+  hasContents,
+  hasLiquid,
+  solids,
+  gradId = "liq-grad-graduated_cylinder",
+  containerId,
+}: VesselSvgProps) {
   // Height from pedestal junction y = 166 to top y = 26 = 140px span
   const liquidHeight = (140 * fillPercent) / 100;
   const liquidY = 166 - liquidHeight;
@@ -992,43 +1123,60 @@ function GraduatedCylinderSvg({ fillPercent, hasContents, gradId = "liq-grad-gra
         fill="url(#glass-body-fill)"
       />
 
-      {/* 3. Liquid Body (Clipped inside vertical cylinder column) */}
-      {hasContents && fillPercent > 0 && (
+      {/* 3. Contents Body (Solids & Liquid Clipped inside vertical cylinder column) */}
+      {(hasContents || (solids && solids.length > 0)) && (
         <g clipPath="url(#clip-cylinder)">
-          <rect
-            x="58"
-            y={liquidY}
-            width="44"
-            height={liquidHeight + 12}
-            fill={`url(#${gradId})`}
-            className="glass-liquid-rect"
-          />
+          {/* Solid mounds, crystals, metal chunks resting on cylinder floor */}
+          {solids && solids.length > 0 && (
+            <GlasswarePhases
+              solids={solids}
+              cx={80}
+              floorY={166}
+              baseWidth={38}
+              isSubmerged={hasLiquid && fillPercent > 0}
+              containerId={containerId}
+            />
+          )}
 
-          <ellipse
-            cx="80"
-            cy={liquidY}
-            rx="19.5"
-            ry="3.5"
-            fill="url(#meniscus-surface-grad)"
-            className="beaker-meniscus-surface"
-          />
+          {/* Liquid Body */}
+          {hasLiquid && fillPercent > 0 && (
+            <>
+              <rect
+                x="58"
+                y={liquidY}
+                width="44"
+                height={liquidHeight + 12}
+                fill={`url(#${gradId})`}
+                className="glass-liquid-rect"
+              />
 
-          <path
-            d={`M 60 ${liquidY} Q 80 ${liquidY + 3.5} 100 ${liquidY}`}
-            stroke="url(#meniscus-glow)"
-            strokeWidth="2.0"
-            fill="none"
-            opacity="0.95"
-          />
-          <path
-            d={`M 60 ${liquidY} Q 80 ${liquidY - 3.0} 100 ${liquidY}`}
-            stroke="rgba(255, 255, 255, 0.40)"
-            strokeWidth="1.0"
-            fill="none"
-          />
+              <ellipse
+                cx="80"
+                cy={liquidY}
+                rx="19.5"
+                ry="3.5"
+                fill="url(#meniscus-surface-grad)"
+                className="beaker-meniscus-surface"
+              />
 
-          <circle cx="74" cy={Math.min(158, liquidY + 25)} r="2.2" fill="rgba(255,255,255,0.2)" stroke="#ffffff" strokeWidth="0.8" className="bubble b1" />
-          <circle cx="86" cy={Math.min(158, liquidY + 45)} r="2.8" fill="rgba(255,255,255,0.2)" stroke="#ffffff" strokeWidth="0.8" className="bubble b2" />
+              <path
+                d={`M 60 ${liquidY} Q 80 ${liquidY + 3.5} 100 ${liquidY}`}
+                stroke="url(#meniscus-glow)"
+                strokeWidth="2.0"
+                fill="none"
+                opacity="0.95"
+              />
+              <path
+                d={`M 60 ${liquidY} Q 80 ${liquidY - 3.0} 100 ${liquidY}`}
+                stroke="rgba(255, 255, 255, 0.40)"
+                strokeWidth="1.0"
+                fill="none"
+              />
+
+              <circle cx="74" cy={Math.min(158, liquidY + 25)} r="2.2" fill="rgba(255,255,255,0.2)" stroke="#ffffff" strokeWidth="0.8" className="bubble b1" />
+              <circle cx="86" cy={Math.min(158, liquidY + 45)} r="2.8" fill="rgba(255,255,255,0.2)" stroke="#ffffff" strokeWidth="0.8" className="bubble b2" />
+            </>
+          )}
         </g>
       )}
 
@@ -1075,7 +1223,14 @@ function GraduatedCylinderSvg({ fillPercent, hasContents, gradId = "liq-grad-gra
 /* =========================================================================
  * BURETTE SVG COMPONENT - ULTRA-REALISTIC CAPILLARY & STOPCOCK
  * ========================================================================= */
-function BuretteSvg({ fillPercent, hasContents, gradId = "liq-grad-burette" }: { fillPercent: number; hasContents: boolean; gradId?: string }) {
+function BuretteSvg({
+  fillPercent,
+  hasContents,
+  hasLiquid,
+  solids,
+  gradId = "liq-grad-burette",
+  containerId,
+}: VesselSvgProps) {
   const liquidHeight = (136 * fillPercent) / 100;
   const liquidY = 150 - liquidHeight;
 
@@ -1093,34 +1248,51 @@ function BuretteSvg({ fillPercent, hasContents, gradId = "liq-grad-burette" }: {
         fill="url(#glass-body-fill)"
       />
 
-      {/* 3. Liquid Body (Clipped inside slim capillary barrel) */}
-      {hasContents && fillPercent > 0 && (
+      {/* 3. Contents Body (Solids & Liquid Clipped inside slim capillary barrel) */}
+      {(hasContents || (solids && solids.length > 0)) && (
         <g clipPath="url(#clip-burette)">
-          <rect
-            x="70"
-            y={liquidY}
-            width="20"
-            height={liquidHeight + 10}
-            fill={`url(#${gradId})`}
-            className="glass-liquid-rect"
-          />
+          {/* Solid mounds, crystals, metal chunks */}
+          {solids && solids.length > 0 && (
+            <GlasswarePhases
+              solids={solids}
+              cx={80}
+              floorY={150}
+              baseWidth={15}
+              isSubmerged={hasLiquid && fillPercent > 0}
+              containerId={containerId}
+            />
+          )}
 
-          <ellipse
-            cx="80"
-            cy={liquidY}
-            rx="8"
-            ry="2"
-            fill="url(#meniscus-surface-grad)"
-            className="beaker-meniscus-surface"
-          />
+          {/* Liquid Body */}
+          {hasLiquid && fillPercent > 0 && (
+            <>
+              <rect
+                x="70"
+                y={liquidY}
+                width="20"
+                height={liquidHeight + 10}
+                fill={`url(#${gradId})`}
+                className="glass-liquid-rect"
+              />
 
-          <path
-            d={`M 72 ${liquidY} Q 80 ${liquidY + 2} 88 ${liquidY}`}
-            stroke="url(#meniscus-glow)"
-            strokeWidth="1.8"
-            fill="none"
-            opacity="0.95"
-          />
+              <ellipse
+                cx="80"
+                cy={liquidY}
+                rx="8"
+                ry="2"
+                fill="url(#meniscus-surface-grad)"
+                className="beaker-meniscus-surface"
+              />
+
+              <path
+                d={`M 72 ${liquidY} Q 80 ${liquidY + 2} 88 ${liquidY}`}
+                stroke="url(#meniscus-glow)"
+                strokeWidth="1.8"
+                fill="none"
+                opacity="0.95"
+              />
+            </>
+          )}
         </g>
       )}
 

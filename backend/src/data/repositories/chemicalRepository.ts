@@ -7,6 +7,7 @@ import type {
   ElementComposition,
   Hazard,
   MoleculeStructure,
+  PhysicalForm,
   PhysicalState,
 } from "../../chemistry-engine/types.js";
 import { generateMoleculeStructure } from "../../chemistry-engine/moleculeStructureGenerator.js";
@@ -26,6 +27,7 @@ interface ChemicalRow {
   inchi: string | null;
   inchi_key: string | null;
   physical_state: string;
+  physical_form?: string | null;
   density: number | null;
   melting_point_c: number | null;
   boiling_point_c: number | null;
@@ -60,6 +62,8 @@ export interface ChemicalSummary {
   molarMass: number;
   chemicalClass: ChemicalClass;
   substanceColor?: string;
+  physicalState?: PhysicalState;
+  physicalForm?: PhysicalForm;
 }
 
 export interface PagedResult<T> {
@@ -182,6 +186,15 @@ export class ChemicalRepository {
     return undefined;
   }
 
+  public derivePhysicalForm(
+    physicalState: string,
+    formula?: string,
+    commonName?: string,
+    chemicalClass?: string
+  ): PhysicalForm {
+    return derivePhysicalForm(physicalState, formula, commonName, chemicalClass);
+  }
+
   private rowToChemical(row: ChemicalRow): Chemical {
     const dissociation =
       row.dissociation_cation_formula && row.dissociation_anion_formula
@@ -204,6 +217,7 @@ export class ChemicalRepository {
       inchi: row.inchi ?? undefined,
       inchiKey: row.inchi_key ?? undefined,
       physicalState: row.physical_state as PhysicalState,
+      physicalForm: (row.physical_form as PhysicalForm) || derivePhysicalForm(row.physical_state, row.formula, row.common_name, row.chemical_class),
       density: row.density ?? undefined,
       meltingPointC: row.melting_point_c ?? undefined,
       boilingPointC: row.boiling_point_c ?? undefined,
@@ -372,7 +386,7 @@ export class ChemicalRepository {
 
     const rows = this.db
       .prepare(
-        `SELECT DISTINCT c.id, c.common_name, c.formula, c.molar_mass, c.chemical_class, c.substance_color,
+        `SELECT DISTINCT c.id, c.common_name, c.formula, c.molar_mass, c.chemical_class, c.substance_color, c.physical_state, c.physical_form,
                 CASE
                   WHEN LOWER(c.formula) = @exact THEN 0
                   WHEN LOWER(c.common_name) = @exact THEN 1
@@ -418,6 +432,8 @@ export class ChemicalRepository {
           molar_mass: number;
           chemical_class: string;
           substance_color: string | null;
+          physical_state: string;
+          physical_form?: string | null;
         })[];
 
     const totalRow = this.db
@@ -449,6 +465,8 @@ export class ChemicalRepository {
         molarMass: r.molar_mass,
         chemicalClass: r.chemical_class as ChemicalClass,
         substanceColor: r.substance_color ?? undefined,
+        physicalState: r.physical_state as PhysicalState,
+        physicalForm: (r.physical_form as PhysicalForm) || derivePhysicalForm(r.physical_state, r.formula, r.common_name, r.chemical_class),
       })),
       total: totalRow.n,
     };
@@ -501,8 +519,74 @@ export class ChemicalRepository {
         molarMass: r.molar_mass,
         chemicalClass: r.chemical_class as ChemicalClass,
         substanceColor: r.substance_color ?? undefined,
+        physicalState: r.physical_state as PhysicalState,
+        physicalForm: (r.physical_form as PhysicalForm) || derivePhysicalForm(r.physical_state, r.formula, r.common_name, r.chemical_class),
       })),
       total: totalRow.n,
     };
   }
+}
+
+export function derivePhysicalForm(
+  physicalState: string,
+  formula?: string,
+  commonName?: string,
+  chemicalClass?: string
+): PhysicalForm {
+  if (physicalState === "gas" || /^(O2|N2|H2|Cl2|F2|He|Ne|Ar|Kr|Xe|CO2|CO|CH4|NH3|SO2|NO|NO2|H2S|HCl)$/.test(formula || "")) {
+    return "gas";
+  }
+  if (
+    physicalState === "liquid" ||
+    physicalState === "aqueous" ||
+    chemicalClass === "solvent" ||
+    /^(H2O|Br2|Hg|CH3COOH|C2H5OH|C3H6O|C6H6|C7H8|CS2|CCl4|CHCl3|H2SO4|HNO3|H3PO4)$/i.test(formula || "")
+  ) {
+    return "liquid";
+  }
+
+  const normName = (commonName || "").toLowerCase();
+  const f = formula || "";
+  const chemClass = (chemicalClass || "").toLowerCase();
+
+  // 1. Elemental metals and alloys (strip/ribbon/filings/solid chunks)
+  const isMetalElem =
+    chemClass === "metal" && /^(Fe|Cu|Zn|Mg|Al|Na|K|Ca|Ag|Au|Pt|Pb|Sn|Ni|Co|Li|Ba|Sr|Cr|Mn|Ti|V|W|Mo|Bi|Cd|In|Tl|Sb)$/i.test(f);
+  const physicalFormRegex = /\b(ribbon|strip|filings|wire|foil|turnings|granule|granules|pellet|pellets|chunk|chunks|sheet|sheets|mossy|metal bar|ingot|rod|rods)\b/i;
+
+  if (isMetalElem || physicalFormRegex.test(normName)) {
+    return "solid";
+  }
+
+  // 2. Crystals: hydrates, crystalline ionic salts, vitriols, nitrates, sulfates, sugars
+  if (
+    f.includes("·") ||
+    f.includes(".H2O") ||
+    chemClass === "salt" ||
+    normName.includes("hydrate") ||
+    normName.includes("vitriol") ||
+    normName.includes("crystal") ||
+    normName.includes("alum") ||
+    normName.includes("sucrose") ||
+    normName.includes("glucose") ||
+    normName.includes("fructose") ||
+    normName.includes("citric acid") ||
+    normName.includes("tartaric acid") ||
+    normName.includes("permanganate") ||
+    normName.includes("dichromate") ||
+    normName.includes("chromate") ||
+    normName.includes("sulfate") ||
+    normName.includes("chloride") ||
+    normName.includes("nitrate") ||
+    normName.includes("iodide") ||
+    normName.includes("bromide") ||
+    normName.includes("phosphate") ||
+    normName.includes("fluoride") ||
+    normName.includes("rock salt")
+  ) {
+    return "crystal";
+  }
+
+  // 3. Powders: oxides, carbonates, hydroxides, amorphous organics, powders, sulfur, precipitates
+  return "powder";
 }

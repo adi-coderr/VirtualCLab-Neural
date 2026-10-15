@@ -21,6 +21,7 @@ export interface ParsedFormula {
 }
 
 export type PhysicalState = "solid" | "liquid" | "gas" | "aqueous" | "unknown";
+export type PhysicalForm = "liquid" | "powder" | "crystal" | "solid" | "gas";
 
 export type AcidBaseStrength = "strong" | "weak" | "none";
 
@@ -140,6 +141,7 @@ export interface Chemical {
   inchi?: string;
   inchiKey?: string;
   physicalState: PhysicalState;
+  physicalForm?: PhysicalForm;
   density?: number;
   meltingPointC?: number;
   boilingPointC?: number;

@@ -1,4 +1,5 @@
 export type PhysicalState = "solid" | "liquid" | "gas" | "aqueous" | "unknown";
+export type PhysicalForm = "liquid" | "powder" | "crystal" | "solid" | "gas";
 export type AcidBaseStrength = "strong" | "weak" | "none";
 export type ConfidenceTier = "SUPPORTED" | "PREDICTED" | "APPROXIMATE" | "UNKNOWN";
 export type ReactionStatus = "REACTION" | "NO_REACTION" | "UNSUPPORTED";
@@ -75,6 +76,7 @@ export interface Chemical {
   casNumber?: string;
   smiles?: string;
   physicalState: PhysicalState;
+  physicalForm?: PhysicalForm;
   density?: number;
   meltingPointC?: number;
   boilingPointC?: number;
@@ -100,6 +102,8 @@ export interface ChemicalSummary {
   molarMass: number;
   chemicalClass: string;
   substanceColor?: string;
+  physicalState?: PhysicalState;
+  physicalForm?: PhysicalForm;
 }
 
 export interface ObservableEffect {

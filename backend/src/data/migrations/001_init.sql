@@ -24,6 +24,7 @@ CREATE TABLE chemicals (
   inchi TEXT,
   inchi_key TEXT,
   physical_state TEXT NOT NULL,
+  physical_form TEXT,
   density REAL,
   melting_point_c REAL,
   boiling_point_c REAL,

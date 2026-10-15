@@ -3,6 +3,7 @@ import { chemicalsApi } from "../../api/chemicals";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import type { ChemicalSummary } from "../../types/chemistry";
 import { formatFormula } from "../../utils/formatFormula";
+import { getPhaseIcon, getPhaseLabel } from "../../utils/phaseUtils";
 import { Spinner } from "../common/Badge";
 import "./ChemicalSearch.css";
 
@@ -65,6 +66,14 @@ export function ChemicalSearch({ onSelect }: { onSelect: (chemical: ChemicalSumm
                     {chemical.molarMass.toFixed(2)} g/mol
                     <span className="chemical-search__dot">&middot;</span>
                     {chemical.chemicalClass.replace(/_/g, " ")}
+                    {chemical.physicalForm && (
+                      <>
+                        <span className="chemical-search__dot">&middot;</span>
+                        <span className="chemical-search__form">
+                          {getPhaseIcon(chemical.physicalForm)} {getPhaseLabel(chemical.physicalForm)}
+                        </span>
+                      </>
+                    )}
                   </span>
                 </span>
               </button>

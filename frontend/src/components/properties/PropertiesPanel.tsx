@@ -1,5 +1,6 @@
 import type { Chemical } from "../../types/chemistry";
 import { formatFormula } from "../../utils/formatFormula";
+import { getPhaseIcon, getPhaseLabel } from "../../utils/phaseUtils";
 import "./PropertiesPanel.css";
 
 function Row({ label, value }: { label: string; value?: string | number | null }) {
@@ -23,7 +24,18 @@ export function PropertiesPanel({ chemical }: { chemical: Chemical }) {
       <Row label="IUPAC name" value={chemical.iupacName} />
       <Row label="Molar mass" value={`${chemical.molarMass.toFixed(3)} g/mol`} />
       <Row label="CAS number" value={chemical.casNumber} />
-      <Row label="Physical state" value={chemical.physicalState} />
+      <Row
+        label="Physical form"
+        value={
+          chemical.physicalForm
+            ? `${getPhaseIcon(chemical.physicalForm)} ${getPhaseLabel(chemical.physicalForm)}${
+                chemical.physicalState && chemical.physicalState !== chemical.physicalForm
+                  ? ` (${chemical.physicalState})`
+                  : ""
+              }`
+            : chemical.physicalState
+        }
+      />
       <Row label="Density" value={chemical.density ? `${chemical.density} g/cm\u00b3` : undefined} />
       <Row label="Melting point" value={chemical.meltingPointC !== undefined ? `${chemical.meltingPointC} \u00b0C` : undefined} />
       <Row label="Boiling point" value={chemical.boilingPointC !== undefined ? `${chemical.boilingPointC} \u00b0C` : undefined} />

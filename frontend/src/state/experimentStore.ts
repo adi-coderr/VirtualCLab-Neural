@@ -81,6 +81,12 @@ function consolidateContents(contents: ContainerContent[]): ContainerContent[] {
     if (!existing.substanceColor && item.substanceColor) {
       existing.substanceColor = item.substanceColor;
     }
+    if (!existing.physicalForm && item.physicalForm) {
+      existing.physicalForm = item.physicalForm;
+    }
+    if (!existing.physicalState && item.physicalState) {
+      existing.physicalState = item.physicalState;
+    }
     if (existing.unit === item.unit) {
       if ((existing.unit === "mL" || existing.unit === "L") && existing.concentrationMolar && item.concentrationMolar) {
         const totalVolume = existing.amount + item.amount;
@@ -263,6 +269,8 @@ export const useLabStore = create<LabState>((set, get) => ({
           amount,
           unit,
           concentrationMolar,
+          physicalState: chemical.physicalState,
+          physicalForm: chemical.physicalForm,
         };
         const containers = s.containers.map((c) =>
           c.id === s.activeContainerId

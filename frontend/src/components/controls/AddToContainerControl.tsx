@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLabStore } from "../../state/experimentStore";
 import type { ChemicalSummary, Unit } from "../../types/chemistry";
 import { formatFormula } from "../../utils/formatFormula";
+import { getPhaseIcon, getPhaseLabel } from "../../utils/phaseUtils";
 import { Button } from "../common/Badge";
 import "./AddToContainerControl.css";
 
@@ -32,10 +33,14 @@ export function AddToContainerControl({
   // Set intelligent defaults based on physical nature of the chemical
   useEffect(() => {
     if (pendingChemical) {
+      const form = pendingChemical.physicalForm;
       const cls = pendingChemical.chemicalClass?.toLowerCase() || "";
       const formula = pendingChemical.formula?.toLowerCase() || "";
-      // Metals / solids tend to be added in grams
+      // Powders, crystals, and solid chunks default to mass (g)
       if (
+        form === "powder" ||
+        form === "crystal" ||
+        form === "solid" ||
         cls === "metal" ||
         ["fe", "cu", "zn", "mg", "al", "caco3"].includes(formula)
       ) {
@@ -139,6 +144,14 @@ export function AddToContainerControl({
               <span>&bull;</span>
               <span className="add-to-container__class-badge">
                 {pendingChemical.chemicalClass.replace(/_/g, " ")}
+              </span>
+            </>
+          )}
+          {pendingChemical.physicalForm && (
+            <>
+              <span>&bull;</span>
+              <span className="add-to-container__phase-badge" title={`Form: ${getPhaseLabel(pendingChemical.physicalForm)}`}>
+                {getPhaseIcon(pendingChemical.physicalForm)} {getPhaseLabel(pendingChemical.physicalForm)}
               </span>
             </>
           )}
