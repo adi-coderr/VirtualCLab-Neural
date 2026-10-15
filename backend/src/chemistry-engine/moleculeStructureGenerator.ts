@@ -2364,22 +2364,66 @@ function relaxGeometry(
           if (dist < 0.001) {
             dx = (rng() - 0.5) * 0.1;
             dy = (rng() - 0.5) * 0.1;
-            dz = 0;
+            dz = (rng() - 0.5) * 0.1;
             dist = Math.hypot(dx, dy, dz) || 0.1;
           }
 
-          const push = (contactDist - dist) * 0.35;
+          // If severe clash, relieve saddle points:
+          // 1) co-axial alignment (near-zero xy distance): kick laterally
+          // 2) coplanar alignment (near-zero z distance): kick out-of-plane
+          if (dist < 0.90) {
+            const dxy = Math.hypot(dx, dy);
+            if (dxy < 0.40) {
+              if (dxy > 0.001) {
+                const uxy = 0.50 / dxy;
+                dx += dx * uxy;
+                dy += dy * uxy;
+              } else {
+                const angle = ((i * 31 + j * 17) % 360) * (Math.PI / 180);
+                dx += Math.cos(angle) * 0.50;
+                dy += Math.sin(angle) * 0.50;
+              }
+              dist = Math.hypot(dx, dy, dz) || 0.1;
+            } else if (Math.abs(dz) < 0.25) {
+              const zKick = (a1.z3d >= a2.z3d ? 1 : -1) * 0.35;
+              dz += zKick;
+              dist = Math.hypot(dx, dy, dz) || 0.1;
+            }
+          }
+
+          const push = dist < 0.85
+            ? Math.max((contactDist - dist) * 0.65, 0.45)
+            : (contactDist - dist) * 0.35;
           const nx = dx / dist;
           const ny = dy / dist;
           const nz = dz / dist;
 
-          a1.x3d -= nx * push * 0.5;
-          a1.y3d -= ny * push * 0.5;
-          a1.z3d -= nz * push * 0.5;
+          const isAromNode = (idx: number) => {
+            if (aromaticRingAtoms.has(idx)) return true;
+            if (atoms[idx]?.element === "H") {
+              const nbrs = adj.get(idx) || [];
+              if (nbrs.some((n) => aromaticRingAtoms.has(n.neighbor))) return true;
+            }
+            return false;
+          };
+          const a1IsArom = isAromNode(i);
+          const a2IsArom = isAromNode(j);
 
-          a2.x3d += nx * push * 0.5;
-          a2.y3d += ny * push * 0.5;
-          a2.z3d += nz * push * 0.5;
+          const w1 = dist < 0.70
+            ? 0.5
+            : a1IsArom && !a2IsArom ? 0.25 : !a1IsArom && a2IsArom ? 0.75 : 0.5;
+          const w2 = 1.0 - w1;
+
+          if (w1 > 0) {
+            a1.x3d -= nx * push * w1;
+            a1.y3d -= ny * push * w1;
+            a1.z3d -= nz * push * w1;
+          }
+          if (w2 > 0) {
+            a2.x3d += nx * push * w2;
+            a2.y3d += ny * push * w2;
+            a2.z3d += nz * push * w2;
+          }
         }
       }
     }
@@ -2905,11 +2949,23 @@ function generateCoordinationComplex(
           cz = dir.z * dBond;
           isBonded = true;
         } else {
-          const phi = (c * 2 * Math.PI) / cnt + Math.PI / 4;
-          cx = 3.6 * Math.cos(phi);
-          cy = 3.6 * Math.sin(phi);
-          cz = 1.2 * (c % 2 === 0 ? 1 : -1);
-          isBonded = false;
+          // Outer sphere counterions coordinate along octahedral face diagonal pockets (±1, ±1, ±1)/√3
+          const faceDirs = [
+            { x: 0.577, y: 0.577, z: 0.577 },
+            { x: -0.577, y: -0.577, z: 0.577 },
+            { x: -0.577, y: 0.577, z: -0.577 },
+            { x: 0.577, y: -0.577, z: -0.577 },
+            { x: 0.577, y: 0.577, z: -0.577 },
+            { x: -0.577, y: -0.577, z: -0.577 },
+            { x: 0.577, y: -0.577, z: 0.577 },
+            { x: -0.577, y: 0.577, z: 0.577 },
+          ];
+          const dir = faceDirs[c % faceDirs.length]!;
+          const dIonic = 2.45;
+          cx = dir.x * dIonic;
+          cy = dir.y * dIonic;
+          cz = dir.z * dIonic;
+          isBonded = true;
         }
         const cIdx = atoms.length;
         atoms.push({
@@ -2920,10 +2976,10 @@ function generateCoordinationComplex(
           z3d: Number(cz.toFixed(3)),
           x2d: Math.round(cx * 35),
           y2d: Math.round(cy * 35),
-          formalCharge: isBonded ? 0 : -1,
+          formalCharge: isInnerSphere ? 0 : -1,
         });
         if (isBonded) {
-          bonds.push({ atomIndex1: 0, atomIndex2: cIdx, order: 1, type: "covalent" });
+          bonds.push({ atomIndex1: 0, atomIndex2: cIdx, order: 1, type: isInnerSphere ? "covalent" : "ionic" });
         }
       }
     }

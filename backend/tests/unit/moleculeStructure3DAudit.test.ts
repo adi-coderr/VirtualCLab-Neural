@@ -187,5 +187,107 @@ describe("3D Molecule Structure Audit", () => {
       }
     }
   });
+
+  it("handles coordination complexes with outer-sphere counterions with zero unbonded atoms", () => {
+    const testCases = [
+      { id: "co-nh3-6-cl3", formula: "[Co(NH3)6]Cl3", name: "Hexamminecobalt(III) chloride" },
+      { id: "ni-nh3-6-cl2", formula: "[Ni(NH3)6]Cl2", name: "Hexamminenickel(II) chloride" },
+    ];
+
+    for (const tc of testCases) {
+      const comp = parseFormula(tc.formula).composition;
+      const struct = generateMoleculeStructure(tc.id, tc.formula, comp, tc.name);
+      expect(struct.atoms.length).toBeGreaterThan(20);
+
+      const bondedAtoms = new Set<number>();
+      for (const b of struct.bonds) {
+        bondedAtoms.add(b.atomIndex1);
+        bondedAtoms.add(b.atomIndex2);
+        const a1 = struct.atoms[b.atomIndex1]!;
+        const a2 = struct.atoms[b.atomIndex2]!;
+        const d = Math.hypot(a1.x3d - a2.x3d, a1.y3d - a2.y3d, a1.z3d - a2.z3d);
+        expect(d, `Unphysical bond ${b.atomIndex1}-${b.atomIndex2} in ${tc.id}`).toBeLessThanOrEqual(2.65);
+        expect(d, `Unphysical bond ${b.atomIndex1}-${b.atomIndex2} in ${tc.id}`).toBeGreaterThanOrEqual(0.70);
+      }
+      for (const a of struct.atoms) {
+        expect(bondedAtoms.has(a.atomIndex), `Isolated unbonded atom ${a.element}[${a.atomIndex}] in ${tc.id}`).toBe(true);
+      }
+    }
+  });
+
+  it("relieves steric clashes in complex fused and branched multi-ring systems", () => {
+    const smiles = "C(C)(C)(C)OC(=O)N[C@@H](CCC)C(=O)C1(C(N(C2=C(N(C1=O)C)C=CC=C2)C)=O)N";
+    const struct = generateMoleculeStructure("benzodiazepine", "C21H30N4O5", {}, "benzodiazepine", smiles);
+
+    for (let i = 0; i < struct.atoms.length; i++) {
+      for (let j = i + 1; j < struct.atoms.length; j++) {
+        const a1 = struct.atoms[i]!;
+        const a2 = struct.atoms[j]!;
+        const dist = Math.hypot(a1.x3d - a2.x3d, a1.y3d - a2.y3d, a1.z3d - a2.z3d);
+        expect(dist, `Collision between ${a1.element}[${i}] and ${a2.element}[${j}]`).toBeGreaterThan(0.70);
+      }
+    }
+  });
+
+  it("verifies accurate physical O-H bond length in hydrogen peroxide", () => {
+    const comp = parseFormula("H2O2").composition;
+    const struct = generateMoleculeStructure("h2o2", "H2O2", comp, "Hydrogen peroxide");
+    for (const b of struct.bonds) {
+      const a1 = struct.atoms[b.atomIndex1]!;
+      const a2 = struct.atoms[b.atomIndex2]!;
+      const d = Math.hypot(a1.x3d - a2.x3d, a1.y3d - a2.y3d, a1.z3d - a2.z3d);
+      if ((a1.element === "O" && a2.element === "H") || (a1.element === "H" && a2.element === "O")) {
+        expect(d).toBeCloseTo(0.96, 1);
+      }
+    }
+  });
+
+  it("relieves steric clashes across complex multi-ring edge cases (adamantyl, trityl, chalcone, and tetrazole-imidazole)", () => {
+    const complexCases = [
+      {
+        id: "e-1-2-n-butyl-1-2-chlorophenyl-methyl-4-hydroxymethyl-1h-imidazol-5-yl-2-1h-tetrazol-5-yl-3-2-thienyl-1-propene",
+        formula: "C23H25ClN6OS",
+        smiles: "C(CCC)C=1N(C(=C(N1)CO)\\C=C(/CC=1SC=CC1)\\C1=NN=NN1)CC1=C(C=CC=C1)Cl",
+      },
+      {
+        id: "4-methoxybenzyloxychalcone",
+        formula: "C39H35NO6",
+        smiles: "C(C)(=O)NC=1C=CC(=C(C(C=CC2=CC(=C(C=C2)OCC2=CC=CC=C2)OCC2=CC=CC=C2)=O)C1)OCC1=CC=C(C=C1)OC",
+      },
+      {
+        id: "4-6-di-1-adamantyl-1-3-dihydroxybenzene",
+        formula: "C26H34O2",
+        smiles: "C12(CC3CC(CC(C1)C3)C2)C=1C(=CC(=C(C1)O)C12CC3CC(CC(C1)C3)C2)O",
+      },
+      {
+        id: "4-1-adamantyl-bromobenzene",
+        formula: "C16H19Br",
+        smiles: "C12(CC3CC(CC(C1)C3)C2)C2=CC=C(C=C2)Br",
+      },
+      {
+        id: "4-3-hydroxyazetidin-1-yl-carbonyl-2-z-2-tritylthioethen-1-yl-thiazole",
+        formula: "C28H24N2O2S2",
+        smiles: "C1(=NC(=CS1)C(=O)N1CC(C1)O)/C=C/SC(C=1C=CC=CC1)(C1=CC=CC=C1)C1=CC=CC=C1",
+      },
+    ];
+
+    for (const tc of complexCases) {
+      const struct = generateMoleculeStructure(tc.id, tc.formula, {}, tc.id, tc.smiles);
+      expect(struct.atoms.length).toBeGreaterThan(15);
+
+      for (let i = 0; i < struct.atoms.length; i++) {
+        for (let j = i + 1; j < struct.atoms.length; j++) {
+          const isBonded = struct.bonds.some(
+            (b) => (b.atomIndex1 === i && b.atomIndex2 === j) || (b.atomIndex1 === j && b.atomIndex2 === i)
+          );
+          if (isBonded) continue;
+          const a1 = struct.atoms[i]!;
+          const a2 = struct.atoms[j]!;
+          const dist = Math.hypot(a1.x3d - a2.x3d, a1.y3d - a2.y3d, a1.z3d - a2.z3d);
+          expect(dist, `Clash between ${a1.element}[${i}] and ${a2.element}[${j}] in ${tc.id}`).toBeGreaterThan(0.65);
+        }
+      }
+    }
+  });
 });
 

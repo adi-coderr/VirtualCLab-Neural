@@ -162,12 +162,12 @@ const NAOH_STRUCTURE: SeedStructure = {
 };
 
 const H2O2_STRUCTURE: SeedStructure = {
-  // Skewed (non-planar), O-O = 1.47 A, O-H = 0.96 A, dihedral ~95 deg approximated.
+  // Skewed (non-planar), O-O = 1.47 A, O-H = 0.96 A, dihedral ~95 deg.
   atoms: [
-    { element: "H", x2d: -90, y2d: 0, x3d: -1.55, y3d: 0.85, z3d: 0.4 },
+    { element: "H", x2d: -82, y2d: 55, x3d: -0.819, y3d: 0.548, z3d: 0.783 },
     { element: "O", x2d: -45, y2d: 20, x3d: -0.735, y3d: 0, z3d: 0 },
     { element: "O", x2d: 45, y2d: 20, x3d: 0.735, y3d: 0, z3d: 0 },
-    { element: "H", x2d: 90, y2d: 0, x3d: 1.55, y3d: 0.85, z3d: -0.4 },
+    { element: "H", x2d: 82, y2d: 55, x3d: 0.819, y3d: 0.548, z3d: -0.783 },
   ],
   bonds: [
     { a: 0, b: 1, order: 1 },
@@ -221,9 +221,9 @@ function sulfateFragmentWithCation(cationElement: string, cationCharge: number, 
     bonds.push({ a: 3, b: 5, order: 1, type: "ionic" });
     bonds.push({ a: 4, b: 5, order: 1, type: "ionic" });
   } else {
-    // Symmetrically position cations near the negatively charged oxygens
-    atoms.push({ element: cationElement, x2d: -100, y2d: -40, x3d: -2.2, y3d: 1.4, z3d: -1.4, formalCharge: cationCharge });
-    atoms.push({ element: cationElement, x2d: -100, y2d: 40, x3d: -2.2, y3d: -1.4, z3d: 1.4, formalCharge: cationCharge });
+    // Symmetrically position cations near the negatively charged oxygens at authentic ionic distance ~2.35 A
+    atoms.push({ element: cationElement, x2d: -78, y2d: 78, x3d: -2.22, y3d: 2.22, z3d: -2.22, formalCharge: cationCharge });
+    atoms.push({ element: cationElement, x2d: -78, y2d: -78, x3d: -2.22, y3d: -2.22, z3d: 2.22, formalCharge: cationCharge });
     bonds.push({ a: 3, b: 5, order: 1, type: "ionic" });
     bonds.push({ a: 4, b: 6, order: 1, type: "ionic" });
   }
