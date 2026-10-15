@@ -44,7 +44,6 @@ VirtualCLab/
 You can launch all services (Python ML model, Node.js backend, and React frontend) with a single command:
 
 ```bash
-cd "/Users/adi/Documents/Github Projects/VirtualCLab"
 ./start.sh
 ```
 
@@ -64,14 +63,12 @@ If you prefer running services in separate terminal windows to view distinct log
 
 ### 1. Neural ML Model Server (Python / PyTorch)
 ```bash
-cd "/Users/adi/Documents/Github Projects/VirtualCLab"
 .venv/bin/python3 backend/src/ai/model_service.py
 ```
 > Running on `http://127.0.0.1:5005` (MPS / CPU hardware acceleration enabled).
 
 ### 2. Backend API Server (Node.js / Express)
 ```bash
-cd "/Users/adi/Documents/Github Projects/VirtualCLab/backend"
 npm install
 npm run dev
 ```
@@ -79,7 +76,6 @@ npm run dev
 
 ### 3. Frontend Web Application (React / Vite)
 ```bash
-cd "/Users/adi/Documents/Github Projects/VirtualCLab/frontend"
 npm install
 npm run dev
 ```
@@ -127,8 +123,3 @@ npm run db:reset
 
 ---
 
-One-Command All-in-One Startup
-```bash
-cd "/Users/adi/Documents/Github Projects/VirtualCLab"
-./start.sh
-```
