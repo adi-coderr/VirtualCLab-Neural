@@ -54,6 +54,23 @@ describe("POST /api/reactions/simulate", () => {
     expect(res.body.data.resolution.confidenceTier).toBe("PREDICTED");
   });
 
+  it("does not falsely match elemental reactions for salts (FeSO4 + H2O should NOT trigger steam-iron process)", async () => {
+    const res = await request(app)
+      .post("/api/reactions/simulate")
+      .send({
+        reactants: [
+          { chemicalId: "feso4", amount: 5, unit: "g" },
+          { chemicalId: "water", amount: 20, unit: "mL" },
+        ],
+        conditions: { temperatureC: 25 },
+      });
+
+    expect(res.status).toBe(200);
+    // Must NOT trigger 3Fe + 4H2O -> Fe3O4 + 4H2
+    expect(res.body.data.resolution.balancedEquation || "").not.toContain("Fe3O4");
+    expect(res.body.data.resolution.explanation || "").not.toContain("Steam-iron process");
+  });
+
   it("returns APPROXIMATE for a weak acid + weak base pair", async () => {
     const res = await request(app)
       .post("/api/reactions/simulate")

@@ -687,44 +687,102 @@ export class SimulationService {
         add("ammonia");
         add("nh3");
       }
-      if (formLower === "al" || idLower.includes("alumin") || nameLower.includes("alumin")) {
+      if (
+        formLower === "al" ||
+        idLower === "al" ||
+        idLower === "aluminum" ||
+        idLower === "aluminium" ||
+        nameLower === "aluminum" ||
+        nameLower === "aluminium" ||
+        nameLower === "aluminum metal" ||
+        nameLower === "aluminium metal" ||
+        (chem?.isElemental && formLower === "al")
+      ) {
         add("al");
         add("aluminum");
         add("aluminium");
       }
-      if (formLower === "fe" || idLower.includes("iron") || nameLower.includes("iron")) {
+      if (
+        formLower === "fe" ||
+        idLower === "fe" ||
+        idLower === "iron" ||
+        nameLower === "iron" ||
+        nameLower === "iron metal" ||
+        nameLower === "iron powder" ||
+        nameLower === "iron, powder" ||
+        (chem?.isElemental && formLower === "fe")
+      ) {
         add("fe");
         add("iron");
       }
-      if (formLower === "cu" || idLower.includes("copper") || nameLower.includes("copper")) {
+      if (
+        formLower === "cu" ||
+        idLower === "cu" ||
+        idLower === "copper" ||
+        nameLower === "copper" ||
+        nameLower === "copper metal" ||
+        (chem?.isElemental && formLower === "cu")
+      ) {
         add("cu");
         add("copper");
       }
-      if (formLower === "zn" || idLower.includes("zinc") || nameLower.includes("zinc")) {
+      if (
+        formLower === "zn" ||
+        idLower === "zn" ||
+        idLower === "zinc" ||
+        nameLower === "zinc" ||
+        nameLower === "zinc metal" ||
+        (chem?.isElemental && formLower === "zn")
+      ) {
         add("zn");
         add("zinc");
       }
-      if (formLower === "naoh" || idLower.includes("sodium_hydroxide") || nameLower.includes("sodium hydroxide")) {
+      if (
+        formLower === "naoh" ||
+        idLower === "naoh" ||
+        idLower === "sodium_hydroxide" ||
+        nameLower === "sodium hydroxide"
+      ) {
         add("naoh");
         add("sodium_hydroxide");
         add("sodium-hydroxide");
       }
-      if (formLower === "koh" || idLower.includes("potassium_hydroxide") || nameLower.includes("potassium hydroxide")) {
+      if (
+        formLower === "koh" ||
+        idLower === "koh" ||
+        idLower === "potassium_hydroxide" ||
+        nameLower === "potassium hydroxide"
+      ) {
         add("koh");
         add("potassium_hydroxide");
         add("potassium-hydroxide");
       }
-      if (formLower === "hcl" || idLower.includes("hydrochloric") || nameLower.includes("hydrochloric")) {
+      if (
+        formLower === "hcl" ||
+        idLower === "hcl" ||
+        idLower === "hydrochloric_acid" ||
+        nameLower === "hydrochloric acid"
+      ) {
         add("hcl");
         add("hydrochloric_acid");
         add("hydrochloric-acid");
       }
-      if (formLower === "h2so4" || idLower.includes("sulfuric") || nameLower.includes("sulfuric")) {
+      if (
+        formLower === "h2so4" ||
+        idLower === "h2so4" ||
+        idLower === "sulfuric_acid" ||
+        nameLower === "sulfuric acid"
+      ) {
         add("h2so4");
         add("sulfuric_acid");
         add("sulfuric-acid");
       }
-      if (formLower === "hno3" || idLower.includes("nitric") || nameLower.includes("nitric")) {
+      if (
+        formLower === "hno3" ||
+        idLower === "hno3" ||
+        idLower === "nitric_acid" ||
+        nameLower === "nitric acid"
+      ) {
         add("hno3");
         add("nitric_acid");
         add("nitric-acid");
@@ -782,10 +840,22 @@ export class SimulationService {
     try {
       const candidateKeys = this.generateCandidateReactantKeys(inputs);
       if (candidateKeys.length > 0) {
-        const matched = await prisma.reaction.findFirst({
+        const matches = await prisma.reaction.findMany({
           where: { reactantKey: { in: candidateKeys } },
         });
-        if (matched) {
+        for (const matched of matches) {
+          const cond = (matched.conditions as any) || {};
+          if (conditions.temperatureC !== undefined) {
+            if (cond.temperatureMinC !== undefined && conditions.temperatureC < cond.temperatureMinC) {
+              continue;
+            }
+            if (cond.temperatureMaxC !== undefined && conditions.temperatureC > cond.temperatureMaxC) {
+              continue;
+            }
+          }
+          if (conditions.solvent && cond.solvent && conditions.solvent.toLowerCase() !== cond.solvent.toLowerCase()) {
+            continue;
+          }
           return this.buildResolutionFromDbRow(matched, inputs, conditions);
         }
       }
