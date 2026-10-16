@@ -96,7 +96,7 @@ export function ReactionControls({
       clearContainer(activeContainer.id);
       setConditions({
         temperatureC: rx.temperatureMinC !== undefined && rx.temperatureMinC > 25 ? rx.temperatureMinC : 25,
-        solvent: rx.solvent ?? "water",
+        solvent: rx.solvent || undefined,
       });
 
       for (const r of rx.reactants) {
@@ -383,7 +383,12 @@ export function ReactionControls({
         </label>
         <label>
           Solvent
-          <input type="text" value={conditions.solvent ?? ""} onChange={(e) => setConditions({ solvent: e.target.value })} placeholder="water" />
+          <input
+            type="text"
+            value={conditions.solvent ?? ""}
+            onChange={(e) => setConditions({ solvent: e.target.value.trim() ? e.target.value : undefined })}
+            placeholder="None (neat)"
+          />
         </label>
       </div>
 

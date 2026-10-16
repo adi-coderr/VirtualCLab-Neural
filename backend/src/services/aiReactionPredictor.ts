@@ -642,7 +642,7 @@ export class AiReactionPredictor {
     if (condParts.length > 0) {
       parts.push(`Reaction Conditions:\n${condParts.join("\n")}`);
     } else {
-      parts.push("Reaction Conditions: Standard ambient laboratory conditions (25 °C, 1 atm, aqueous solution if applicable).");
+      parts.push("Reaction Conditions: Standard ambient laboratory conditions (25 °C, 1 atm, neat / direct reactant contact unless a solvent is explicitly specified).");
     }
 
     parts.push(
@@ -707,7 +707,7 @@ export class AiReactionPredictor {
       `Target Reactants: ${reactantStr}`,
       `Candidate Reaction Equation: ${mlResolution.balancedEquation}`,
       `Candidate Products: ${productStr}`,
-      `Conditions: Temperature ${conditions.temperatureC ?? 25}°C, Pressure ${conditions.pressureAtm ?? 1} atm, Solvent: ${conditions.solvent || "aqueous"}`,
+      `Conditions: Temperature ${conditions.temperatureC ?? 25}°C, Pressure ${conditions.pressureAtm ?? 1} atm${conditions.solvent ? `, Solvent: ${conditions.solvent}` : ", Solvent: None (neat / direct reactant mixture)"}`,
       ``,
       `YOUR INSTRUCTIONS:`,
       `1. REACTION STATUS & EQUATION DETERMINATION:`,
