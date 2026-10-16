@@ -1623,7 +1623,7 @@ const INITIAL_REACTIONS: SeedReaction[] = [
   },
   {
     id: "al-fe2o3-thermite",
-    name: "Thermite reaction between aluminium and iron(III) oxide",
+    name: "Thermite aluminothermic reduction of iron(III) oxide",
     reactionType: "redox_other",
     reactants: [
       { chemicalId: "al", coefficient: 2 },
@@ -1637,13 +1637,23 @@ const INITIAL_REACTIONS: SeedReaction[] = [
     confidenceScore: 0.99,
     energyClassification: "exothermic",
     enthalpyKjPerMol: -851.5,
-    temperatureMinC: 500,
     experimentalStatus: "experimentally_verified",
     observableEffects: [
-      { type: "temperature_increase", description: "Dazzling blinding incandescence producing glowing liquid molten iron (temperatures > 2500 °C) and white alumina slag." },
+      {
+        type: "temperature_increase",
+        description: "Blinding white-hot pyrotechnic incandescence reaching ~2500 °C, liquefying iron into a white-hot puddle underneath molten alumina slag.",
+      },
+      {
+        type: "phase_change",
+        description: "Solid iron(III) oxide and aluminum metal violently reduce and fuse into incandescent liquid molten iron and crystalline corundum slag.",
+      },
+      {
+        type: "light_emission",
+        description: "Dazzling brilliant flash with incandescent shower of sparks, emitting white-hot thermal radiation.",
+      },
     ],
     source: TEXTBOOK_SOURCE,
-    safetyNotes: "Extreme thermal hazard; produces white-hot molten metal; never conduct near moisture, glass, or flammable materials.",
+    safetyNotes: "Extreme thermal hazard (>2500 °C); molten iron melts through steel and concrete; never conduct near moisture, glass, or flammable materials.",
   },
   {
     id: "cl2-kbr-displacement",
@@ -3442,11 +3452,11 @@ const INITIAL_REACTIONS: SeedReaction[] = [
     confidenceScore: 0.99,
     energyClassification: "exothermic",
     enthalpyKjPerMol: -92.2,
-    temperatureMinC: 400,
-    temperatureMaxC: 550,
+    catalystChemicalId: "fe",
     experimentalStatus: "experimentally_verified",
     observableEffects: [
-      { type: "temperature_increase", description: "Exothermic catalytic conversion of atmospheric nitrogen and hydrogen into pungent gaseous ammonia." },
+      { type: "temperature_increase", description: "Exothermic catalytic conversion of atmospheric nitrogen and hydrogen into pungent gaseous ammonia (ΔH ≈ -92 kJ/mol)." },
+      { type: "gas_evolution", description: "Industrial high-pressure equilibrium (150–250 atm, 400–450 °C over enriched Fe catalyst). Demonstrates Le Chatelier principle: equilibrium yield rises with elevated pressure (4 mol gas → 2 mol gas) and falls with higher temperature, illustrating the fundamental rate vs yield optimization trade-off.", relatedChemicalId: "ammonia" },
     ],
     source: TEXTBOOK_SOURCE,
     safetyNotes: "Requires 15-25 MPa pressure over enriched iron catalyst in specialized reactors.",
@@ -4023,13 +4033,14 @@ const INITIAL_REACTIONS: SeedReaction[] = [
     confidenceScore: 0.99,
     energyClassification: "exothermic",
     enthalpyKjPerMol: -340.0,
-    temperatureMinC: 50,
-    temperatureMaxC: 80,
+    temperatureMinC: 15,
+    temperatureMaxC: 95,
     solvent: "water",
     experimentalStatus: "experimentally_verified",
     observableEffects: [
-      { type: "color_change", description: "Intense purple permanganate color decolors to water-clear as Mn(II) forms.", colorFrom: "#4B0082", colorTo: "#FFFFFF", relatedChemicalId: "kmno4" },
-      { type: "gas_evolution", description: "Carbon dioxide gas bubbles gently out of solution during warm oxidation.", relatedChemicalId: "co2" },
+      { type: "color_change", description: "Intense purple permanganate color slowly fades initially, then accelerates rapidly and decolorizes to clear and colorless as generated Mn²⁺ builds up as an autocatalyst.", colorFrom: "#4B0082", colorTo: "#FFFFFF", relatedChemicalId: "kmno4" },
+      { type: "gas_evolution", description: "Carbon dioxide gas bubbles rapidly out of solution during warm oxidation.", relatedChemicalId: "co2" },
+      { type: "temperature_increase", description: "Exothermic redox reaction releasing heat." },
     ],
     source: TEXTBOOK_SOURCE,
     safetyNotes: "Oxalic acid is toxic and caustic to mucous membranes; wear eye and skin protection.",
@@ -4118,7 +4129,8 @@ const INITIAL_REACTIONS: SeedReaction[] = [
     solvent: "water",
     experimentalStatus: "experimentally_verified",
     observableEffects: [
-      { type: "color_change", description: "Bright orange dichromate solution is reduced to dark forest-green chromic sulfate with faint vinegar odor.", colorFrom: "#FF8C00", colorTo: "#2E8B57", relatedChemicalId: "cr2-so4-3" },
+      { type: "color_change", description: "Bright orange dichromate solution is reduced to dark forest-green chromic sulfate; pungent fruity odor of intermediate acetaldehyde forms initially before excess oxidant completes conversion to acetic acid.", colorFrom: "#FF8C00", colorTo: "#2E8B57", relatedChemicalId: "cr2-so4-3" },
+      { type: "temperature_increase", description: "Warm exothermic oxidation of alcohol by acidic hexavalent chromium." },
     ],
     source: TEXTBOOK_SOURCE,
     safetyNotes: "Sulfuric acid and dichromate mixture is a corrosive, toxic oxidant.",
@@ -4195,11 +4207,12 @@ const INITIAL_REACTIONS: SeedReaction[] = [
     enthalpyKjPerMol: -150.0,
     temperatureMinC: 10,
     temperatureMaxC: 90,
-    solvent: "water",
+    solvent: "concentrated",
     experimentalStatus: "experimentally_verified",
     observableEffects: [
-      { type: "gas_evolution", description: "Fierce boiling effervescence releasing dense, choking reddish-brown nitrogen dioxide fumes.", relatedChemicalId: "no2" },
+      { type: "gas_evolution", description: "Fierce boiling effervescence releasing dense, choking reddish-brown nitrogen dioxide (NO2) fumes immediately upon contact.", relatedChemicalId: "no2" },
       { type: "color_change", description: "Acid turns emerald green then deep sapphire blue as copper(II) nitrate forms.", colorFrom: "#B87333", colorTo: "#0077BE", relatedChemicalId: "cu-no3-2" },
+      { type: "temperature_increase", description: "Intensely exothermic oxidation generating significant heat." },
     ],
     source: TEXTBOOK_SOURCE,
     safetyNotes: "NO2 is intensely toxic and causes delayed pulmonary edema; MUST be carried out in a certified fume hood.",
@@ -4829,8 +4842,6 @@ const INITIAL_REACTIONS: SeedReaction[] = [
     confidenceScore: 0.99,
     energyClassification: "exothermic",
     enthalpyKjPerMol: -810.0,
-    temperatureMinC: 400,
-    temperatureMaxC: 1500,
     experimentalStatus: "experimentally_verified",
     observableEffects: [
       { type: "temperature_increase", description: "Brilliant, dazzling white flame continues burning fiercely inside a carbon dioxide atmosphere." },
@@ -4917,10 +4928,14 @@ export function enrichReactionsWithTemperatureData(reactions: SeedReaction[]): S
   });
 }
 
+import { REACTIONS_CURATED } from "./reactionsCurated.js";
+
 export const SEED_REACTIONS: SeedReaction[] = enrichReactionsWithTemperatureData([
   ...INITIAL_REACTIONS,
   ...REACTIONS_BATCH_4,
+  ...REACTIONS_CURATED,
 ]);
+
 
 
 

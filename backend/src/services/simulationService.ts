@@ -182,7 +182,7 @@ export class SimulationService {
           isRegistered: false,
         };
       }
-    } catch {}
+    } catch { }
     const est = estimateFormulaAndComposition(clean);
     return {
       chemicalId: lower.replace(/[^a-z0-9]/g, "_"),
@@ -226,15 +226,15 @@ export class SimulationService {
       : (mlRes.productAnalyses && mlRes.productAnalyses.length > 0
         ? mlRes.productAnalyses
         : mlRes.predictedProducts.map((p) => ({
-            formula: p,
-            name: p,
-            smiles: p,
-            molarMass: 100,
-            physicalState: "liquid" as const,
-            appearance: "clear liquid",
-            chemicalClass: "organic_compound",
-            functionalGroups: [],
-          })));
+          formula: p,
+          name: p,
+          smiles: p,
+          molarMass: 100,
+          physicalState: "liquid" as const,
+          appearance: "clear liquid",
+          chemicalClass: "organic_compound",
+          functionalGroups: [],
+        })));
 
     const products: ResolvedSpecies[] = rawProducts.map((p, idx) => {
       const chemId = p.formula ? p.formula.toLowerCase().replace(/[^a-z0-9]/g, "_") : `prod_${idx}`;
@@ -870,7 +870,7 @@ export class SimulationService {
         if (localResult.resolution.status !== "UNSUPPORTED") {
           return localResult;
         }
-      } catch {}
+      } catch { }
     }
 
     // If inputs have >2 reactants and neither database has an exact full match:
@@ -1330,112 +1330,112 @@ export class SimulationService {
       const mlInput = clean.replace(/\s*\+\s*/g, ".");
       const mlRes = await localMlModelService.predict({ input: mlInput, numBeams: 3, maxLength: 128 });
 
-        const hasValidProducts = !!(mlRes && mlRes.predictedProducts && mlRes.predictedProducts.length > 0);
-        const isEcho = isReactionEcho(mlTokens, mlRes?.predictedProducts || []);
+      const hasValidProducts = !!(mlRes && mlRes.predictedProducts && mlRes.predictedProducts.length > 0);
+      const isEcho = isReactionEcho(mlTokens, mlRes?.predictedProducts || []);
 
-        const mockReactants: ResolvedSpecies[] = mlTokens.map((tok) => this.resolveSpecies(tok));
+      const mockReactants: ResolvedSpecies[] = mlTokens.map((tok) => this.resolveSpecies(tok));
 
-        const candidateProducts: ResolvedSpecies[] = (mlRes?.predictedProducts || []).map((p, idx) => {
-          const profile = mlRes?.productAnalyses?.[idx];
-          return {
-            chemicalId: (profile?.formula || p).toLowerCase().replace(/[^a-z0-9]/g, "_"),
-            formula: profile?.formula || p,
-            commonName: profile?.name || p,
-            coefficient: 1,
-            isRegistered: true,
-          };
+      const candidateProducts: ResolvedSpecies[] = (mlRes?.predictedProducts || []).map((p, idx) => {
+        const profile = mlRes?.productAnalyses?.[idx];
+        return {
+          chemicalId: (profile?.formula || p).toLowerCase().replace(/[^a-z0-9]/g, "_"),
+          formula: profile?.formula || p,
+          commonName: profile?.name || p,
+          coefficient: 1,
+          isRegistered: true,
+        };
+      });
+
+      const audit: ReactionAuditReport = hasValidProducts && !isEcho
+        ? auditReactionChemistry(mockReactants, candidateProducts)
+        : { passed: false, isInertAlkanes: false, failureReason: "No valid products or echo detected." };
+
+      if (audit.passed) {
+        logger.info("Priority 2: Valid prediction obtained from Local ML Model in predictAny", {
+          input: mlInput,
+          equation: audit.balancedEquation || mlRes.predictedEquation,
+          latencyMs: mlRes.latencyMs,
         });
 
-        const audit: ReactionAuditReport = hasValidProducts && !isEcho
-          ? auditReactionChemistry(mockReactants, candidateProducts)
-          : { passed: false, isInertAlkanes: false, failureReason: "No valid products or echo detected." };
+        const mlResolution = this.buildResolutionFromMl(
+          mlRes,
+          audit.balancedReactants || mockReactants,
+          conditions,
+          audit.balancedProducts,
+          audit.balancedEquation
+        );
 
-        if (audit.passed) {
-          logger.info("Priority 2: Valid prediction obtained from Local ML Model in predictAny", {
-            input: mlInput,
-            equation: audit.balancedEquation || mlRes.predictedEquation,
-            latencyMs: mlRes.latencyMs,
-          });
-
-          const mlResolution = this.buildResolutionFromMl(
-            mlRes,
-            audit.balancedReactants || mockReactants,
+        // Recheck with Integrated API to verify and add additional internet/literature details (if needed)
+        let finalResolution = mlResolution;
+        try {
+          const enrichedResolution = await aiReactionPredictor.recheckAndEnrich(
+            mlResolution,
             conditions,
-            audit.balancedProducts,
-            audit.balancedEquation
+            options
           );
-
-          // Recheck with Integrated API to verify and add additional internet/literature details (if needed)
-          let finalResolution = mlResolution;
-          try {
-            const enrichedResolution = await aiReactionPredictor.recheckAndEnrich(
-              mlResolution,
-              conditions,
-              options
-            );
-            if (enrichedResolution) {
-              finalResolution = enrichedResolution;
-              logger.info("Integrated API successfully rechecked reaction in predictAny", {
-                equation: finalResolution.balancedEquation,
-                status: finalResolution.status,
-              });
-            }
-          } catch (apiErr: any) {
-            logger.info("Integrated API unable to recheck in predictAny (using ML model predicted output directly as final output)", {
-              error: apiErr.message,
+          if (enrichedResolution) {
+            finalResolution = enrichedResolution;
+            logger.info("Integrated API successfully rechecked reaction in predictAny", {
+              equation: finalResolution.balancedEquation,
+              status: finalResolution.status,
             });
-            // Fallback to pure ML predicted output as final output
           }
-
-          if (finalResolution.status !== "REACTION") {
-            return {
-              simulationResult: { resolution: finalResolution },
-              source: "ai_predicted",
-            };
-          }
-
-          const actualInputs = this.parseOrBuildInputsForPredict(
-            clean,
-            finalResolution.reactants
-          );
-
-          const stoichResult = this.computeStoichiometryForResolution(
-            finalResolution,
-            actualInputs,
-            conditions
-          );
-
-          mlSimResult = {
-            resolution: stoichResult.resolution,
-            stoichiometry: stoichResult.stoichiometry,
-            calorimetry: stoichResult.calorimetry,
-            mlPrediction: {
-              modelName: mlRes.modelName,
-              rawOutput: mlRes.rawOutput,
-              cleanedOutput: mlRes.cleanedOutput,
-              predictedEquation: mlRes.predictedEquation,
-              predictedProducts: mlRes.predictedProducts,
-              productAnalyses: mlRes.productAnalyses,
-              reactionType: mlRes.reactionType,
-              atomEconomyPercent: mlRes.atomEconomyPercent,
-              expectedByproducts: mlRes.expectedByproducts,
-              mechanismNotes: mlRes.mechanismNotes,
-              latencyMs: mlRes.latencyMs,
-              trainingDataset: mlRes.trainingDataset,
-              device: mlRes.device,
-              beamsUsed: mlRes.beamsUsed,
-            },
-          };
-        } else {
-          logger.info("Local ML model prediction rejected by chemical audit in predictAny, falling back to Integrated API", {
-            input: mlInput,
-            reason: audit.failureReason,
-            products: mlRes?.predictedProducts,
+        } catch (apiErr: any) {
+          logger.info("Integrated API unable to recheck in predictAny (using ML model predicted output directly as final output)", {
+            error: apiErr.message,
           });
+          // Fallback to pure ML predicted output as final output
         }
-      } catch (err: any) {
-        logger.debug("Local ML model skipped in predictAny, falling back to Integrated API", { error: err.message });
+
+        if (finalResolution.status !== "REACTION") {
+          return {
+            simulationResult: { resolution: finalResolution },
+            source: "ai_predicted",
+          };
+        }
+
+        const actualInputs = this.parseOrBuildInputsForPredict(
+          clean,
+          finalResolution.reactants
+        );
+
+        const stoichResult = this.computeStoichiometryForResolution(
+          finalResolution,
+          actualInputs,
+          conditions
+        );
+
+        mlSimResult = {
+          resolution: stoichResult.resolution,
+          stoichiometry: stoichResult.stoichiometry,
+          calorimetry: stoichResult.calorimetry,
+          mlPrediction: {
+            modelName: mlRes.modelName,
+            rawOutput: mlRes.rawOutput,
+            cleanedOutput: mlRes.cleanedOutput,
+            predictedEquation: mlRes.predictedEquation,
+            predictedProducts: mlRes.predictedProducts,
+            productAnalyses: mlRes.productAnalyses,
+            reactionType: mlRes.reactionType,
+            atomEconomyPercent: mlRes.atomEconomyPercent,
+            expectedByproducts: mlRes.expectedByproducts,
+            mechanismNotes: mlRes.mechanismNotes,
+            latencyMs: mlRes.latencyMs,
+            trainingDataset: mlRes.trainingDataset,
+            device: mlRes.device,
+            beamsUsed: mlRes.beamsUsed,
+          },
+        };
+      } else {
+        logger.info("Local ML model prediction rejected by chemical audit in predictAny, falling back to Integrated API", {
+          input: mlInput,
+          reason: audit.failureReason,
+          products: mlRes?.predictedProducts,
+        });
       }
+    } catch (err: any) {
+      logger.debug("Local ML model skipped in predictAny, falling back to Integrated API", { error: err.message });
+    }
 
     if (mlSimResult) {
       return {

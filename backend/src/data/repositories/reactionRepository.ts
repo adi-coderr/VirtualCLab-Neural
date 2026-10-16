@@ -21,7 +21,7 @@ interface ReactionRow {
 }
 
 export class ReactionRepository {
-  constructor(private readonly db: Database.Database) {}
+  constructor(private readonly db: Database.Database) { }
 
   private getReactants(reactionId: string) {
     return (

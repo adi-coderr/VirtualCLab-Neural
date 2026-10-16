@@ -186,16 +186,16 @@ export function GlasswareVessel({
         )}
         {(equipmentType === "beaker" ||
           !["erlenmeyer_flask", "test_tube", "graduated_cylinder", "burette"].includes(equipmentType)) && (
-          <BeakerSvg
-            fillPercent={clampedFill}
-            hasContents={hasContents}
-            hasLiquid={hasLiquid}
-            solids={phases.solids}
-            gradId={gradId}
-            containerId={containerId}
-            capacity={effectiveCapacity}
-          />
-        )}
+            <BeakerSvg
+              fillPercent={clampedFill}
+              hasContents={hasContents}
+              hasLiquid={hasLiquid}
+              solids={phases.solids}
+              gradId={gradId}
+              containerId={containerId}
+              capacity={effectiveCapacity}
+            />
+          )}
       </svg>
     </div>
   );
