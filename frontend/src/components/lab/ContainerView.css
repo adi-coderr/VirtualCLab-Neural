@@ -124,6 +124,20 @@
   text-overflow: ellipsis;
 }
 
+.container-view__capacity-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--azure-700);
+  background: var(--azure-50);
+  border: 1px solid var(--azure-200);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .container-view--compact .container-view__name {
   font-size: var(--text-xs);
 }

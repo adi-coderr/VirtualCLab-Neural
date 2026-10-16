@@ -1,7 +1,7 @@
 import type { Container } from "../../types/experiment";
 import { formatFormula } from "../../utils/formatFormula";
 import { calculateMixtureColor, getChemicalColor } from "../../utils/chemicalColorMixer";
-import { getPhaseLabel } from "../../utils/phaseUtils";
+import { getAdaptiveCapacity, getPhaseLabel } from "../../utils/phaseUtils";
 import { useLabStore } from "../../state/experimentStore";
 import { GlasswareVessel } from "./GlasswareVessel";
 import "./ContainerView.css";
@@ -15,24 +15,8 @@ function mixLiquidColor(container: Container): string {
 
 function computeFillPercent(container: Container): number {
   if (container.contents.length === 0) return 0;
-
-  const totalMl = container.contents.reduce((sum, item) => {
-    if (item.unit === "mL") return sum + item.amount;
-    if (item.unit === "L") return sum + item.amount * 1000;
-    if (item.unit === "g" || item.unit === "mg") return sum + (item.unit === "g" ? item.amount : item.amount / 1000);
-    return sum + 20;
-  }, 0);
-
-  const capacityMap: Record<string, number> = {
-    beaker: 250,
-    test_tube: 20,
-    erlenmeyer_flask: 250,
-    graduated_cylinder: 100,
-    burette: 50,
-  };
-
-  const capacity = capacityMap[container.equipmentType] ?? 250;
-  return Math.min(88, Math.max(16, (totalMl / capacity) * 75 + 10));
+  const { capacity, totalVolumeMl } = getAdaptiveCapacity(container.equipmentType, container.contents);
+  return Math.min(100, Math.max(10, (totalVolumeMl / capacity) * 100));
 }
 
 export function ContainerView({
@@ -58,6 +42,7 @@ export function ContainerView({
   const updateContentConcentration = useLabStore((s) => s.updateContentConcentration);
   const removeContent = useLabStore((s) => s.removeContent);
 
+  const { capacity } = getAdaptiveCapacity(container.equipmentType, container.contents);
   const liquidColor = mixLiquidColor(container);
   const fillPercent = computeFillPercent(container);
   const hasContents = container.contents.length > 0;
@@ -83,6 +68,9 @@ export function ContainerView({
         <div className="container-view__meta">
           {isActive && <span className="container-view__active-badge">Active</span>}
           <span className="container-view__name">{container.name}</span>
+          <span className="container-view__capacity-badge" title={`Adaptive rated capacity: ${capacity} mL`}>
+            {capacity >= 1000 ? `${capacity / 1000}L` : `${capacity} mL`}
+          </span>
         </div>
 
         <div className="container-view__actions">
@@ -125,6 +113,7 @@ export function ContainerView({
           temperatureC={container.temperatureC}
           hasContents={hasContents}
           contents={container.contents}
+          capacity={capacity}
         />
       </div>
 

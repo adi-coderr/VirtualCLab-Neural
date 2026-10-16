@@ -12,6 +12,7 @@ interface GlasswareVesselProps {
   temperatureC: number;
   hasContents: boolean;
   contents?: ContainerContent[];
+  capacity?: number;
 }
 
 export function GlasswareVessel({
@@ -22,6 +23,7 @@ export function GlasswareVessel({
   temperatureC,
   hasContents,
   contents,
+  capacity,
 }: GlasswareVesselProps) {
   const isHot = temperatureC >= 45;
   const isBoiling = temperatureC >= 80;
@@ -29,6 +31,7 @@ export function GlasswareVessel({
 
   // Multi-phase state analysis (liquid, powder, crystal, solid metal)
   const phases = analyzeVesselPhases(contents || [], equipmentType, liquidColor);
+  const effectiveCapacity = capacity || phases.capacity;
   const effectiveLiquidFill = contents && contents.length > 0 ? phases.liquidFillPercent : fillPercent;
   const effectiveLiquidColor = phases.liquidColor || liquidColor;
   const clampedFill = Math.max(0, Math.min(100, effectiveLiquidFill));
@@ -145,6 +148,7 @@ export function GlasswareVessel({
             solids={phases.solids}
             gradId={gradId}
             containerId={containerId}
+            capacity={effectiveCapacity}
           />
         )}
         {equipmentType === "test_tube" && (
@@ -155,6 +159,7 @@ export function GlasswareVessel({
             solids={phases.solids}
             gradId={gradId}
             containerId={containerId}
+            capacity={effectiveCapacity}
           />
         )}
         {equipmentType === "graduated_cylinder" && (
@@ -165,6 +170,7 @@ export function GlasswareVessel({
             solids={phases.solids}
             gradId={gradId}
             containerId={containerId}
+            capacity={effectiveCapacity}
           />
         )}
         {equipmentType === "burette" && (
@@ -175,6 +181,7 @@ export function GlasswareVessel({
             solids={phases.solids}
             gradId={gradId}
             containerId={containerId}
+            capacity={effectiveCapacity}
           />
         )}
         {(equipmentType === "beaker" ||
@@ -186,6 +193,7 @@ export function GlasswareVessel({
             solids={phases.solids}
             gradId={gradId}
             containerId={containerId}
+            capacity={effectiveCapacity}
           />
         )}
       </svg>
@@ -200,6 +208,7 @@ interface VesselSvgProps {
   solids?: VesselSolid[];
   gradId?: string;
   containerId?: string;
+  capacity?: number;
 }
 
 /* =========================================================================
@@ -212,10 +221,34 @@ function BeakerSvg({
   solids,
   gradId = "liq-grad-beaker",
   containerId,
+  capacity = 100,
 }: VesselSvgProps) {
-  // Height in beaker: from interior floor y = 179 to max liquid level y = 35 = 144px span
-  const liquidHeight = (144 * fillPercent) / 100;
-  const liquidY = 179 - liquidHeight;
+  // Continuous piece-wise linear mapping between floor y = 179 and Level 5 mark y = 58
+  // 0% -> 179 (floor)
+  // 20% -> 172 (Level 1 mark)
+  // 40% -> 148 (Level 2 mark)
+  // 60% -> 118 (Level 3 mark)
+  // 80% -> 88 (Level 4 mark)
+  // 100% -> 58 (Level 5 mark)
+  // >100% -> headroom up to y = 35 (safe max rim height)
+  const p = Math.max(0, Math.min(115, fillPercent));
+  let liquidY = 179;
+  if (p <= 0) liquidY = 179;
+  else if (p <= 20) liquidY = 179 - (p / 20) * (179 - 172);
+  else if (p <= 40) liquidY = 172 - ((p - 20) / 20) * (172 - 148);
+  else if (p <= 60) liquidY = 148 - ((p - 40) / 20) * (148 - 118);
+  else if (p <= 80) liquidY = 118 - ((p - 60) / 20) * (118 - 88);
+  else if (p <= 100) liquidY = 88 - ((p - 80) / 20) * (88 - 58);
+  else liquidY = 58 - ((p - 100) / 15) * (58 - 35);
+  const liquidHeight = Math.max(0, 179 - liquidY);
+
+  const val100 = capacity;
+  const val80 = Math.round(capacity * 0.8);
+  const val60 = Math.round(capacity * 0.6);
+  const val40 = Math.round(capacity * 0.4);
+  const val20 = Math.round(capacity * 0.2);
+  const isLarge = capacity >= 1000;
+  const fontSize = isLarge ? "7.5" : "8.5";
 
   // Real-life buoyant bubble distribution across fluid depth (matching reference photo)
   const bubbleList = [
@@ -362,46 +395,46 @@ function BeakerSvg({
 
       {/* 5. Lab-Grade Black Ceramic Graduation Markings */}
       <g className="glass-graduations" stroke="#0f172a" strokeWidth="1.4" opacity="0.88">
-        {/* 100 ml Mark */}
+        {/* 100% Capacity Mark */}
         <line x1="104" y1="58" x2="133" y2="58" strokeWidth="1.8" />
-        <text x="98" y="61.5" fontSize="8.5" fontFamily="'Inter', system-ui, sans-serif" fontWeight="700" textAnchor="end" fill="#0f172a" stroke="none">
-          100
+        <text x="98" y="61.5" fontSize={fontSize} fontFamily="'Inter', system-ui, sans-serif" fontWeight="700" textAnchor="end" fill="#0f172a" stroke="none">
+          {val100}
         </text>
 
-        {/* 90 ml Sub-tick */}
+        {/* 90% Sub-tick */}
         <line x1="120" y1="73" x2="133" y2="73" strokeWidth="1.1" opacity="0.75" />
 
-        {/* 80 ml Mark */}
+        {/* 80% Mark */}
         <line x1="108" y1="88" x2="133" y2="88" strokeWidth="1.6" />
-        <text x="102" y="91.5" fontSize="8.5" fontFamily="'Inter', system-ui, sans-serif" fontWeight="700" textAnchor="end" fill="#0f172a" stroke="none">
-          80
+        <text x="102" y="91.5" fontSize={fontSize} fontFamily="'Inter', system-ui, sans-serif" fontWeight="700" textAnchor="end" fill="#0f172a" stroke="none">
+          {val80}
         </text>
 
-        {/* 70 ml Sub-tick */}
+        {/* 70% Sub-tick */}
         <line x1="120" y1="103" x2="133" y2="103" strokeWidth="1.1" opacity="0.75" />
 
-        {/* 60 ml Mark */}
+        {/* 60% Mark */}
         <line x1="108" y1="118" x2="133" y2="118" strokeWidth="1.6" />
-        <text x="102" y="121.5" fontSize="8.5" fontFamily="'Inter', system-ui, sans-serif" fontWeight="700" textAnchor="end" fill="#0f172a" stroke="none">
-          60
+        <text x="102" y="121.5" fontSize={fontSize} fontFamily="'Inter', system-ui, sans-serif" fontWeight="700" textAnchor="end" fill="#0f172a" stroke="none">
+          {val60}
         </text>
 
-        {/* 50 ml Sub-tick */}
+        {/* 50% Sub-tick */}
         <line x1="120" y1="133" x2="133" y2="133" strokeWidth="1.1" opacity="0.75" />
 
-        {/* 40 ml Mark */}
+        {/* 40% Mark */}
         <line x1="108" y1="148" x2="133" y2="148" strokeWidth="1.6" />
-        <text x="102" y="151.5" fontSize="8.5" fontFamily="'Inter', system-ui, sans-serif" fontWeight="700" textAnchor="end" fill="#0f172a" stroke="none">
-          40
+        <text x="102" y="151.5" fontSize={fontSize} fontFamily="'Inter', system-ui, sans-serif" fontWeight="700" textAnchor="end" fill="#0f172a" stroke="none">
+          {val40}
         </text>
 
-        {/* 30 ml Sub-tick */}
+        {/* 30% Sub-tick */}
         <line x1="120" y1="160" x2="133" y2="160" strokeWidth="1.1" opacity="0.75" />
 
-        {/* 20 ml Mark */}
+        {/* 20% Mark */}
         <line x1="112" y1="172" x2="133" y2="172" strokeWidth="1.5" />
-        <text x="106" y="175" fontSize="8" fontFamily="'Inter', system-ui, sans-serif" fontWeight="700" textAnchor="end" fill="#0f172a" stroke="none">
-          20
+        <text x="106" y="175" fontSize={isLarge ? "7" : "8"} fontFamily="'Inter', system-ui, sans-serif" fontWeight="700" textAnchor="end" fill="#0f172a" stroke="none">
+          {val20}
         </text>
       </g>
 
@@ -553,7 +586,14 @@ function ErlenmeyerSvg({
   solids,
   gradId = "liq-grad-erlenmeyer_flask",
   containerId,
+  capacity = 250,
 }: VesselSvgProps) {
+  const isLarge = capacity >= 1000;
+  const val4 = Math.round(capacity * 0.8);
+  const val3 = Math.round(capacity * 0.6);
+  const val2 = Math.round(capacity * 0.4);
+  const val1 = Math.round(capacity * 0.2);
+
   // Height from interior base y = 179 to neck junction y = 54 = 125px span
   const liquidHeight = (125 * fillPercent) / 100;
   const liquidY = 179 - liquidHeight;
@@ -696,26 +736,26 @@ function ErlenmeyerSvg({
         </g>
       )}
 
-      {/* 5. Lab-Grade Black Ceramic Graduation Markings */}
+      {/* 5. Lab-Grade Black Ceramic Graduation Markings & Watermark */}
       <g className="glass-graduations" stroke="#0f172a" strokeWidth="1.4" opacity="0.88">
         <line x1="94" y1="105" x2="108" y2="105" strokeWidth="1.8" />
-        <text x="90" y="108.5" fontSize="8" fontFamily="'Inter', system-ui, sans-serif" fontWeight="700" textAnchor="end" fill="#0f172a" stroke="none">
-          200
+        <text x="90" y="108.5" fontSize={isLarge ? "7" : "8"} fontFamily="'Inter', system-ui, sans-serif" fontWeight="700" textAnchor="end" fill="#0f172a" stroke="none">
+          {val4}
         </text>
 
         <line x1="102" y1="130" x2="118" y2="130" strokeWidth="1.6" />
-        <text x="98" y="133.5" fontSize="8" fontFamily="'Inter', system-ui, sans-serif" fontWeight="700" textAnchor="end" fill="#0f172a" stroke="none">
-          150
+        <text x="98" y="133.5" fontSize={isLarge ? "7" : "8"} fontFamily="'Inter', system-ui, sans-serif" fontWeight="700" textAnchor="end" fill="#0f172a" stroke="none">
+          {val3}
         </text>
 
         <line x1="110" y1="155" x2="128" y2="155" strokeWidth="1.6" />
-        <text x="106" y="158.5" fontSize="8" fontFamily="'Inter', system-ui, sans-serif" fontWeight="700" textAnchor="end" fill="#0f172a" stroke="none">
-          100
+        <text x="106" y="158.5" fontSize={isLarge ? "7" : "8"} fontFamily="'Inter', system-ui, sans-serif" fontWeight="700" textAnchor="end" fill="#0f172a" stroke="none">
+          {val2}
         </text>
 
         <line x1="118" y1="172" x2="134" y2="172" strokeWidth="1.5" />
-        <text x="114" y="175" fontSize="7.5" fontFamily="'Inter', system-ui, sans-serif" fontWeight="700" textAnchor="end" fill="#0f172a" stroke="none">
-          50
+        <text x="114" y="175" fontSize={isLarge ? "6.5" : "7.5"} fontFamily="'Inter', system-ui, sans-serif" fontWeight="700" textAnchor="end" fill="#0f172a" stroke="none">
+          {val1}
         </text>
       </g>
 
@@ -840,7 +880,12 @@ function TestTubeSvg({
   solids,
   gradId = "liq-grad-test_tube",
   containerId,
+  capacity = 20,
 }: VesselSvgProps) {
+  const val3 = Math.round(capacity * 0.75);
+  const val2 = Math.round(capacity * 0.5);
+  const val1 = Math.round(capacity * 0.25);
+
   // Height from interior bottom curve y = 178 to top y = 28 = 150px span
   const liquidHeight = (150 * fillPercent) / 100;
   const liquidY = 178 - liquidHeight;
@@ -978,21 +1023,21 @@ function TestTubeSvg({
       <g className="glass-graduations" stroke="#0f172a" strokeWidth="1.3" opacity="0.88">
         <line x1="88" y1="65" x2="98" y2="65" strokeWidth="1.6" />
         <text x="85" y="68" fontSize="7" fontFamily="'Inter', system-ui, sans-serif" fontWeight="700" textAnchor="end" fill="#0f172a" stroke="none">
-          15ml
+          {val3}ml
         </text>
 
         <line x1="91" y1="85" x2="98" y2="85" strokeWidth="1.0" opacity="0.75" />
 
         <line x1="88" y1="105" x2="98" y2="105" strokeWidth="1.6" />
         <text x="85" y="108" fontSize="7" fontFamily="'Inter', system-ui, sans-serif" fontWeight="700" textAnchor="end" fill="#0f172a" stroke="none">
-          10
+          {val2}
         </text>
 
         <line x1="91" y1="125" x2="98" y2="125" strokeWidth="1.0" opacity="0.75" />
 
         <line x1="88" y1="145" x2="98" y2="145" strokeWidth="1.6" />
         <text x="85" y="148" fontSize="7" fontFamily="'Inter', system-ui, sans-serif" fontWeight="700" textAnchor="end" fill="#0f172a" stroke="none">
-          5
+          {val1}
         </text>
       </g>
 
@@ -1088,6 +1133,7 @@ function GraduatedCylinderSvg({
   solids,
   gradId = "liq-grad-graduated_cylinder",
   containerId,
+  capacity = 100,
 }: VesselSvgProps) {
   // Height from pedestal junction y = 166 to top y = 26 = 140px span
   const liquidHeight = (140 * fillPercent) / 100;
@@ -1182,16 +1228,28 @@ function GraduatedCylinderSvg({
 
       {/* 4. High-Precision Black Ceramic Volumetric Graduations */}
       <g className="glass-graduations" stroke="#0f172a" strokeWidth="1.2" opacity="0.88">
-        {[28, 42, 56, 70, 84, 98, 112, 126, 140, 154].map((y, i) => (
-          <React.Fragment key={y}>
-            <line x1="88" y1={y} x2="99" y2={y} strokeWidth={i % 2 === 0 ? 1.6 : 1.0} />
-            {i % 2 === 0 && (
-              <text x="85" y={y + 3} fontSize="6.5" fontFamily="'Inter', system-ui, sans-serif" fontWeight="700" textAnchor="end" fill="#0f172a" stroke="none">
-                {100 - i * 10}
-              </text>
-            )}
-          </React.Fragment>
-        ))}
+        {[28, 42, 56, 70, 84, 98, 112, 126, 140, 154].map((y, i) => {
+          const stepVal = Math.round(capacity - (i * capacity) / 10);
+          return (
+            <React.Fragment key={y}>
+              <line x1="88" y1={y} x2="99" y2={y} strokeWidth={i % 2 === 0 ? 1.6 : 1.0} />
+              {i % 2 === 0 && (
+                <text
+                  x="85"
+                  y={y + 3}
+                  fontSize={capacity >= 1000 ? "5.5" : "6.5"}
+                  fontFamily="'Inter', system-ui, sans-serif"
+                  fontWeight="700"
+                  textAnchor="end"
+                  fill="#0f172a"
+                  stroke="none"
+                >
+                  {stepVal}
+                </text>
+              )}
+            </React.Fragment>
+          );
+        })}
       </g>
 
       {/* 5. Cylindrical Wall Specular Edges (No cartoonish outlines) */}
@@ -1230,6 +1288,7 @@ function BuretteSvg({
   solids,
   gradId = "liq-grad-burette",
   containerId,
+  capacity = 50,
 }: VesselSvgProps) {
   const liquidHeight = (136 * fillPercent) / 100;
   const liquidY = 150 - liquidHeight;
@@ -1296,14 +1355,14 @@ function BuretteSvg({
         </g>
       )}
 
-      {/* 4. High-Precision Black Ceramic Burette Scale (0 at top, 50 at bottom) */}
+      {/* 4. High-Precision Black Ceramic Burette Scale (0 at top, capacity at bottom) */}
       <g className="glass-graduations" stroke="#0f172a" strokeWidth="0.9" opacity="0.88">
         {[24, 38, 52, 66, 80, 94, 108, 122, 136, 148].map((y, i) => (
           <React.Fragment key={y}>
             <line x1="82" y1={y} x2="88" y2={y} strokeWidth={i % 2 === 0 ? 1.5 : 0.9} />
             {i % 2 === 0 && (
               <text x="80" y={y + 2.5} fontSize="5.5" fontFamily="'Inter', system-ui, sans-serif" fontWeight="700" textAnchor="end" fill="#0f172a" stroke="none">
-                {i * 5}
+                {Math.round((i * capacity) / 10)}
               </text>
             )}
           </React.Fragment>

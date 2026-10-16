@@ -148,36 +148,22 @@ export interface VesselPhaseState {
   liquidColor: string;
   solids: VesselSolid[];
   isPureSolid: boolean;
+  capacity: number;
+  liquidVolumeMl: number;
+  totalVolumeMl: number;
 }
 
-export function analyzeVesselPhases(
-  contents: ContainerContent[],
+export function getAdaptiveCapacity(
   equipmentType: EquipmentType,
-  fallbackColor: string
-): VesselPhaseState {
-  if (!contents || contents.length === 0) {
-    return {
-      hasLiquid: false,
-      liquidFillPercent: 0,
-      liquidHeightPx: 0,
-      liquidColor: fallbackColor,
-      solids: [],
-      isPureSolid: false,
-    };
-  }
-
-  const capacityMap: Record<string, number> = {
-    beaker: 250,
-    test_tube: 20,
-    erlenmeyer_flask: 250,
-    graduated_cylinder: 100,
-    burette: 50,
-  };
-  const capacity = capacityMap[equipmentType] ?? 250;
-
-  // Split into liquid vs solid
-  let liquidMl = 0;
-  const solidItems: ContainerContent[] = [];
+  contents: ContainerContent[]
+): {
+  capacity: number;
+  liquidVolumeMl: number;
+  solidVolumeMl: number;
+  totalVolumeMl: number;
+} {
+  let liquidVolumeMl = 0;
+  let solidVolumeMl = 0;
 
   for (const item of contents) {
     const form = item.physicalForm || derivePhysicalForm(item.physicalState, item.formula, item.commonName);
@@ -189,16 +175,104 @@ export function analyzeVesselPhases(
       item.physicalState === "aqueous";
 
     if (isLiquid) {
-      const ml = item.unit === "L" ? item.amount * 1000 : item.unit === "mL" ? item.amount : 25;
-      liquidMl += ml;
+      const ml = item.unit === "L" ? item.amount * 1000 : item.unit === "mL" ? item.amount : item.amount || 25;
+      liquidVolumeMl += ml;
     } else {
+      const g =
+        item.unit === "kg"
+          ? item.amount * 1000
+          : item.unit === "g"
+          ? item.amount
+          : item.unit === "mg"
+          ? item.amount / 1000
+          : item.amount || 5;
+      solidVolumeMl += g;
+    }
+  }
+
+  const totalVolumeMl = liquidVolumeMl + solidVolumeMl;
+
+  let capacity = 100;
+  if (equipmentType === "beaker") {
+    if (totalVolumeMl <= 100) capacity = 100;
+    else if (totalVolumeMl <= 250) capacity = 250;
+    else if (totalVolumeMl <= 500) capacity = 500;
+    else if (totalVolumeMl <= 1000) capacity = 1000;
+    else if (totalVolumeMl <= 2000) capacity = 2000;
+    else if (totalVolumeMl <= 5000) capacity = 5000;
+    else capacity = Math.ceil(totalVolumeMl / 1000) * 1000;
+  } else if (equipmentType === "erlenmeyer_flask") {
+    if (totalVolumeMl <= 100) capacity = 100;
+    else if (totalVolumeMl <= 250) capacity = 250;
+    else if (totalVolumeMl <= 500) capacity = 500;
+    else if (totalVolumeMl <= 1000) capacity = 1000;
+    else if (totalVolumeMl <= 2000) capacity = 2000;
+    else capacity = Math.ceil(totalVolumeMl / 500) * 500;
+  } else if (equipmentType === "graduated_cylinder") {
+    if (totalVolumeMl <= 25) capacity = 25;
+    else if (totalVolumeMl <= 50) capacity = 50;
+    else if (totalVolumeMl <= 100) capacity = 100;
+    else if (totalVolumeMl <= 250) capacity = 250;
+    else if (totalVolumeMl <= 500) capacity = 500;
+    else if (totalVolumeMl <= 1000) capacity = 1000;
+    else capacity = Math.ceil(totalVolumeMl / 250) * 250;
+  } else if (equipmentType === "test_tube") {
+    if (totalVolumeMl <= 20) capacity = 20;
+    else if (totalVolumeMl <= 50) capacity = 50;
+    else capacity = Math.ceil(totalVolumeMl / 25) * 25;
+  } else if (equipmentType === "burette") {
+    capacity = totalVolumeMl <= 50 ? 50 : 100;
+  } else {
+    capacity = totalVolumeMl <= 100 ? 100 : totalVolumeMl <= 250 ? 250 : totalVolumeMl <= 500 ? 500 : 1000;
+  }
+
+  return { capacity, liquidVolumeMl, solidVolumeMl, totalVolumeMl };
+}
+
+export function analyzeVesselPhases(
+  contents: ContainerContent[],
+  equipmentType: EquipmentType,
+  fallbackColor: string
+): VesselPhaseState {
+  const { capacity, liquidVolumeMl, solidVolumeMl, totalVolumeMl } = getAdaptiveCapacity(
+    equipmentType,
+    contents || []
+  );
+
+  if (!contents || contents.length === 0) {
+    return {
+      hasLiquid: false,
+      liquidFillPercent: 0,
+      liquidHeightPx: 0,
+      liquidColor: fallbackColor,
+      solids: [],
+      isPureSolid: false,
+      capacity,
+      liquidVolumeMl: 0,
+      totalVolumeMl: 0,
+    };
+  }
+
+  // Split into liquid vs solid
+  const solidItems: ContainerContent[] = [];
+
+  for (const item of contents) {
+    const form = item.physicalForm || derivePhysicalForm(item.physicalState, item.formula, item.commonName);
+    const isLiquid =
+      form === "liquid" ||
+      item.unit === "mL" ||
+      item.unit === "L" ||
+      item.physicalState === "liquid" ||
+      item.physicalState === "aqueous";
+
+    if (!isLiquid) {
       solidItems.push(item);
     }
   }
 
-  const hasLiquid = liquidMl > 0;
+  const hasLiquid = liquidVolumeMl > 0;
   const liquidFillPercent = hasLiquid
-    ? Math.min(88, Math.max(14, (liquidMl / capacity) * 75 + 10))
+    ? Math.min(100, Math.max(8, (liquidVolumeMl / capacity) * 100))
     : 0;
 
   // Height span inside vessel (approx 144px max height in beaker/erlenmeyer)
@@ -244,5 +318,8 @@ export function analyzeVesselPhases(
     liquidColor: fallbackColor,
     solids,
     isPureSolid: !hasLiquid && solids.length > 0,
+    capacity,
+    liquidVolumeMl,
+    totalVolumeMl,
   };
 }

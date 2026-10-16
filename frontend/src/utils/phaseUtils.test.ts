@@ -4,6 +4,7 @@ import {
   getPhaseIcon,
   getPhaseLabel,
   analyzeVesselPhases,
+  getAdaptiveCapacity,
 } from "./phaseUtils";
 import type { ContainerContent } from "../types/experiment";
 
@@ -143,4 +144,91 @@ describe("phaseUtils", () => {
       expect(res.solids[0]!.color).toBe("#C88033");
     });
   });
+
+  describe("getAdaptiveCapacity", () => {
+    it("keeps default 100 mL beaker capacity when total volume is <= 100 mL", () => {
+      const contents: ContainerContent[] = [
+        {
+          chemicalId: "hcl",
+          formula: "HCl",
+          commonName: "Hydrochloric acid",
+          amount: 50,
+          unit: "mL",
+          physicalForm: "liquid",
+        },
+      ];
+      const res = getAdaptiveCapacity("beaker", contents);
+      expect(res.capacity).toBe(100);
+      expect(res.liquidVolumeMl).toBe(50);
+      expect(res.totalVolumeMl).toBe(50);
+    });
+
+    it("dynamically steps beaker up to 250 mL when total volume exceeds 100 mL up to 250 mL", () => {
+      const contents: ContainerContent[] = [
+        {
+          chemicalId: "hcl",
+          formula: "HCl",
+          commonName: "Hydrochloric acid",
+          amount: 150,
+          unit: "mL",
+          physicalForm: "liquid",
+        },
+      ];
+      const res = getAdaptiveCapacity("beaker", contents);
+      expect(res.capacity).toBe(250);
+      expect(res.liquidVolumeMl).toBe(150);
+    });
+
+    it("dynamically steps beaker up to 500 mL for user's scenario (300 mL HCl + 25 g Zn)", () => {
+      const contents: ContainerContent[] = [
+        {
+          chemicalId: "zn",
+          formula: "Zn",
+          commonName: "Zinc granules",
+          amount: 25,
+          unit: "g",
+          physicalForm: "solid",
+        },
+        {
+          chemicalId: "hcl",
+          formula: "HCl",
+          commonName: "Hydrochloric acid",
+          amount: 300,
+          unit: "mL",
+          physicalForm: "liquid",
+        },
+      ];
+      const res = getAdaptiveCapacity("beaker", contents);
+      expect(res.capacity).toBe(500);
+      expect(res.liquidVolumeMl).toBe(300);
+      expect(res.solidVolumeMl).toBe(25);
+      expect(res.totalVolumeMl).toBe(325);
+
+      const vesselState = analyzeVesselPhases(contents, "beaker", "#94a3b8");
+      expect(vesselState.capacity).toBe(500);
+      // 300 mL liquid in 500 mL beaker = exactly 60% fill
+      expect(vesselState.liquidFillPercent).toBe(60);
+    });
+
+    it("dynamically steps beaker up to 1000 mL when volume exceeds 500 mL", () => {
+      const contents: ContainerContent[] = [
+        {
+          chemicalId: "h2o",
+          formula: "H2O",
+          commonName: "Water",
+          amount: 750,
+          unit: "mL",
+          physicalForm: "liquid",
+        },
+      ];
+      const res = getAdaptiveCapacity("beaker", contents);
+      expect(res.capacity).toBe(1000);
+    });
+
+    it("dynamically steps beaker up to 2000 mL and 5000 mL for large volumes", () => {
+      expect(getAdaptiveCapacity("beaker", [{ chemicalId: "w", amount: 1200, unit: "mL" } as any]).capacity).toBe(2000);
+      expect(getAdaptiveCapacity("beaker", [{ chemicalId: "w", amount: 2500, unit: "mL" } as any]).capacity).toBe(5000);
+    });
+  });
 });
+
