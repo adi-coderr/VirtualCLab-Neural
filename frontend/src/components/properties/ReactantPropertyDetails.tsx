@@ -327,7 +327,6 @@ export function ReactantPropertyDetails({ reactant, fallbackChemical, isLoading 
         >
           <div className="reactant-details__metric-top">
             <span className="reactant-details__metric-label">Molar Mass</span>
-            {molarMassProv && <ProvenanceBadge prov={molarMassProv} />}
           </div>
           <div className="reactant-details__metric-val">
             {molarMassG !== undefined ? `${molarMassG.toFixed(3)} g/mol` : "—"}
@@ -346,7 +345,6 @@ export function ReactantPropertyDetails({ reactant, fallbackChemical, isLoading 
         >
           <div className="reactant-details__metric-top">
             <span className="reactant-details__metric-label">Density</span>
-            {densityProv && <ProvenanceBadge prov={densityProv} />}
           </div>
           <div className="reactant-details__metric-val">
             {densityKg !== null ? `${densityKg.toLocaleString()} kg/m³` : densityG !== null ? `${densityG} g/cm³` : "—"}
@@ -365,7 +363,6 @@ export function ReactantPropertyDetails({ reactant, fallbackChemical, isLoading 
         >
           <div className="reactant-details__metric-top">
             <span className="reactant-details__metric-label">Melting Point</span>
-            {meltingProv && <ProvenanceBadge prov={meltingProv} />}
           </div>
           <div className="reactant-details__metric-val">
             {meltingK !== null
@@ -390,7 +387,6 @@ export function ReactantPropertyDetails({ reactant, fallbackChemical, isLoading 
         >
           <div className="reactant-details__metric-top">
             <span className="reactant-details__metric-label">Boiling Point</span>
-            {boilingProv && <ProvenanceBadge prov={boilingProv} />}
           </div>
           <div className="reactant-details__metric-val">
             {boilingK !== null
@@ -411,9 +407,6 @@ export function ReactantPropertyDetails({ reactant, fallbackChemical, isLoading 
         <div className="reactant-details__metric-card">
           <div className="reactant-details__metric-top">
             <span className="reactant-details__metric-label">Water Solubility</span>
-            <span className={`reactant-details__status-pill status-${solubilityCat.toLowerCase()}`}>
-              {solubilityCat.replace(/_/g, " ")}
-            </span>
           </div>
           <div className="reactant-details__metric-val" style={{ textTransform: "capitalize" }}>
             {solubilityCat.replace(/_/g, " ")}
@@ -457,7 +450,6 @@ export function ReactantPropertyDetails({ reactant, fallbackChemical, isLoading 
         <div className="reactant-details__metric-card">
           <div className="reactant-details__metric-top">
             <span className="reactant-details__metric-label">Crystal Structure</span>
-            <span className="reactant-details__status-pill status-predicted">Lattice</span>
           </div>
           <div className="reactant-details__metric-val" style={{ fontSize: "12px", lineHeight: "1.3" }}>
             {crystalLattice}
@@ -471,9 +463,6 @@ export function ReactantPropertyDetails({ reactant, fallbackChemical, isLoading 
         <div className="reactant-details__metric-card">
           <div className="reactant-details__metric-top">
             <span className="reactant-details__metric-label">Oxidation States</span>
-            <span className={`reactant-details__status-pill ${oxInfo.isElement ? "status-value" : "status-predicted"}`}>
-              {oxInfo.isElement ? "Redox" : "Constituent"}
-            </span>
           </div>
           <div className="reactant-details__metric-val">
             {oxInfo.cardDisplay}
