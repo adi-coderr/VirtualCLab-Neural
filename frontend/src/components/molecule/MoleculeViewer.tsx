@@ -26,18 +26,6 @@ export function MoleculeViewer({ chemical }: { chemical: Chemical }) {
       }));
   }, [chemical.structure]);
 
-  if (!chemical.structure) {
-    return (
-      <div className="molecule-viewer molecule-viewer--empty">
-        <p className="molecule-viewer__empty-title">No curated structure yet</p>
-        <p className="molecule-viewer__empty-body">
-          {chemical.commonName} ({chemical.formula}) doesn&apos;t have hand-verified atom coordinates in this v0.1 database. Rather than
-          guess at a layout, this is left blank -- see docs/ADDING_NEW_REACTIONS.md for how to add one.
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div className="molecule-viewer">
       <div className="molecule-viewer__toolbar">
@@ -56,8 +44,16 @@ export function MoleculeViewer({ chemical }: { chemical: Chemical }) {
           </button>
         </div>
       </div>
+
       <div className="molecule-viewer__stage">
-        {mode === "2d" ? (
+        {!chemical.structure ? (
+          <div className="molecule-viewer molecule-viewer--empty">
+            <p className="molecule-viewer__empty-title">No curated structure yet</p>
+            <p className="molecule-viewer__empty-body">
+              {chemical.commonName} ({chemical.formula}) doesn&apos;t have hand-verified atom coordinates in this v0.1 database.
+            </p>
+          </div>
+        ) : mode === "2d" ? (
           <MoleculeViewer2D structure={chemical.structure} label={chemical.commonName} />
         ) : (
           <MoleculeViewer3D structure={chemical.structure}>
@@ -91,6 +87,7 @@ export function MoleculeViewer({ chemical }: { chemical: Chemical }) {
           </MoleculeViewer3D>
         )}
       </div>
+
       <p className="molecule-viewer__caption">
         Scientifically informed representation from real bond lengths/angles -- not a live quantum-mechanical simulation.
       </p>

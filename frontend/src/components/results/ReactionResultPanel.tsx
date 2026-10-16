@@ -1,10 +1,13 @@
 import { useEffect, useState, useMemo } from "react";
 import type { SimulationResult, Chemical, ResolvedSpecies } from "../../types/chemistry";
+import type { UnifiedReactantDTO } from "../../types/reactant";
 import { chemicalsApi } from "../../api/chemicals";
+import { reactantsApi } from "../../api/reactants";
 import { ConfidenceBadge } from "./ConfidenceBadge";
 import { EquationDisplay } from "./EquationDisplay";
 import { ObservableEffectsPanel } from "./ObservableEffectsPanel";
 import { PropertiesPanel } from "../properties/PropertiesPanel";
+import { ReactantPropertyDetails } from "../properties/ReactantPropertyDetails";
 import { SafetyPanel } from "../safety/SafetyPanel";
 import { MoleculeViewer } from "../molecule/MoleculeViewer";
 import { ProcessBreakdownPanel } from "./ProcessBreakdownPanel";
@@ -19,6 +22,8 @@ export function ReactionResultPanel({ result }: { result: SimulationResult }) {
   const calorimetry = result.calorimetry ?? resolution.calorimetry;
   const [selectedChemical, setSelectedChemical] = useState<Chemical | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [unifiedReactant, setUnifiedReactant] = useState<UnifiedReactantDTO | null>(null);
+  const [loadingReactant, setLoadingReactant] = useState(false);
   const openSettings = useSettingsStore((s) => s.openSettings);
 
   // Deduplicate reactants and products so all reaction substances can be inspected in 3D
@@ -66,6 +71,23 @@ export function ReactionResultPanel({ result }: { result: SimulationResult }) {
           });
         }
       });
+
+    // Also fetch full unified reactant data for the comprehensive Chemical Profile section
+    setLoadingReactant(true);
+    reactantsApi
+      .getById(selectedId)
+      .then((data) => {
+        if (!cancelled && data) {
+          setUnifiedReactant(data);
+        }
+      })
+      .catch((err) => {
+        console.warn("Unified reactant fetch error:", err);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingReactant(false);
+      });
+
     return () => {
       cancelled = true;
     };
@@ -324,6 +346,19 @@ export function ReactionResultPanel({ result }: { result: SimulationResult }) {
                 <MoleculeViewer chemical={selectedChemical} />
               ) : (
                 <p className="reaction-result__placeholder">Select a chemical above to view its 3D molecular structure.</p>
+              ),
+            },
+            {
+              id: "chemical-profile",
+              label: "Chemical Profile",
+              content: selectedChemical ? (
+                <ReactantPropertyDetails
+                  reactant={unifiedReactant}
+                  fallbackChemical={selectedChemical}
+                  isLoading={loadingReactant}
+                />
+              ) : (
+                <p className="reaction-result__placeholder">Select a chemical above to view its comprehensive profile.</p>
               ),
             },
             {

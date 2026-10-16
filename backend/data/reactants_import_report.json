@@ -1,0 +1,140 @@
+{
+  "timestamp": "2026-10-16T14:46:15.212Z",
+  "totalCandidatesProcessed": 8214,
+  "totalImported": 8188,
+  "totalMergedDuplicates": 8,
+  "totalFlagged": 6,
+  "totalRejected": 18,
+  "flaggedSamples": [
+    {
+      "id": "c2h2",
+      "formula": "C2H2",
+      "flags": [
+        "Melting point (189.15K) >= Boiling point (188.45K)"
+      ]
+    },
+    {
+      "id": "indigo_dye",
+      "formula": "C16H10N2O2",
+      "flags": [
+        "Melting point (663.15K) >= Boiling point (663.15K)"
+      ]
+    },
+    {
+      "id": "moo2",
+      "formula": "MoO2",
+      "flags": [
+        "Melting point (1373.15K) >= Boiling point (1373.15K)"
+      ]
+    },
+    {
+      "id": "tif4",
+      "formula": "F4Ti",
+      "flags": [
+        "Melting point (557.15K) >= Boiling point (557.15K)"
+      ]
+    },
+    {
+      "id": "sulfur_dioxide",
+      "formula": "O2S",
+      "flags": [
+        "Melting point (273.15K) >= Boiling point (263.15K)"
+      ]
+    },
+    {
+      "id": "iodoform",
+      "formula": "CHI3",
+      "flags": [
+        "Melting point (392.15K) >= Boiling point (373.15K)"
+      ]
+    }
+  ],
+  "rejectedSamples": [
+    {
+      "id": "betulin-dimethyl-ether",
+      "reason": "Formula parse failed: Unexpected character \"t\" at position 2 in formula \"Betulindimethylether\""
+    },
+    {
+      "id": "ch3cn-isopropanol",
+      "reason": "Formula parse failed: Unexpected character \"s\" at position 6 in formula \"CH3CNIsopropanol\""
+    },
+    {
+      "id": "chcl3-isopropanol",
+      "reason": "Formula parse failed: Unexpected character \"i\" at position 5 in formula \"CHCl3isopropanol\""
+    },
+    {
+      "id": "chcl3-methanol",
+      "reason": "Formula parse failed: Unexpected character \"m\" at position 5 in formula \"CHCl3methanol\""
+    },
+    {
+      "id": "dioxane-methanol",
+      "reason": "Formula parse failed: Unrecognized element symbol \"D\" at position 0 in formula \"DioxaneMethanol\""
+    },
+    {
+      "id": "etoac-ethanol",
+      "reason": "Formula parse failed: Unrecognized element symbol \"E\" at position 0 in formula \"EtOAcethanol\""
+    },
+    {
+      "id": "etoac-ether",
+      "reason": "Formula parse failed: Unrecognized element symbol \"E\" at position 0 in formula \"EtOAcether\""
+    },
+    {
+      "id": "hcl-ether",
+      "reason": "Formula parse failed: Unexpected character \"e\" at position 3 in formula \"HClether\""
+    },
+    {
+      "id": "l-acetone-glycerol",
+      "reason": "Formula parse failed: Unrecognized element symbol \"L\" at position 0 in formula \"LAcetoneglycerol\""
+    },
+    {
+      "id": "n-butyl-alcohol",
+      "reason": "Formula parse failed: Unexpected character \"u\" at position 2 in formula \"Nbutylalcohol\""
+    },
+    {
+      "id": "r-1-1-bi-2-naphthol",
+      "reason": "Formula parse failed: Unrecognized element symbol \"R\" at position 0 in formula \"R11bi2naphthol\""
+    },
+    {
+      "id": "r-s-4-fluorophenyl-4-5-methyl-1h-pyrazol-3-ylamino-7-2-morpholinoethoxy-quinazolin-2-yl-methanol",
+      "reason": "Formula parse failed: Unrecognized element symbol \"R\" at position 0 in formula \"RS4fluorophenyl45methyl1Hpyrazol3ylamino72morpholinoethoxyquinazolin2ylmethanol\""
+    },
+    {
+      "id": "s-butanetriol",
+      "reason": "Formula parse failed: Unexpected character \"u\" at position 2 in formula \"Sbutanetriol\""
+    },
+    {
+      "id": "s-cyclohexanol",
+      "reason": "Formula parse failed: Unexpected character \"y\" at position 2 in formula \"Scyclohexanol\""
+    },
+    {
+      "id": "s-methoxy-2-propanol",
+      "reason": "Formula parse failed: Unexpected character \"e\" at position 2 in formula \"Smethoxy2propanol\""
+    },
+    {
+      "id": "thf-ethanol",
+      "reason": "Formula parse failed: Unrecognized element symbol \"T\" at position 0 in formula \"THFethanol\""
+    },
+    {
+      "id": "thf-ether",
+      "reason": "Formula parse failed: Unrecognized element symbol \"T\" at position 0 in formula \"THFether\""
+    },
+    {
+      "id": "thf-water-methanol",
+      "reason": "Formula parse failed: Unrecognized element symbol \"T\" at position 0 in formula \"THFwatermethanol\""
+    }
+  ],
+  "unifiedDbStats": {
+    "totalReactants": {
+      "c": 8188
+    },
+    "totalProvenanceRows": {
+      "c": 49128
+    },
+    "totalAliases": {
+      "c": 15446
+    },
+    "totalIsotopes": {
+      "c": 12
+    }
+  }
+}

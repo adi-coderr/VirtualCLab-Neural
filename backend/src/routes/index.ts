@@ -4,6 +4,7 @@ import { chemicalRoutes } from "./chemicalRoutes.js";
 import { reactionRoutes } from "./reactionRoutes.js";
 import { experimentRoutes } from "./experimentRoutes.js";
 import { assistantRoutes } from "./assistantRoutes.js";
+import { unifiedReactantRoutes } from "./unifiedReactantRoutes.js";
 
 export function apiRouter(db: Database.Database): Router {
   const router = Router();
@@ -16,6 +17,8 @@ export function apiRouter(db: Database.Database): Router {
   router.use("/reactions", reactionRoutes(db));
   router.use("/experiments", experimentRoutes(db));
   router.use("/assistant", assistantRoutes(db));
+  router.use("/reactants", unifiedReactantRoutes());
+  router.use("/v2/reactants", unifiedReactantRoutes());
 
   return router;
 }
