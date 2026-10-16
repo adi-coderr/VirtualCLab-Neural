@@ -3,6 +3,7 @@ import type { UnifiedReactantDTO, PropertyProvenance } from "../../types/reactan
 import type { Chemical } from "../../types/chemistry";
 import { formatFormula } from "../../utils/formatFormula";
 import { getChemicalColor } from "../../utils/chemicalColorMixer";
+import { getOxidationStateInfo } from "../../utils/oxidationStates";
 import "./ReactantPropertyDetails.css";
 
 interface ReactantPropertyDetailsProps {
@@ -13,6 +14,7 @@ interface ReactantPropertyDetailsProps {
 
 // Known crystal lattice structures for common elements & minerals
 const CRYSTAL_LATTICES: Record<string, string> = {
+  // Pure elemental metals & minerals
   fe: "Body-Centered Cubic (BCC)",
   cu: "Face-Centered Cubic (FCC)",
   al: "Face-Centered Cubic (FCC)",
@@ -29,10 +31,33 @@ const CRYSTAL_LATTICES: Record<string, string> = {
   mo: "Body-Centered Cubic (BCC)",
   na: "Body-Centered Cubic (BCC)",
   k: "Body-Centered Cubic (BCC)",
-  c: "Hexagonal Planar (Graphite)",
+  c: "Hexagonal Planar (Graphite) / Tetrahedral (Diamond)",
   si: "Diamond Cubic",
+  s: "Orthorhombic (α-Sulfur S₈)",
+  p: "Tetrahedral P₄ (White) / Amorphous (Red)",
+
+  // Common laboratory salts & compounds
+  feso4: "Monoclinic (Melanterite) / Orthorhombic",
+  cuso4: "Triclinic (Chalcanthite) / Orthorhombic",
+  caco3: "Trigonal (Calcite) / Orthorhombic (Aragonite)",
   nacl: "Halite Rock-Salt (FCC)",
-  caco3: "Trigonal Calcite / Orthorhombic Aragonite",
+  kcl: "Halite Rock-Salt (FCC)",
+  ki: "Halite Rock-Salt (FCC)",
+  agno3: "Orthorhombic",
+  pbno32: "Face-Centered Cubic (FCC)",
+  "pb-no3-2": "Face-Centered Cubic (FCC)",
+  bacl2: "Monoclinic Dihydrate / Orthorhombic",
+  baso4: "Orthorhombic (Barite)",
+  znso4: "Orthorhombic (Goslarite)",
+  naoh: "Orthorhombic",
+  koh: "Monoclinic",
+  caoh2: "Hexagonal / Trigonal (Portlandite)",
+  "ca-oh-2": "Hexagonal / Trigonal (Portlandite)",
+  fe2o3: "Trigonal / Hexagonal (Hematite)",
+  cuo: "Monoclinic (Tenorite)",
+  zno: "Hexagonal Wurtzite",
+  na2co3: "Monoclinic (Thermonatrite)",
+  nahco3: "Monoclinic (Nahcolite)",
 };
 
 export function ReactantPropertyDetails({ reactant, fallbackChemical, isLoading }: ReactantPropertyDetailsProps) {
@@ -101,13 +126,48 @@ export function ReactantPropertyDetails({ reactant, fallbackChemical, isLoading 
   // Crystal / Bonding info
   const crystalLattice = CRYSTAL_LATTICES[rawId] || (bondingType === "ionic" ? "Ionic Crystal Lattice" : bondingType === "metallic" ? "Close-Packed Metallic Lattice" : "Molecular Structure");
 
-  // Oxidation & Electron Configuration
-  const oxidationStates = reactant?.electronic?.commonOxidationStates || [];
-  const oxidationDisplay = oxidationStates.length > 0
-    ? oxidationStates.map((s) => (s > 0 ? `+${s}` : `${s}`)).join(", ")
-    : bondingType === "ionic"
-    ? "Ions in lattice"
-    : "0 (Neutral)";
+  // Oxidation & Electron Configuration via smart constituent resolver
+  const oxInfo = getOxidationStateInfo(
+    rawId,
+    formula,
+    reactant?.atomicNumber,
+    reactant?.electronic?.commonOxidationStates
+  );
+
+  // Formatting helpers for chemical characterization
+  const formatAcidBase = (cls: string) => {
+    const map: Record<string, string> = {
+      acidic_salt: "Acidic Salt (Hydrolyzes acidic, pH < 7)",
+      basic_salt: "Basic Salt (Hydrolyzes alkaline, pH > 7)",
+      neutral_salt: "Neutral Salt (pH ≈ 7.0)",
+      strong_acid: "Strong Acid",
+      weak_acid: "Weak Acid",
+      strong_base: "Strong Base",
+      weak_base: "Weak Base",
+      amphoteric: "Amphoteric (Reacts with acids & bases)",
+      neutral: "Neutral",
+    };
+    return map[cls.toLowerCase()] || cls.replace(/_/g, " ");
+  };
+
+  const formatMagnetic = (b: string) => {
+    const map: Record<string, string> = {
+      paramagnetic: "Paramagnetic (Unpaired valence electrons)",
+      ferromagnetic: "Ferromagnetic (Permanent magnetic ordering)",
+      diamagnetic: "Diamagnetic (All electrons paired)",
+    };
+    return map[b.toLowerCase()] || b;
+  };
+
+  const formatRedox = (r: string) => {
+    const map: Record<string, string> = {
+      reducing_agent: "Reducing Agent (Electron donor)",
+      oxidizing_agent: "Oxidizing Agent (Electron acceptor)",
+      redox_active: "Redox-Active (Dual character)",
+      none: "Non-redox / Inert",
+    };
+    return map[r.toLowerCase()] || r.replace(/_/g, " ");
+  };
 
   // Metals / nonmetals category properties
   const metalProps = reactant?.categoryProperties?.metals;
@@ -246,7 +306,13 @@ export function ReactantPropertyDetails({ reactant, fallbackChemical, isLoading 
             {meltingProv && <ProvenanceBadge prov={meltingProv} />}
           </div>
           <div className="reactant-details__metric-val">
-            {meltingK !== null ? `${meltingK.toLocaleString()} K` : meltingC !== null ? `${meltingC} °C` : "N/A (decomposes)"}
+            {meltingK !== null
+              ? `${meltingK.toLocaleString()} K`
+              : meltingProv?.status === "not_applicable"
+              ? "Decomposes"
+              : meltingC !== null
+              ? `${meltingC} °C`
+              : "Decomposes"}
           </div>
           <div className="reactant-details__metric-sub">
             {meltingC !== null ? `${meltingC.toLocaleString()} °C` : "Decomposes before melt"}
@@ -265,7 +331,13 @@ export function ReactantPropertyDetails({ reactant, fallbackChemical, isLoading 
             {boilingProv && <ProvenanceBadge prov={boilingProv} />}
           </div>
           <div className="reactant-details__metric-val">
-            {boilingK !== null ? `${boilingK.toLocaleString()} K` : boilingC !== null ? `${boilingC} °C` : "N/A"}
+            {boilingK !== null
+              ? `${boilingK.toLocaleString()} K`
+              : boilingProv?.status === "not_applicable"
+              ? "Decomposes"
+              : boilingC !== null
+              ? `${boilingC} °C`
+              : "N/A"}
           </div>
           <div className="reactant-details__metric-sub">
             {boilingC !== null ? `${boilingC.toLocaleString()} °C` : "Thermal decomp / non-volatile"}
@@ -333,17 +405,19 @@ export function ReactantPropertyDetails({ reactant, fallbackChemical, isLoading 
           </div>
         </div>
 
-        {/* Card 8: Common Oxidation States */}
+        {/* Card 8: Common / Constituent Oxidation States */}
         <div className="reactant-details__metric-card">
           <div className="reactant-details__metric-top">
             <span className="reactant-details__metric-label">Oxidation States</span>
-            <span className="reactant-details__status-pill status-value">Redox</span>
+            <span className={`reactant-details__status-pill ${oxInfo.isElement ? "status-value" : "status-predicted"}`}>
+              {oxInfo.isElement ? "Redox" : "Constituent"}
+            </span>
           </div>
           <div className="reactant-details__metric-val">
-            {oxidationDisplay}
+            {oxInfo.cardDisplay}
           </div>
           <div className="reactant-details__metric-sub">
-            {reactant?.atomicNumber ? `Element Z = ${reactant.atomicNumber}` : "Stable ground states"}
+            {oxInfo.subtitle}
           </div>
         </div>
       </div>
@@ -425,7 +499,7 @@ export function ReactantPropertyDetails({ reactant, fallbackChemical, isLoading 
                     </span>
                     <div className="reactant-details__check-content">
                       <strong>Water (H₂O):</strong>{" "}
-                      <span>{reactivity?.reactsWithWater ? reactivity.waterNotes || "Reactive with moisture/water" : "Non-reactive under ambient neutral conditions"}</span>
+                      <span>{reactivity?.waterNotes || (reactivity?.reactsWithWater ? "Reactive with moisture/water" : "Non-reactive under ambient neutral conditions")}</span>
                     </div>
                   </li>
 
@@ -435,7 +509,7 @@ export function ReactantPropertyDetails({ reactant, fallbackChemical, isLoading 
                     </span>
                     <div className="reactant-details__check-content">
                       <strong>Acids:</strong>{" "}
-                      <span>{reactivity?.reactsWithAcid ? reactivity.acidNotes || "Reacts with dilute acids (effervescence / salt formation)" : "Unreactive with non-oxidizing acids"}</span>
+                      <span>{reactivity?.acidNotes || (reactivity?.reactsWithAcid ? "Reacts with dilute acids (effervescence / salt formation)" : "Unreactive with non-oxidizing acids")}</span>
                     </div>
                   </li>
 
@@ -445,7 +519,7 @@ export function ReactantPropertyDetails({ reactant, fallbackChemical, isLoading 
                     </span>
                     <div className="reactant-details__check-content">
                       <strong>Bases:</strong>{" "}
-                      <span>{reactivity?.reactsWithBase ? reactivity.baseNotes || "Neutralization / precipitation reaction observed" : "No reaction observed with aqueous bases"}</span>
+                      <span>{reactivity?.baseNotes || (reactivity?.reactsWithBase ? "Neutralization / precipitation reaction observed" : "No reaction observed with aqueous bases")}</span>
                     </div>
                   </li>
 
@@ -455,7 +529,7 @@ export function ReactantPropertyDetails({ reactant, fallbackChemical, isLoading 
                     </span>
                     <div className="reactant-details__check-content">
                       <strong>Oxygen (Air):</strong>{" "}
-                      <span>{reactivity?.reactsWithOxygen ? reactivity.oxygenNotes || "Sensitive to aerial oxidation / forms surface oxide" : "Stable in air at standard room temperature"}</span>
+                      <span>{reactivity?.oxygenNotes || (reactivity?.reactsWithOxygen ? "Sensitive to aerial oxidation / forms surface oxide" : "Stable in air at standard room temperature")}</span>
                     </div>
                   </li>
                 </ul>
@@ -509,11 +583,15 @@ export function ReactantPropertyDetails({ reactant, fallbackChemical, isLoading 
                 </span>
               </div>
               <div className="reactant-details__prop-row">
-                <span className="reactant-details__prop-name">Common Oxidation States</span>
+                <span className="reactant-details__prop-name">
+                  {oxInfo.isElement ? "Common Oxidation States" : "Constituent Oxidation Numbers"}
+                </span>
                 <span className="reactant-details__prop-val">
-                  {reactant?.electronic.commonOxidationStates && reactant.electronic.commonOxidationStates.length > 0
-                    ? reactant.electronic.commonOxidationStates.map((s) => (s > 0 ? `+${s}` : `${s}`)).join(", ")
-                    : "0"}
+                  {oxInfo.isElement
+                    ? oxInfo.cardDisplay
+                    : oxInfo.detailedList.length > 0
+                    ? oxInfo.detailedList.map((item) => `${item.element}: ${item.oxidationNumber}`).join("  |  ")
+                    : oxInfo.cardDisplay}
                 </span>
               </div>
               <div className="reactant-details__prop-row">
@@ -599,8 +677,8 @@ export function ReactantPropertyDetails({ reactant, fallbackChemical, isLoading 
             <div className="reactant-details__prop-table">
               <div className="reactant-details__prop-row">
                 <span className="reactant-details__prop-name">Acid-Base Classification</span>
-                <span className="reactant-details__prop-val" style={{ textTransform: "capitalize" }}>
-                  {acidBaseClass.replace(/_/g, " ")}
+                <span className="reactant-details__prop-val">
+                  {formatAcidBase(acidBaseClass)}
                 </span>
               </div>
               {pKa !== null && (
@@ -617,8 +695,8 @@ export function ReactantPropertyDetails({ reactant, fallbackChemical, isLoading 
               )}
               <div className="reactant-details__prop-row">
                 <span className="reactant-details__prop-name">Magnetic Behavior</span>
-                <span className="reactant-details__prop-val" style={{ textTransform: "capitalize" }}>
-                  {magneticBehavior}
+                <span className="reactant-details__prop-val">
+                  {formatMagnetic(magneticBehavior)}
                 </span>
               </div>
               <div className="reactant-details__prop-row">
@@ -627,8 +705,8 @@ export function ReactantPropertyDetails({ reactant, fallbackChemical, isLoading 
               </div>
               <div className="reactant-details__prop-row">
                 <span className="reactant-details__prop-name">Redox Character</span>
-                <span className="reactant-details__prop-val" style={{ textTransform: "capitalize" }}>
-                  {redoxRole}
+                <span className="reactant-details__prop-val">
+                  {formatRedox(redoxRole)}
                 </span>
               </div>
               <div className="reactant-details__prop-row">

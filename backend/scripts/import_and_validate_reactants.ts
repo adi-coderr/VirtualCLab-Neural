@@ -33,7 +33,7 @@ const DUPLICATE_MERGES: Record<string, string> = {
 // Known subliming or decomposing chemicals where boiling point is not applicable
 const DECOMPOSING_OR_SUBLIMING = new Set([
   "co2", "nh4cl", "caco3", "mgco3", "nahco3", "khco3", "agno3", "kclo3", "kmno4",
-  "h2co3", "h2so3", "nh4no3", "cu-oh-2", "fe-oh-3", "al-oh-3"
+  "h2co3", "h2so3", "nh4no3", "cu-oh-2", "fe-oh-3", "al-oh-3", "feso4", "cuso4", "pbno32"
 ]);
 
 // Emission flame colors
