@@ -2685,6 +2685,168 @@ const SOLVENT_ABBREVIATIONS: Record<string, string> = {
 };
 
 // -----------------------------------------------------------------------------
+// 2D Molecular Coordinate Enhancer & Planar Relaxation
+// -----------------------------------------------------------------------------
+
+/**
+ * Enhances 2D molecular layout to produce clear, non-overlapping, textbook-quality coordinates.
+ * Resolves atom collisions (especially overlapping hydrogens and compact ions) using constrained
+ * planar force-directed relaxation, spring bond targets (~44px), angular repulsion, and component centering.
+ */
+export function enhance2DCoordinates(struct: MoleculeStructure): MoleculeStructure {
+  if (!struct || !struct.atoms || struct.atoms.length <= 1) return struct;
+  const atoms = struct.atoms.map((a) => ({ ...a }));
+  const bonds = struct.bonds || [];
+  const n = atoms.length;
+
+  if (n === 2) {
+    const d = 48;
+    atoms[0]!.x2d = -d / 2;
+    atoms[0]!.y2d = 0;
+    atoms[1]!.x2d = d / 2;
+    atoms[1]!.y2d = 0;
+    return { ...struct, atoms };
+  }
+
+  // Build adjacency list
+  const adj: number[][] = Array.from({ length: n }, () => []);
+  for (const b of bonds) {
+    if (b.atomIndex1 < n && b.atomIndex2 < n && b.atomIndex1 !== b.atomIndex2) {
+      adj[b.atomIndex1]!.push(b.atomIndex2);
+      adj[b.atomIndex2]!.push(b.atomIndex1);
+    }
+  }
+
+  // Pre-process: break any exact or near-exact coordinate collisions (d < 10px)
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const dx = atoms[i]!.x2d - atoms[j]!.x2d;
+      const dy = atoms[i]!.y2d - atoms[j]!.y2d;
+      const d = Math.hypot(dx, dy);
+      if (d < 10) {
+        const angle = (((i * 47 + j * 89) % 360) * Math.PI) / 180;
+        atoms[j]!.x2d += Math.round(Math.cos(angle) * 22);
+        atoms[j]!.y2d += Math.round(Math.sin(angle) * 22);
+      }
+    }
+  }
+
+  // Force-directed planar relaxation
+  const TARGET_BOND = 44;
+  const ITERATIONS = 55;
+  for (let iter = 0; iter < ITERATIONS; iter++) {
+    const fx = new Float64Array(n);
+    const fy = new Float64Array(n);
+    const temp = 1.0 - (iter / ITERATIONS) * 0.72;
+
+    // 1. Coulomb repulsion between all atom pairs
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        let dx = atoms[i]!.x2d - atoms[j]!.x2d;
+        let dy = atoms[i]!.y2d - atoms[j]!.y2d;
+        let d = Math.hypot(dx, dy);
+        if (d < 0.1) {
+          dx = Math.cos(i + j) || 1;
+          dy = Math.sin(i + j) || 1;
+          d = Math.hypot(dx, dy);
+        }
+        const minDist = 34;
+        let rep: number;
+        if (d < minDist) {
+          rep = (450 * (minDist - d)) / d;
+        } else {
+          rep = 1400 / (d * d);
+        }
+        const forceX = (dx / d) * rep;
+        const forceY = (dy / d) * rep;
+        fx[i]! += forceX;
+        fy[i]! += forceY;
+        fx[j]! -= forceX;
+        fy[j]! -= forceY;
+      }
+    }
+
+    // 2. Spring attraction along bonds
+    for (const b of bonds) {
+      const i = b.atomIndex1;
+      const j = b.atomIndex2;
+      if (i >= n || j >= n) continue;
+      let dx = atoms[j]!.x2d - atoms[i]!.x2d;
+      let dy = atoms[j]!.y2d - atoms[i]!.y2d;
+      let d = Math.hypot(dx, dy);
+      if (d < 0.1) d = 0.1;
+      const spring = 0.28 * (d - TARGET_BOND);
+      const forceX = (dx / d) * spring;
+      const forceY = (dy / d) * spring;
+      fx[i]! += forceX;
+      fy[i]! += forceY;
+      fx[j]! -= forceX;
+      fy[j]! -= forceY;
+    }
+
+    // 3. Angular repulsion for neighbors sharing a common atom (prevents acute collapsed angles)
+    for (let i = 0; i < n; i++) {
+      const neighbors = adj[i]!;
+      if (neighbors.length >= 2) {
+        for (let a = 0; a < neighbors.length; a++) {
+          for (let b = a + 1; b < neighbors.length; b++) {
+            const na = neighbors[a]!;
+            const nb = neighbors[b]!;
+            const dax = atoms[na]!.x2d - atoms[i]!.x2d;
+            const day = atoms[na]!.y2d - atoms[i]!.y2d;
+            const dbx = atoms[nb]!.x2d - atoms[i]!.x2d;
+            const dby = atoms[nb]!.y2d - atoms[i]!.y2d;
+            const da = Math.hypot(dax, day) || 1;
+            const db = Math.hypot(dbx, dby) || 1;
+            const cosAngle = (dax * dbx + day * dby) / (da * db);
+            if (cosAngle > 0.34) {
+              const push = 20 * (cosAngle - 0.34);
+              const sepX = atoms[na]!.x2d - atoms[nb]!.x2d;
+              const sepY = atoms[na]!.y2d - atoms[nb]!.y2d;
+              const sepD = Math.hypot(sepX, sepY) || 1;
+              fx[na]! += (sepX / sepD) * push;
+              fy[na]! += (sepY / sepD) * push;
+              fx[nb]! -= (sepX / sepD) * push;
+              fy[nb]! -= (sepY / sepD) * push;
+            }
+          }
+        }
+      }
+    }
+
+    // Apply forces with velocity clamping
+    const maxStep = 12 * temp;
+    for (let i = 0; i < n; i++) {
+      const step = Math.hypot(fx[i]!, fy[i]!);
+      if (step > maxStep) {
+        atoms[i]!.x2d += (fx[i]! / step) * maxStep;
+        atoms[i]!.y2d += (fy[i]! / step) * maxStep;
+      } else {
+        atoms[i]!.x2d += fx[i]!;
+        atoms[i]!.y2d += fy[i]!;
+      }
+    }
+  }
+
+  // 4. Center coordinates and round to integers
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const a of atoms) {
+    if (a.x2d < minX) minX = a.x2d;
+    if (a.x2d > maxX) maxX = a.x2d;
+    if (a.y2d < minY) minY = a.y2d;
+    if (a.y2d > maxY) maxY = a.y2d;
+  }
+  const midX = (minX + maxX) / 2;
+  const midY = (minY + maxY) / 2;
+  for (const a of atoms) {
+    a.x2d = Math.round(a.x2d - midX) || 0;
+    a.y2d = Math.round(a.y2d - midY) || 0;
+  }
+
+  return { ...struct, atoms };
+}
+
+// -----------------------------------------------------------------------------
 // Main Generator Entrypoint
 // -----------------------------------------------------------------------------
 
@@ -2697,12 +2859,20 @@ export function generateMoleculeStructure(
 ): MoleculeStructure {
   const rng = createSeededRandom(chemicalId || formula || commonName || smiles || "chemlab_seed");
 
+  const finalize = (res: MoleculeStructure): MoleculeStructure => {
+    let result = res;
+    if (hydrateInfo && hydrateInfo.waterCount > 0) {
+      result = attachHydrateWaters(result, hydrateInfo.waterCount);
+    }
+    return enhance2DCoordinates(result);
+  };
+
   // 1. Prioritize SMILES whenever available
   if (smiles && smiles.trim().length > 0) {
     try {
       const struct = generateFromSmiles(smiles.trim(), rng);
       if (struct && struct.atoms.length > 0) {
-        return struct;
+        return finalize(struct);
       }
     } catch {
       // Fallback if SMILES parsing fails on rare edge case
@@ -2736,13 +2906,6 @@ export function generateMoleculeStructure(
       }
     } catch {}
   }
-
-  const finalize = (res: MoleculeStructure): MoleculeStructure => {
-    if (hydrateInfo && hydrateInfo.waterCount > 0) {
-      return attachHydrateWaters(res, hydrateInfo.waterCount);
-    }
-    return res;
-  };
 
   // Determine composition
   let comp: ElementComposition = {};
@@ -2836,9 +2999,350 @@ export function generateMoleculeStructure(
         }
       }
 
-      return { curated: true, atoms, bonds };
+      return finalize({ curated: true, atoms, bonds });
     }
   }
+
+// -----------------------------------------------------------------------------
+// Curated Transition Metal Oxoanions, Complexes & Inorganic Salt Templates
+// -----------------------------------------------------------------------------
+
+function generateCuratedComplexOrSalt(
+  comp: ElementComposition,
+  formula: string,
+  commonName: string
+): MoleculeStructure | null {
+  const isDivalentMetal = (m: string) => ["Ba", "Pb", "Sr", "Ca", "Mg"].includes(m);
+
+  // Helper to add a counter-cation, expanding NH4+ into N+ with 4 tetrahedral H atoms if applicable
+  const addCation = (
+    atoms: MoleculeStructure["atoms"],
+    bonds: MoleculeStructure["bonds"],
+    m: string,
+    targetO: number,
+    pos3d: { x: number; y: number; z: number },
+    pos2d: { x: number; y: number },
+    charge = 1
+  ) => {
+    const idx = atoms.length;
+    atoms.push({
+      atomIndex: idx,
+      element: m,
+      x3d: Number(pos3d.x.toFixed(3)),
+      y3d: Number(pos3d.y.toFixed(3)),
+      z3d: Number(pos3d.z.toFixed(3)),
+      x2d: Math.round(pos2d.x) || 0,
+      y2d: Math.round(pos2d.y) || 0,
+      formalCharge: charge,
+    });
+    bonds.push({ atomIndex1: targetO, atomIndex2: idx, order: 1, type: "ionic" });
+
+    if (m === "N" && (comp["H"] ?? 0) >= 4) {
+      const hOffsets = [
+        { x: 0.8, y: 0.6, z: 0.3, x2d: 14, y2d: -14 },
+        { x: -0.8, y: -0.6, z: 0.3, x2d: -14, y2d: 14 },
+        { x: -0.6, y: 0.8, z: -0.3, x2d: -14, y2d: -14 },
+        { x: 0.6, y: -0.8, z: -0.3, x2d: 14, y2d: 14 },
+      ];
+      for (const ho of hOffsets) {
+        const hIdx = atoms.length;
+        atoms.push({
+          atomIndex: hIdx,
+          element: "H",
+          x3d: Number((pos3d.x + ho.x).toFixed(3)),
+          y3d: Number((pos3d.y + ho.y).toFixed(3)),
+          z3d: Number((pos3d.z + ho.z).toFixed(3)),
+          x2d: Math.round(pos2d.x + ho.x2d) || 0,
+          y2d: Math.round(pos2d.y + ho.y2d) || 0,
+        });
+        bonds.push({ atomIndex1: idx, atomIndex2: hIdx, order: 1, type: "covalent" });
+      }
+    }
+  };
+
+  // 1. Dichromates: Cr2O7^2- (e.g. K2Cr2O7, Na2Cr2O7, (NH4)2Cr2O7)
+  if ((comp["Cr"] ?? 0) === 2 && (comp["O"] ?? 0) === 7) {
+    const metals = Object.keys(comp).filter((k) => k !== "Cr" && k !== "O" && k !== "H");
+    const atoms: MoleculeStructure["atoms"] = [];
+    const bonds: MoleculeStructure["bonds"] = [];
+
+    atoms.push({ atomIndex: 0, element: "O", x3d: 0, y3d: 0, z3d: 0, x2d: 0, y2d: 0 });
+    const crDist = 1.78;
+    atoms.push({ atomIndex: 1, element: "Cr", x3d: -crDist, y3d: 0, z3d: 0, x2d: -44, y2d: 0, formalCharge: 0 });
+    atoms.push({ atomIndex: 2, element: "Cr", x3d: crDist, y3d: 0, z3d: 0, x2d: 44, y2d: 0, formalCharge: 0 });
+    bonds.push({ atomIndex1: 1, atomIndex2: 0, order: 1, type: "covalent" });
+    bonds.push({ atomIndex1: 2, atomIndex2: 0, order: 1, type: "covalent" });
+
+    const t1 = [
+      { ox: -crDist - 1.2, oy: 1.1, oz: 0, x2d: -75, y2d: -30, order: 2 as const, charge: 0 },
+      { ox: -crDist - 1.2, oy: -1.1, oz: 0, x2d: -75, y2d: 30, order: 2 as const, charge: 0 },
+      { ox: -crDist, oy: 0, oz: 1.6, x2d: -44, y2d: -40, order: 1 as const, charge: -1 },
+    ];
+    const oAnionIdxs: number[] = [];
+    for (const t of t1) {
+      const idx = atoms.length;
+      atoms.push({
+        atomIndex: idx,
+        element: "O",
+        x3d: Number(t.ox.toFixed(3)),
+        y3d: Number(t.oy.toFixed(3)),
+        z3d: Number(t.oz.toFixed(3)),
+        x2d: t.x2d,
+        y2d: t.y2d,
+        formalCharge: t.charge,
+      });
+      bonds.push({ atomIndex1: 1, atomIndex2: idx, order: t.order, type: "covalent" });
+      if (t.charge === -1) oAnionIdxs.push(idx);
+    }
+
+    const t2 = [
+      { ox: crDist + 1.2, oy: 1.1, oz: 0, x2d: 75, y2d: -30, order: 2 as const, charge: 0 },
+      { ox: crDist + 1.2, oy: -1.1, oz: 0, x2d: 75, y2d: 30, order: 2 as const, charge: 0 },
+      { ox: crDist, oy: 0, oz: -1.6, x2d: 44, y2d: 40, order: 1 as const, charge: -1 },
+    ];
+    for (const t of t2) {
+      const idx = atoms.length;
+      atoms.push({
+        atomIndex: idx,
+        element: "O",
+        x3d: Number(t.ox.toFixed(3)),
+        y3d: Number(t.oy.toFixed(3)),
+        z3d: Number(t.oz.toFixed(3)),
+        x2d: t.x2d,
+        y2d: t.y2d,
+        formalCharge: t.charge,
+      });
+      bonds.push({ atomIndex1: 2, atomIndex2: idx, order: t.order, type: "covalent" });
+      if (t.charge === -1) oAnionIdxs.push(idx);
+    }
+
+    let cIdx = 0;
+    for (const m of metals) {
+      const mCount = comp[m] || 0;
+      for (let i = 0; i < mCount; i++) {
+        const targetO = oAnionIdxs[cIdx % oAnionIdxs.length]!;
+        cIdx++;
+        const oAtom = atoms[targetO]!;
+        const sign = oAtom.x2d < 0 ? -1 : 1;
+        addCation(
+          atoms,
+          bonds,
+          m,
+          targetO,
+          { x: oAtom.x3d + sign * 2.1, y: oAtom.y3d, z: oAtom.z3d },
+          { x: oAtom.x2d + sign * 40, y: oAtom.y2d },
+          isDivalentMetal(m) ? 2 : 1
+        );
+      }
+    }
+    return { curated: true, atoms, bonds };
+  }
+
+  // 2. Permanganates (MnO4^-), Manganates (MnO4^2-), Chromates (CrO4^2-)
+  const isMnOxo = (comp["Mn"] ?? 0) === 1 && (comp["O"] ?? 0) === 4;
+  const isCrOxo = (comp["Cr"] ?? 0) === 1 && (comp["O"] ?? 0) === 4;
+  if (isMnOxo || isCrOxo) {
+    const centerElem = isMnOxo ? "Mn" : "Cr";
+    const metals = Object.keys(comp).filter((k) => k !== centerElem && k !== "O" && k !== "H");
+    const atoms: MoleculeStructure["atoms"] = [];
+    const bonds: MoleculeStructure["bonds"] = [];
+
+    atoms.push({ atomIndex: 0, element: centerElem, x3d: 0, y3d: 0, z3d: 0, x2d: 0, y2d: 0, formalCharge: 0 });
+    const tetDirs = [
+      { x: 0.577, y: 0.577, z: 0.577, x2d: 0, y2d: -44 },
+      { x: 0.577, y: -0.577, z: -0.577, x2d: 42, y2d: 14 },
+      { x: -0.577, y: 0.577, z: -0.577, x2d: -42, y2d: 14 },
+      { x: -0.577, y: -0.577, z: 0.577, x2d: 0, y2d: 44 },
+    ];
+    const m_o_dist = 1.62;
+    const numAnionic = isMnOxo && (comp["K"] === 1 || comp["Na"] === 1 || comp["H"] === 1) ? 1 : 2;
+
+    const anionicOIndices: number[] = [];
+    for (let o = 0; o < 4; o++) {
+      const dir = tetDirs[o]!;
+      const isAnion = o >= 4 - numAnionic;
+      const oIdx = atoms.length;
+      atoms.push({
+        atomIndex: oIdx,
+        element: "O",
+        x3d: Number((dir.x * m_o_dist).toFixed(3)),
+        y3d: Number((dir.y * m_o_dist).toFixed(3)),
+        z3d: Number((dir.z * m_o_dist).toFixed(3)),
+        x2d: dir.x2d,
+        y2d: dir.y2d,
+        formalCharge: isAnion ? -1 : 0,
+      });
+      bonds.push({ atomIndex1: 0, atomIndex2: oIdx, order: (isAnion ? 1 : 2) as 1 | 2, type: "covalent" });
+      if (isAnion) anionicOIndices.push(oIdx);
+    }
+
+    let cIdx = 0;
+    for (const m of metals) {
+      const mCount = comp[m] || 0;
+      if (mCount === 1 && numAnionic === 2 && isDivalentMetal(m)) {
+        // Divalent cation bridging both anionic oxygens (e.g. BaCrO4, PbCrO4)
+        const mIdx = atoms.length;
+        atoms.push({
+          atomIndex: mIdx,
+          element: m,
+          x3d: 0,
+          y3d: 0,
+          z3d: -2.1,
+          x2d: 0,
+          y2d: 46,
+          formalCharge: 2,
+        });
+        bonds.push({ atomIndex1: anionicOIndices[0]!, atomIndex2: mIdx, order: 1, type: "ionic" });
+        bonds.push({ atomIndex1: anionicOIndices[1]!, atomIndex2: mIdx, order: 1, type: "ionic" });
+      } else {
+        for (let j = 0; j < mCount; j++) {
+          const targetO = anionicOIndices[cIdx % anionicOIndices.length]!;
+          cIdx++;
+          const oAtom = atoms[targetO]!;
+          const dir = tetDirs[targetO - 1]!;
+          addCation(
+            atoms,
+            bonds,
+            m,
+            targetO,
+            { x: oAtom.x3d + dir.x * 2.1, y: oAtom.y3d + dir.y * 2.1, z: oAtom.z3d + dir.z * 2.1 },
+            { x: oAtom.x2d + Math.round(dir.x2d * 0.9 || 38), y: oAtom.y2d + Math.round(dir.y2d * 0.9 || 38) },
+            isDivalentMetal(m) ? 2 : 1
+          );
+        }
+      }
+    }
+    return { curated: true, atoms, bonds };
+  }
+
+  // 3. Thiosulfates: S2O3^2- (e.g. Na2S2O3)
+  if ((comp["S"] ?? 0) === 2 && (comp["O"] ?? 0) === 3) {
+    const metals = Object.keys(comp).filter((k) => k !== "S" && k !== "O" && k !== "H");
+    const atoms: MoleculeStructure["atoms"] = [];
+    const bonds: MoleculeStructure["bonds"] = [];
+    atoms.push({ atomIndex: 0, element: "S", x3d: 0, y3d: 0, z3d: 0, x2d: 0, y2d: 0, formalCharge: 0 });
+    atoms.push({ atomIndex: 1, element: "S", x3d: 0, y3d: -1.95, z3d: 0, x2d: 0, y2d: -44, formalCharge: 0 });
+    bonds.push({ atomIndex1: 0, atomIndex2: 1, order: 2, type: "covalent" });
+
+    const oData = [
+      { x3d: 1.45, y3d: 0.65, z3d: 0, x2d: 42, y2d: 22, order: 2 as const, charge: 0 },
+      { x3d: -1.45, y3d: 0.65, z3d: 0, x2d: -42, y2d: 22, order: 1 as const, charge: -1 },
+      { x3d: 0, y3d: 1.55, z3d: 0, x2d: 0, y2d: 44, order: 1 as const, charge: -1 },
+    ];
+    const anionicO: number[] = [];
+    for (const od of oData) {
+      const idx = atoms.length;
+      atoms.push({
+        atomIndex: idx,
+        element: "O",
+        x3d: od.x3d,
+        y3d: od.y3d,
+        z3d: od.z3d,
+        x2d: od.x2d,
+        y2d: od.y2d,
+        formalCharge: od.charge,
+      });
+      bonds.push({ atomIndex1: 0, atomIndex2: idx, order: od.order, type: "covalent" });
+      if (od.charge === -1) anionicO.push(idx);
+    }
+
+    let cIdx = 0;
+    for (const m of metals) {
+      const mCount = comp[m] || 0;
+      for (let j = 0; j < mCount; j++) {
+        const targetO = anionicO[cIdx % anionicO.length]!;
+        cIdx++;
+        const oAtom = atoms[targetO]!;
+        addCation(
+          atoms,
+          bonds,
+          m,
+          targetO,
+          { x: oAtom.x3d + (oAtom.x3d < 0 ? -2.0 : 2.0), y: oAtom.y3d, z: oAtom.z3d },
+          { x: oAtom.x2d + (oAtom.x2d < 0 ? -38 : 38), y: oAtom.y2d },
+          isDivalentMetal(m) ? 2 : 1
+        );
+      }
+    }
+    return { curated: true, atoms, bonds };
+  }
+
+  // 4. Hexacyanoferrate complexes: [Fe(CN)6]^4- / [Fe(CN)6]^3- / Prussian Blue
+  const isCyano = (comp["C"] ?? 0) === 6 && (comp["N"] ?? 0) === 6 && (comp["Fe"] ?? 0) >= 1 && (comp["S"] ?? 0) === 0;
+  if (isCyano) {
+    const metals = Object.keys(comp).filter((k) => k !== "Fe" && k !== "C" && k !== "N");
+    const mTotal = metals.reduce((sum, m) => {
+      const count = comp[m] || 0;
+      const isDivalent = ["Ba", "Pb", "Ca", "Mg", "Sr", "Fe", "Cu", "Zn"].includes(m);
+      return sum + count * (isDivalent ? 2 : 1);
+    }, 0);
+    const feCharge = Math.max(2, 6 - mTotal);
+
+    const atoms: MoleculeStructure["atoms"] = [];
+    const bonds: MoleculeStructure["bonds"] = [];
+    atoms.push({ atomIndex: 0, element: "Fe", x3d: 0, y3d: 0, z3d: 0, x2d: 0, y2d: 0, formalCharge: feCharge });
+
+    const dirs = [
+      { x: 1, y: 0, z: 0, x2d: 42, y2d: 0 },
+      { x: -1, y: 0, z: 0, x2d: -42, y2d: 0 },
+      { x: 0, y: 1, z: 0, x2d: 0, y2d: 42 },
+      { x: 0, y: -1, z: 0, x2d: 0, y2d: -42 },
+      { x: 0.707, y: 0.707, z: 0, x2d: 30, y2d: 30 },
+      { x: -0.707, y: -0.707, z: 0, x2d: -30, y2d: -30 },
+    ];
+    for (const d of dirs) {
+      const cIdx = atoms.length;
+      atoms.push({
+        atomIndex: cIdx,
+        element: "C",
+        x3d: Number((d.x * 1.9).toFixed(3)),
+        y3d: Number((d.y * 1.9).toFixed(3)),
+        z3d: Number((d.z * 1.9).toFixed(3)),
+        x2d: d.x2d,
+        y2d: d.y2d,
+      });
+      bonds.push({ atomIndex1: 0, atomIndex2: cIdx, order: 1, type: "covalent" });
+
+      const nIdx = atoms.length;
+      atoms.push({
+        atomIndex: nIdx,
+        element: "N",
+        x3d: Number((d.x * 3.05).toFixed(3)),
+        y3d: Number((d.y * 3.05).toFixed(3)),
+        z3d: Number((d.z * 3.05).toFixed(3)),
+        x2d: Math.round(d.x2d * 1.7),
+        y2d: Math.round(d.y2d * 1.7),
+        formalCharge: -1,
+      });
+      bonds.push({ atomIndex1: cIdx, atomIndex2: nIdx, order: 3, type: "covalent" });
+    }
+
+    let mOrder = 0;
+    for (const m of metals) {
+      const mCount = comp[m] || 0;
+      for (let j = 0; j < mCount; j++) {
+        const mIdx = atoms.length;
+        const angle = (mOrder * 2 * Math.PI) / mCount + Math.PI / 4;
+        const targetN = 2 + (mOrder % 6) * 2;
+        mOrder++;
+        atoms.push({
+          atomIndex: mIdx,
+          element: m,
+          x3d: Number((Math.cos(angle) * 3.8).toFixed(3)),
+          y3d: Number((Math.sin(angle) * 3.8).toFixed(3)),
+          z3d: 0,
+          x2d: Math.round(Math.cos(angle) * 95) || 0,
+          y2d: Math.round(Math.sin(angle) * 95) || 0,
+          formalCharge: isDivalentMetal(m) ? 2 : 1,
+        });
+        bonds.push({ atomIndex1: targetN, atomIndex2: mIdx, order: 1, type: "ionic" });
+      }
+    }
+    return { curated: true, atoms, bonds };
+  }
+
+  return null;
+}
 
 function generateCoordinationComplex(
   comp: ElementComposition,
@@ -3467,6 +3971,11 @@ function generateMetalHalide(
 }
 
   // 3. Inorganic & Oxoacid / Small Molecule VSEPR Generator
+  const curatedSalt = generateCuratedComplexOrSalt(comp, formula, commonName);
+  if (curatedSalt && curatedSalt.atoms.length > 0) {
+    return finalize(curatedSalt);
+  }
+
   const complex = generateCoordinationComplex(comp, formula, commonName);
   if (complex && complex.atoms.length > 0) {
     return finalize(complex);

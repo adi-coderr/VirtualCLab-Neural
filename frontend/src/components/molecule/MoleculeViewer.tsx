@@ -58,36 +58,7 @@ export function MoleculeViewer({ chemical }: { chemical: Chemical }) {
       </div>
       <div className="molecule-viewer__stage">
         {mode === "2d" ? (
-          <>
-            <MoleculeViewer2D structure={chemical.structure} label={chemical.commonName} />
-            {presentElements.length > 0 && (
-              <div className="molecule-viewer__legend" aria-label="Element Legend">
-                <div className="molecule-viewer__legend-title">Elements</div>
-                <div className="molecule-viewer__legend-list">
-                  {presentElements.map((elem) => (
-                    <div
-                      key={elem.symbol}
-                      className="molecule-viewer__legend-item"
-                      title={`${elem.name} (${elem.symbol}) — ${elem.count} atom${elem.count > 1 ? "s" : ""}`}
-                    >
-                      <span
-                        className="molecule-viewer__legend-sphere"
-                        style={{
-                          backgroundColor: elem.visual.color,
-                        }}
-                      />
-                      <span className="molecule-viewer__legend-text">
-                        <span className="molecule-viewer__legend-symbol">{elem.symbol}</span>
-                        <span className="molecule-viewer__legend-sep">·</span>
-                        <span className="molecule-viewer__legend-name">{elem.name}</span>
-                        {elem.count > 1 && <span className="molecule-viewer__legend-count">×{elem.count}</span>}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </>
+          <MoleculeViewer2D structure={chemical.structure} label={chemical.commonName} />
         ) : (
           <MoleculeViewer3D structure={chemical.structure}>
             {presentElements.length > 0 && (
