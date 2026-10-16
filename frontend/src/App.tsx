@@ -9,7 +9,6 @@ import { ReactionControls } from "./components/controls/ReactionControls";
 import { LabBench } from "./components/lab/LabBench";
 import { Timeline } from "./components/timeline/Timeline";
 import { ReactionResultPanel } from "./components/results/ReactionResultPanel";
-import { AIAssistant } from "./components/assistant/AIAssistant";
 import { AiSettingsModal } from "./components/settings/AiSettingsModal";
 import { Tabs } from "./components/common/Tabs";
 import { Spinner } from "./components/common/Badge";
@@ -98,7 +97,6 @@ export default function App() {
                   </p>
                 ),
               },
-              { id: "assistant", label: "Assistant", content: <AIAssistant /> },
             ]}
           />
         }

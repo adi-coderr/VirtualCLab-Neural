@@ -153,12 +153,12 @@ export function AppShell({
           onDoubleClick={handleResetWidth}
           role="separator"
           aria-orientation="vertical"
-          aria-label="Drag horizontally to resize Result & Assistant panel"
+          aria-label="Drag horizontally to resize Result panel"
           aria-valuenow={Math.round(rightWidth)}
           aria-valuemin={MIN_RIGHT_WIDTH}
           tabIndex={0}
           onKeyDown={handleKeyDown}
-          title="Hold and drag horizontally to resize Result & Assistant panel (Double-click to reset)"
+          title="Hold and drag horizontally to resize Result panel (Double-click to reset)"
         >
           <div className="app-shell__resizer-handle" />
         </div>

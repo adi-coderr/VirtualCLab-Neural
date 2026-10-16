@@ -739,8 +739,40 @@ function resolveReactionInternal(
     return buildResultFromCurated(compatible[0] as CuratedReaction, lookup);
   }
   if (compatible.length > 1) {
-    // Multiple curated outcomes match these reactants under the given conditions: be explicit
-    // about the ambiguity rather than silently picking one (see product brief section 9).
+    // 1. If all outcomes have identical chemical product species, they are duplicates/variants of the same reaction
+    const firstProductsKey = [...compatible[0]!.products].map((p) => `${p.chemicalId}:${p.coefficient}`).sort().join("+");
+    const allSameProducts = compatible.every(
+      (r) => [...r.products].map((p) => `${p.chemicalId}:${p.coefficient}`).sort().join("+") === firstProductsKey
+    );
+    if (allSameProducts) {
+      const best = [...compatible].sort((a, b) => b.confidenceScore - a.confidenceScore)[0]!;
+      return buildResultFromCurated(best, lookup);
+    }
+
+    // 2. Disambiguate by concentration/solvent if applicable (e.g. dilute vs concentrated nitric acid)
+    const hasSolventContrasts =
+      compatible.some((r) => r.solvent?.toLowerCase() === "concentrated") &&
+      compatible.some((r) => !r.solvent || r.solvent.toLowerCase() === "dilute" || r.solvent.toLowerCase() === "aqueous");
+
+    if (hasSolventContrasts) {
+      const isConcentratedCondition = conditions.solvent?.toLowerCase() === "concentrated";
+      const conditionMatch = isConcentratedCondition
+        ? compatible.find((r) => r.solvent?.toLowerCase() === "concentrated")
+        : compatible.find((r) => !r.solvent || r.solvent.toLowerCase() === "dilute" || r.solvent.toLowerCase() === "aqueous");
+
+      if (conditionMatch) {
+        const result = buildResultFromCurated(conditionMatch, lookup);
+        const alternative = compatible.find((r) => r.id !== conditionMatch.id);
+        if (alternative) {
+          result.warnings.push(
+            `Note: Under ${alternative.solvent || "alternative"} conditions, reaction pathway shifts to: ${alternative.equationDisplay}`
+          );
+        }
+        return result;
+      }
+    }
+
+    // 3. Otherwise report genuine ambiguity (e.g. test fixtures)
     const options = compatible.map((r) => `${r.name} (${r.equationDisplay})`).join("; ");
     return {
       status: "REACTION",

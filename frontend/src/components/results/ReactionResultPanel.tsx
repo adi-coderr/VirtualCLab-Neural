@@ -100,18 +100,13 @@ export function ReactionResultPanel({ result }: { result: SimulationResult }) {
       !w.toLowerCase().includes("reaction outcome predicted by")
   );
 
-  // Check for balancedEquation or fallback to chemical equation embedded in explanation
+  // Check for balancedEquation or fallback to legitimate chemical equation embedded in explanation
   const displayEquation = useMemo(() => {
     if (resolution.balancedEquation && resolution.balancedEquation.trim()) {
-      return resolution.balancedEquation;
+      return resolution.balancedEquation.trim();
     }
     if (resolution.explanation) {
-      const match = resolution.explanation.match(
-        /(?:\(|\b)([A-Za-z0-9()[\]^+\-\s·]+?\s*(?:->|→)\s*[A-Za-z0-9()[\]^+\-\s·]+?)(?:\)|[.,;]|\s+is|\s+under|\s+at|\s+which|\s+yielding|\s+with|\s*$)/
-      );
-      if (match && match[1] && (match[1].includes("->") || match[1].includes("→"))) {
-        return match[1].trim();
-      }
+      return extractChemicalEquation(resolution.explanation);
     }
     return null;
   }, [resolution.balancedEquation, resolution.explanation]);
@@ -411,4 +406,52 @@ function QuantitiesTable({ lines }: { lines: NonNullable<SimulationResult["stoic
       </table>
     </div>
   );
+}
+
+function isValidChemicalFormulaTerm(term: string): boolean {
+  const clean = term.trim().replace(/^\d+\s*/, "").replace(/[([](s|l|g|aq)[)\]]/gi, "").trim();
+  if (!clean) return true;
+  // If it contains prose words, it is not a pure chemical formula
+  const proseRegex = /\b(the|and|for|from|with|under|reaction|catalytic|decomposition|toothpaste|elephant|oxidation|reduction|multiple|curated|outcomes|depending|conditions|provide|specific|disambiguate|applies|standard|dilute|concentrated|acid|base|solution|mixture|forming|yielding)\b/i;
+  if (proseRegex.test(clean)) return false;
+  // Chemical terms consist of element symbols, digits, parentheses, brackets, charges
+  return /^[A-Z][a-zA-Z0-9()[\]^+\-·•._]*$/.test(clean);
+}
+
+function isLegitimateEquation(eq: string): boolean {
+  if (!eq.includes("->") && !eq.includes("→") && !eq.includes("⇌")) return false;
+  const proseRegex = /\b(the|and|for|from|with|under|reaction|catalytic|decomposition|toothpaste|elephant|oxidation|reduction|multiple|curated|outcomes|depending|conditions|provide|specific|disambiguate|applies|standard|dilute|concentrated|acid|base|solution|mixture|forming|yielding)\b/i;
+  if (proseRegex.test(eq)) return false;
+
+  const arrow = eq.includes("⇌") ? "⇌" : eq.includes("→") ? "→" : "->";
+  const sides = eq.split(arrow);
+  if (sides.length !== 2) return false;
+
+  const reactants = sides[0]!.split("+").map((s) => s.trim()).filter(Boolean);
+  const products = sides[1]!.split("+").map((s) => s.trim()).filter(Boolean);
+  if (reactants.length === 0 || products.length === 0) return false;
+
+  return reactants.every(isValidChemicalFormulaTerm) && products.every(isValidChemicalFormulaTerm);
+}
+
+function extractChemicalEquation(explanation: string): string | null {
+  // 1. Try finding explicit equations inside parentheses first e.g. "(2H2O2 -> 2H2O + O2)"
+  const parenMatches = explanation.matchAll(/\(([^()]+?(?:->|→|⇌)[^()]+?)\)/g);
+  for (const m of parenMatches) {
+    const candidate = m[1]?.trim();
+    if (candidate && isLegitimateEquation(candidate)) {
+      return candidate;
+    }
+  }
+
+  // 2. Try standalone lines e.g. after colon or newline
+  const lineMatches = explanation.matchAll(/(?:^|[:\n]\s*)([A-Za-z0-9()[\]^+\-\s·]+?\s*(?:->|→|⇌)\s*[A-Za-z0-9()[\]^+\-\s·]+?)(?=[.;\n]|$)/g);
+  for (const m of lineMatches) {
+    const candidate = m[1]?.trim();
+    if (candidate && isLegitimateEquation(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
 }
