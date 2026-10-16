@@ -124,6 +124,9 @@ export class ChemicalRepository {
         atom_index_2: number;
         bond_order: number;
         bond_type: string;
+        bond_length?: number;
+        bond_angle?: number;
+        angle_label?: string;
       }[];
 
       let hasUnphysicalBond = false;
@@ -172,6 +175,9 @@ export class ChemicalRepository {
             atomIndex2: b.atom_index_2,
             order: b.bond_order as 1 | 2 | 3,
             type: b.bond_type as "covalent" | "ionic",
+            length: b.bond_length ?? undefined,
+            angle: b.bond_angle ?? undefined,
+            angleLabel: b.angle_label ?? undefined,
           })),
         };
       }

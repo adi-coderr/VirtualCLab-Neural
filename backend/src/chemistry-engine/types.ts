@@ -102,6 +102,9 @@ export interface BondRecord {
   atomIndex2: number;
   order: 1 | 2 | 3;
   type: "covalent" | "ionic";
+  length?: number; // Bond length in Angstroms (Å)
+  angle?: number; // Primary bond valence angle in degrees (°)
+  angleLabel?: string; // Optional valence label (e.g. "H–O–O" or "linear")
 }
 
 export interface MoleculeStructure {

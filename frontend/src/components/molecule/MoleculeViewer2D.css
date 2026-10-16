@@ -191,19 +191,22 @@
   position: absolute;
   pointer-events: none;
   z-index: 25;
-  background: rgba(15, 23, 42, 0.92);
-  backdrop-filter: blur(10px);
+  background: #000000;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   color: #ffffff;
-  padding: 8px 12px;
-  border-radius: var(--radius-sm, 6px);
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  font-size: 11px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md, 8px);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.75), 0 2px 8px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  font-size: 12px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  min-width: 140px;
+  gap: 6px;
+  min-width: 195px;
+  max-width: 320px;
   animation: fadeIn 0.12s ease-out;
+  line-height: 1.4;
 }
 
 @keyframes fadeIn {
@@ -220,50 +223,66 @@
 .molecule-2d__tooltip-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
-  padding-bottom: 4px;
-  margin-bottom: 2px;
+  gap: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+  padding-bottom: 6px;
+  margin-bottom: 3px;
 }
 
 .molecule-2d__tooltip-dot {
-  width: 9px;
-  height: 9px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  border: 1.5px solid rgba(255, 255, 255, 0.6);
+  flex-shrink: 0;
 }
 
 .molecule-2d__tooltip-bond-icon {
-  font-size: 13px;
-  color: var(--azure-500, #2f8fb0);
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--azure-500, #38bdf8);
+  line-height: 1;
 }
 
 .molecule-2d__tooltip-name {
+  font-size: 13px;
   font-weight: 700;
-  color: #f8fafc;
+  color: #ffffff;
+  letter-spacing: -0.1px;
 }
 
 .molecule-2d__tooltip-idx {
   margin-left: auto;
   font-family: var(--font-mono, monospace);
-  font-size: 9.5px;
+  font-size: 10.5px;
   color: #94a3b8;
+  font-weight: 600;
 }
 
 .molecule-2d__tooltip-body {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
 .molecule-2d__tooltip-row {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
-  font-size: 10px;
+  align-items: center;
+  gap: 16px;
+  font-size: 12px;
   color: #cbd5e1;
+  white-space: nowrap;
+}
+
+.molecule-2d__tooltip-row span {
+  color: #94a3b8;
+  font-weight: 500;
 }
 
 .molecule-2d__tooltip-row strong {
-  color: #f1f5f9;
+  color: #ffffff;
+  font-weight: 600;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
 }

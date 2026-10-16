@@ -1,4 +1,4 @@
-import type { ElementComposition, MoleculeStructure } from "./types.js";
+import type { ElementComposition, MoleculeStructure, AtomRecord, BondRecord } from "./types.js";
 import { parseFormula } from "./formulaParser.js";
 
 /**
@@ -1694,10 +1694,17 @@ function generateInorganicVsepr(
       let vz = 0;
 
       if (oCount === 2) {
-        const ang = (i === 0 ? 1 : -1) * (104.5 * Math.PI / 360);
-        vx = Math.sin(ang);
-        vy = Math.cos(ang);
-        vz = i === 0 ? 0.35 : -0.35;
+        const isLinear = (central === "C" || central === "Be" || central === "Hg" || central === "Si") && hCount === 0;
+        if (isLinear) {
+          vx = i === 0 ? 1 : -1;
+          vy = 0;
+          vz = 0;
+        } else {
+          const ang = (i === 0 ? 1 : -1) * (104.5 * Math.PI / 360);
+          vx = Math.sin(ang);
+          vy = Math.cos(ang);
+          vz = i === 0 ? 0.35 : -0.35;
+        }
       } else if (oCount === 3) {
         const isPyramidal = ["Cl", "Br", "I", "P", "As", "Sb", "N", "Se"].includes(central);
         const ang = i * trigAngle - Math.PI / 2;
@@ -1954,7 +1961,8 @@ function generateOrganicStructure(
   formula: string,
   comp: ElementComposition,
   commonName: string,
-  rng: () => number
+  rng: () => number,
+  fastMode = false
 ): MoleculeStructure {
   const halogens = ["F", "Cl", "Br", "I"];
   const nonMetals = new Set(["C", "Si", "B", "N", "P", "S", "As", "Se", "Te", "O", ...halogens, "H"]);
@@ -2218,7 +2226,7 @@ function generateOrganicStructure(
     }
   }
 
-  relaxGeometry(atoms, bonds, rng, aromaticRingAtoms);
+  relaxGeometry(atoms, bonds, rng, aromaticRingAtoms, fastMode);
   return { curated: true, atoms, bonds };
 }
 
@@ -2230,7 +2238,8 @@ function relaxGeometry(
   atoms: MoleculeStructure["atoms"],
   bonds: MoleculeStructure["bonds"],
   rng: () => number,
-  aromaticRingAtoms: Set<number> = new Set()
+  aromaticRingAtoms: Set<number> = new Set(),
+  fastMode = false
 ) {
   if (atoms.length <= 1) return;
 
@@ -2241,7 +2250,7 @@ function relaxGeometry(
     adj.get(b.atomIndex2)?.push({ neighbor: b.atomIndex1, order: b.order, type: b.type });
   }
 
-  const iterations = 100;
+  const iterations = fastMode ? 5 : 100;
 
   for (let iter = 0; iter < iterations; iter++) {
     // 1. Harmonic Bond Distance Springs
@@ -2846,6 +2855,143 @@ export function enhance2DCoordinates(struct: MoleculeStructure): MoleculeStructu
   return { ...struct, atoms };
 }
 
+/**
+ * Annotates each bond in the structure with chemically accurate bond length (in Å)
+ * and primary bond valence angle (in degrees).
+ */
+export function annotateBondLengthsAndAngles(struct: MoleculeStructure): MoleculeStructure {
+  if (!struct || !struct.bonds || struct.bonds.length === 0) return struct;
+  const atoms = struct.atoms || [];
+  const bonds = struct.bonds;
+
+  const enrichedBonds = bonds.map((b) => {
+    const a1 = atoms[b.atomIndex1];
+    const a2 = atoms[b.atomIndex2];
+    if (!a1 || !a2) return b;
+
+    // 1. Calculate bond length
+    let lengthA = b.length;
+    if (!lengthA || isNaN(lengthA) || lengthA <= 0) {
+      const dx = a2.x3d - a1.x3d;
+      const dy = a2.y3d - a1.y3d;
+      const dz = a2.z3d - a1.z3d;
+      const d3d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      if (d3d > 0.35 && d3d < 5.0 && !isNaN(d3d)) {
+        lengthA = Number(d3d.toFixed(2));
+      } else {
+        const orderSymbol = b.order === 3 ? "#" : b.order === 2 ? "=" : "-";
+        const key1 = `${a1.element}${orderSymbol}${a2.element}`;
+        const key2 = `${a2.element}${orderSymbol}${a1.element}`;
+        const keySingle1 = `${a1.element}-${a2.element}`;
+        const keySingle2 = `${a2.element}-${a1.element}`;
+
+        if (BOND_LENGTHS[key1]) {
+          lengthA = BOND_LENGTHS[key1];
+        } else if (BOND_LENGTHS[key2]) {
+          lengthA = BOND_LENGTHS[key2];
+        } else if (BOND_LENGTHS[keySingle1]) {
+          const factor = b.order === 3 ? 0.78 : b.order === 2 ? 0.88 : 1.0;
+          lengthA = Number((BOND_LENGTHS[keySingle1] * factor).toFixed(2));
+        } else if (BOND_LENGTHS[keySingle2]) {
+          const factor = b.order === 3 ? 0.78 : b.order === 2 ? 0.88 : 1.0;
+          lengthA = Number((BOND_LENGTHS[keySingle2] * factor).toFixed(2));
+        } else {
+          lengthA = 1.45;
+        }
+      }
+    }
+
+    if (!lengthA || isNaN(lengthA) || lengthA <= 0) {
+      lengthA = 1.45;
+    }
+
+    // 2. Calculate primary valence angle
+    let angleDeg = b.angle;
+    let angleLabel = b.angleLabel;
+    if (angleDeg === undefined || isNaN(angleDeg)) {
+      const neighbors1: number[] = [];
+      const neighbors2: number[] = [];
+      for (const other of bonds) {
+        if (other === b) continue;
+        if (other.atomIndex1 === b.atomIndex1 && other.atomIndex2 !== b.atomIndex2) {
+          neighbors1.push(other.atomIndex2);
+        } else if (other.atomIndex2 === b.atomIndex1 && other.atomIndex1 !== b.atomIndex2) {
+          neighbors1.push(other.atomIndex1);
+        }
+        if (other.atomIndex1 === b.atomIndex2 && other.atomIndex2 !== b.atomIndex1) {
+          neighbors2.push(other.atomIndex2);
+        } else if (other.atomIndex2 === b.atomIndex2 && other.atomIndex1 !== b.atomIndex1) {
+          neighbors2.push(other.atomIndex1);
+        }
+      }
+
+      const calc3DAngle = (origin: AtomRecord, p1: AtomRecord, p2: AtomRecord): number => {
+        let v1x = p1.x3d - origin.x3d;
+        let v1y = p1.y3d - origin.y3d;
+        let v1z = p1.z3d - origin.z3d;
+        let v2x = p2.x3d - origin.x3d;
+        let v2y = p2.y3d - origin.y3d;
+        let v2z = p2.z3d - origin.z3d;
+
+        let l1 = Math.sqrt(v1x * v1x + v1y * v1y + v1z * v1z);
+        let l2 = Math.sqrt(v2x * v2x + v2y * v2y + v2z * v2z);
+
+        if (l1 < 0.05 || l2 < 0.05) {
+          v1x = p1.x2d - origin.x2d;
+          v1y = p1.y2d - origin.y2d;
+          v1z = 0;
+          v2x = p2.x2d - origin.x2d;
+          v2y = p2.y2d - origin.y2d;
+          v2z = 0;
+          l1 = Math.hypot(v1x, v1y);
+          l2 = Math.hypot(v2x, v2y);
+        }
+        if (l1 < 0.001 || l2 < 0.001) return 180;
+        const denom = l1 * l2;
+        if (denom < 1e-6 || isNaN(denom)) return 180;
+        const dot = v1x * v2x + v1y * v2y + v1z * v2z;
+        const cosTheta = Math.max(-1, Math.min(1, dot / denom));
+        const deg = (Math.acos(cosTheta) * 180) / Math.PI;
+        return isNaN(deg) ? 180 : deg;
+      };
+
+      if (neighbors1.length > 0 && atoms[neighbors1[0]!]) {
+        const nAtom = atoms[neighbors1[0]!]!;
+        const ang = calc3DAngle(a1, nAtom, a2);
+        const safeAng = isNaN(ang) ? 109.5 : ang;
+        angleDeg = Number(safeAng.toFixed(1));
+        angleLabel = `${nAtom.element}–${a1.element}–${a2.element}`;
+      } else if (neighbors2.length > 0 && atoms[neighbors2[0]!]) {
+        const nAtom = atoms[neighbors2[0]!]!;
+        const ang = calc3DAngle(a2, a1, nAtom);
+        const safeAng = isNaN(ang) ? 109.5 : ang;
+        angleDeg = Number(safeAng.toFixed(1));
+        angleLabel = `${a1.element}–${a2.element}–${nAtom.element}`;
+      } else {
+        angleDeg = 180.0;
+        angleLabel = "linear";
+      }
+    }
+
+    if (angleDeg === undefined || isNaN(angleDeg)) {
+      angleDeg = 180.0;
+      angleLabel = angleLabel || "linear";
+    }
+
+    return {
+      ...b,
+      length: lengthA,
+      angle: angleDeg,
+      angleLabel,
+    };
+  });
+
+  return {
+    ...struct,
+    bonds: enrichedBonds,
+  };
+}
+
 // -----------------------------------------------------------------------------
 // Main Generator Entrypoint
 // -----------------------------------------------------------------------------
@@ -2855,7 +3001,8 @@ export function generateMoleculeStructure(
   formula: string,
   composition?: ElementComposition,
   commonName = "",
-  smiles?: string
+  smiles?: string,
+  skip2DRelaxation = false
 ): MoleculeStructure {
   const rng = createSeededRandom(chemicalId || formula || commonName || smiles || "chemlab_seed");
 
@@ -2864,7 +3011,8 @@ export function generateMoleculeStructure(
     if (hydrateInfo && hydrateInfo.waterCount > 0) {
       result = attachHydrateWaters(result, hydrateInfo.waterCount);
     }
-    return enhance2DCoordinates(result);
+    const with2D = skip2DRelaxation ? result : enhance2DCoordinates(result);
+    return annotateBondLengthsAndAngles(with2D);
   };
 
   // 1. Prioritize SMILES whenever available
@@ -4012,5 +4160,5 @@ function generateMetalHalide(
   }
 
   // 4. Organic Structure Generator with proper continuous zigzag chains & rings
-  return finalize(generateOrganicStructure(chemicalId, activeFormula, comp, commonName, rng));
+  return finalize(generateOrganicStructure(chemicalId, activeFormula, comp, commonName, rng, skip2DRelaxation));
 }
