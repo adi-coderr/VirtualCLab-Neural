@@ -559,8 +559,9 @@
 
 .reactant-details__prop-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: 16px;
   padding: 7px 12px;
   font-size: 11.5px;
   border-bottom: 1px solid var(--paper-100, #eaeee9);
@@ -577,6 +578,8 @@
 .reactant-details__prop-name {
   font-weight: 500;
   color: var(--graphite-600, #46565f);
+  flex-shrink: 0;
+  max-width: 48%;
 }
 
 .reactant-details__prop-val {
@@ -584,6 +587,117 @@
   color: var(--ink-950, #10161a);
   font-family: var(--font-mono, monospace);
   font-variant-numeric: tabular-nums lining-nums;
+  text-align: right;
+  word-break: break-word;
+}
+
+/* ==============================================================================
+   Provenance & Traceability Audit Section
+   ============================================================================== */
+.reactant-details__prov-audit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reactant-details__prov-audit-card {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px 12px;
+  background: var(--paper-0, #ffffff);
+  border: 1px solid var(--paper-200, #dde3dd);
+  border-radius: var(--radius-md, 4px);
+  transition: all var(--transition-fast, 120ms ease);
+}
+
+.reactant-details__prov-audit-card:nth-child(even) {
+  background: var(--paper-50, #f8faf8);
+}
+
+.reactant-details__prov-audit-card:hover {
+  border-color: var(--graphite-400, #7c8b93);
+  box-shadow: 0 2px 5px rgba(16, 22, 26, 0.04);
+}
+
+.reactant-details__prov-audit-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.reactant-details__prov-audit-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.reactant-details__prov-audit-cat {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-950, #10161a);
+}
+
+.reactant-details__prov-audit-val-badge {
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--font-mono, monospace);
+  background: var(--paper-100, #eaeee9);
+  color: var(--ink-800, #1f2a30);
+  border: 1px solid var(--paper-200, #dde3dd);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm, 2px);
+}
+
+.reactant-details__prov-audit-source-line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--ink-900, #161e23);
+  flex-wrap: wrap;
+}
+
+.reactant-details__prov-audit-source-lbl {
+  font-size: 9.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--graphite-600, #46565f);
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.reactant-details__prov-audit-source-txt {
+  font-weight: 500;
+  color: var(--ink-950, #10161a);
+}
+
+.reactant-details__prov-audit-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: var(--graphite-600, #46565f);
+  background: var(--paper-100, #eaeee9);
+  padding: 5px 8px;
+  border-radius: var(--radius-sm, 2px);
+  border-left: 2.5px solid var(--graphite-400, #7c8b93);
+}
+
+.reactant-details__prov-audit-note-icon {
+  font-size: 10.5px;
+  color: var(--graphite-500, #5c6c75);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.reactant-details__prov-audit-note-txt {
+  flex: 1;
 }
 
 /* Isotopes Table */

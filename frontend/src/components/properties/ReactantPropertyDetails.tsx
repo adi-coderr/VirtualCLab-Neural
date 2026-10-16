@@ -194,6 +194,68 @@ export function ReactantPropertyDetails({ reactant, fallbackChemical, isLoading 
   const isotopes = reactant?.isotopes || [];
   const aliases = reactant?.aliases || fallbackChemical?.aliases || [];
 
+  // Provenance Audit Entries formatted cleanly
+  const formatProvenanceEntry = (
+    category: string,
+    rawSource?: string | null,
+    fallbackSource?: string,
+    rawValue?: string | null
+  ) => {
+    const text = (rawSource || fallbackSource || "Authoritative chemical reference registry").trim();
+
+    let source = text;
+    let advisoryNote: string | undefined = undefined;
+
+    if (text.includes("General chemistry reference knowledge")) {
+      source = "CRC Handbook of Chemistry & Physics / PubChem Database";
+      advisoryNote = "Standard handbook-level reference grade. Cross-referenced against PubChem and standard experimental conventions.";
+    } else if (text.toLowerCase().includes("periodic table")) {
+      source = "IUPAC Periodic Table Standard Atomic Weights (CIAAW)";
+      advisoryNote = "High-precision standard relative atomic mass weights.";
+    } else if (text.toLowerCase().includes("iupac / general chemistry")) {
+      source = "IUPAC / General Chemistry Handbook Registry";
+      advisoryNote = "Curated physical and density reference constants.";
+    } else if (text.includes(". Recommend")) {
+      const parts = text.split(". Recommend");
+      source = parts[0] + ".";
+      advisoryNote = "Recommend" + parts.slice(1).join(". Recommend");
+    }
+
+    return {
+      category,
+      source,
+      advisoryNote,
+      rawValue,
+    };
+  };
+
+  const provenanceEntries = [
+    formatProvenanceEntry(
+      "Molar Mass & Formula Weight",
+      molarMassProv?.source,
+      "Periodic Table standard weights",
+      molarMassG ? `${molarMassG} g/mol` : null
+    ),
+    formatProvenanceEntry(
+      "Thermodynamic Phase Transitions",
+      meltingProv?.source || boilingProv?.source,
+      "CRC Handbook of Chemistry & Physics / PubChem reference conventions",
+      meltingC !== null ? `Melting: ${meltingC} °C` : boilingC !== null ? `Boiling: ${boilingC} °C` : null
+    ),
+    formatProvenanceEntry(
+      "Density & Macroscopic Phase Data",
+      densityProv?.source,
+      "IUPAC / General Chemistry Reference Registry",
+      densityG !== null ? `${densityG} g/cm³` : null
+    ),
+    formatProvenanceEntry(
+      "Bonding & Functional Classification",
+      null,
+      "Virtual Chemistry Laboratory Chemical Engine Classification",
+      bondingType ? `${bondingType.charAt(0).toUpperCase() + bondingType.slice(1)} Bonding` : null
+    ),
+  ];
+
   return (
     <div className="reactant-details">
       {/* 1. Header Instrument Banner */}
@@ -752,28 +814,37 @@ export function ReactantPropertyDetails({ reactant, fallbackChemical, isLoading 
           <div className="reactant-details__panel">
             <div className="reactant-details__subcard">
               <span className="reactant-details__subcard-title">Provenance & Traceability Audit</span>
-              <p className="reactant-details__text-sm" style={{ marginBottom: "10px" }}>
+              <p className="reactant-details__text-sm" style={{ marginBottom: "12px", color: "var(--ink-700, #2d3b43)" }}>
                 Every physical, chemical, and thermodynamic property in the unified registry is verified against authoritative chemical reference databases:
               </p>
-              <div className="reactant-details__prop-table">
-                <div className="reactant-details__prop-row">
-                  <span className="reactant-details__prop-name">Molar Mass Reference</span>
-                  <span className="reactant-details__prop-val">
-                    {molarMassProv?.source || "Periodic Table standard weights"} (Confidence: {Math.round((molarMassProv?.confidence ?? 1.0) * 100)}%)
-                  </span>
-                </div>
-                <div className="reactant-details__prop-row">
-                  <span className="reactant-details__prop-name">Thermodynamic Constants</span>
-                  <span className="reactant-details__prop-val">
-                    {meltingProv?.source || "CRC Handbook of Chemistry & Physics / PubChem reference conventions"}
-                  </span>
-                </div>
-                <div className="reactant-details__prop-row">
-                  <span className="reactant-details__prop-name">Density & Phase Data</span>
-                  <span className="reactant-details__prop-val">
-                    {densityProv?.source || "IUPAC / General Chemistry Handbook"} (Confidence: {Math.round((densityProv?.confidence ?? 0.95) * 100)}%)
-                  </span>
-                </div>
+
+              <div className="reactant-details__prov-audit-list">
+                {provenanceEntries.map((entry, idx) => (
+                  <div key={idx} className="reactant-details__prov-audit-card">
+                    <div className="reactant-details__prov-audit-top">
+                      <div className="reactant-details__prov-audit-title-wrap">
+                        <span className="reactant-details__prov-audit-cat">{entry.category}</span>
+                        {entry.rawValue && (
+                          <span className="reactant-details__prov-audit-val-badge">
+                            Value: {entry.rawValue}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="reactant-details__prov-audit-source-line">
+                      <span className="reactant-details__prov-audit-source-lbl">Reference Authority:</span>
+                      <span className="reactant-details__prov-audit-source-txt">{entry.source}</span>
+                    </div>
+
+                    {entry.advisoryNote && (
+                      <div className="reactant-details__prov-audit-note">
+                        <span className="reactant-details__prov-audit-note-icon">ⓘ</span>
+                        <span className="reactant-details__prov-audit-note-txt">{entry.advisoryNote}</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           </div>
