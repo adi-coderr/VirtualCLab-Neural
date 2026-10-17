@@ -18,6 +18,9 @@ interface ReactionRow {
   source: string;
   reference: string | null;
   safety_notes: string | null;
+  conditions_description?: string | null;
+  outcome?: string | null;
+  after_effect?: string | null;
 }
 
 export class ReactionRepository {
@@ -91,6 +94,9 @@ export class ReactionRepository {
       source: row.source,
       reference: row.reference ?? undefined,
       safetyNotes: row.safety_notes ?? undefined,
+      conditionsDescription: row.conditions_description ?? undefined,
+      outcome: row.outcome ?? undefined,
+      afterEffect: row.after_effect ?? undefined,
     };
   }
 
@@ -113,18 +119,22 @@ export class ReactionRepository {
          WHERE LOWER(name) LIKE ? 
             OR LOWER(equation_display) LIKE ? 
             OR LOWER(reaction_type) LIKE ? 
+            OR LOWER(id) LIKE ?
+            OR LOWER(source) LIKE ?
          ORDER BY name LIMIT ? OFFSET ?`
       )
-      .all(q, q, q, limit, offset) as ReactionRow[];
+      .all(q, q, q, q, q, limit, offset) as ReactionRow[];
     const total = (
       this.db
         .prepare(
           `SELECT COUNT(*) as n FROM reactions 
            WHERE LOWER(name) LIKE ? 
               OR LOWER(equation_display) LIKE ? 
-              OR LOWER(reaction_type) LIKE ?`
+              OR LOWER(reaction_type) LIKE ?
+              OR LOWER(id) LIKE ?
+              OR LOWER(source) LIKE ?`
         )
-        .get(q, q, q) as { n: number }
+        .get(q, q, q, q, q) as { n: number }
     ).n;
     return { items: rows.map((r) => this.rowToReaction(r)), total };
   }
@@ -146,6 +156,18 @@ export class ReactionRepository {
         if (reaction) matches.push(reaction);
       }
     }
+    matches.sort((a, b) => {
+      const aHackathon = a.id.startsWith("hackathon") ? 1 : 0;
+      const bHackathon = b.id.startsWith("hackathon") ? 1 : 0;
+      if (aHackathon !== bHackathon) return bHackathon - aHackathon;
+
+      const aCond = (a.conditionsDescription || a.outcome || a.afterEffect) ? 1 : 0;
+      const bCond = (b.conditionsDescription || b.outcome || b.afterEffect) ? 1 : 0;
+      if (aCond !== bCond) return bCond - aCond;
+
+      return (b.confidenceScore || 0) - (a.confidenceScore || 0);
+    });
     return matches;
   }
 }
+

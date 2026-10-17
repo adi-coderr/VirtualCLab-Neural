@@ -178,6 +178,14 @@ export interface ReactionResolution {
   processBreakdown?: ChemicalProcessBreakdown;
   aiProvider?: string;
   isAiPredicted?: boolean;
+  conditionsDescription?: string;
+  outcome?: string;
+  afterEffect?: string;
+  specialConditions?: {
+    description: string;
+    outcome?: string;
+    afterEffect?: string;
+  };
 }
 
 export interface StoichiometryLine {
@@ -267,4 +275,7 @@ export interface CuratedReaction {
   source?: string;
   observableEffects: ObservableEffect[];
   confidenceScore: number;
+  conditionsDescription?: string;
+  outcome?: string;
+  afterEffect?: string;
 }

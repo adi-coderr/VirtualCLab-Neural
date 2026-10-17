@@ -99,6 +99,16 @@ function buildResultFromCurated(reaction: CuratedReaction, lookup: ChemicalLooku
     reference: reaction.reference,
     safetyNotes: reaction.safetyNotes,
     warnings: [],
+    conditionsDescription: reaction.conditionsDescription,
+    outcome: reaction.outcome,
+    afterEffect: reaction.afterEffect,
+    specialConditions: reaction.conditionsDescription
+      ? {
+          description: reaction.conditionsDescription,
+          outcome: reaction.outcome,
+          afterEffect: reaction.afterEffect,
+        }
+      : undefined,
   };
 }
 
@@ -609,6 +619,25 @@ function tryResolvePair(
   if (curated.length === 1) {
     return buildResultFromCurated(curated[0] as CuratedReaction, lookup);
   }
+  if (curated.length > 1) {
+    if (conditions.solvent) {
+      const match = curated.find((r) => r.solvent?.toLowerCase() === conditions.solvent?.toLowerCase());
+      if (match) return buildResultFromCurated(match, lookup);
+    }
+    const showcase = curated.find((r) => r.id.startsWith("hackathon") || (r.conditionsDescription && r.outcome));
+    if (showcase) {
+      return buildResultFromCurated(showcase, lookup);
+    }
+    const best = [...curated].sort((x, y) => {
+      const xCond = (x.conditionsDescription || x.outcome) ? 1 : 0;
+      const yCond = (y.conditionsDescription || y.outcome) ? 1 : 0;
+      if (xCond !== yCond) return yCond - xCond;
+      return (y.confidenceScore || 0) - (x.confidenceScore || 0);
+    })[0];
+    if (best) {
+      return buildResultFromCurated(best, lookup);
+    }
+  }
   const attempts = [tryGasEvolution, tryAcidBase, tryMetalPlusAcid, trySingleDisplacement, tryPrecipitation, tryCombustion];
   for (const attempt of attempts) {
     const res = attempt(a, b, lookup);
@@ -739,13 +768,30 @@ function resolveReactionInternal(
     return buildResultFromCurated(compatible[0] as CuratedReaction, lookup);
   }
   if (compatible.length > 1) {
-    // 1. If all outcomes have identical chemical product species, they are duplicates/variants of the same reaction
+    // 1. If explicit solvent condition is given, prefer exact solvent match
+    if (conditions.solvent) {
+      const match = compatible.find((r) => r.solvent?.toLowerCase() === conditions.solvent?.toLowerCase());
+      if (match) return buildResultFromCurated(match, lookup);
+    }
+
+    // 2. If one of the compatible curated reactions is an explicit showcase reaction (or has curated conditions/outcome)
+    const showcase = compatible.find((r) => r.id.startsWith("hackathon") || (r.conditionsDescription && r.outcome));
+    if (showcase) {
+      return buildResultFromCurated(showcase, lookup);
+    }
+
+    // 3. If all outcomes have identical chemical product species, they are duplicates/variants of the same reaction
     const firstProductsKey = [...compatible[0]!.products].map((p) => `${p.chemicalId}:${p.coefficient}`).sort().join("+");
     const allSameProducts = compatible.every(
       (r) => [...r.products].map((p) => `${p.chemicalId}:${p.coefficient}`).sort().join("+") === firstProductsKey
     );
     if (allSameProducts) {
-      const best = [...compatible].sort((a, b) => b.confidenceScore - a.confidenceScore)[0]!;
+      const best = [...compatible].sort((a, b) => {
+        const aCond = (a.conditionsDescription || a.outcome) ? 1 : 0;
+        const bCond = (b.conditionsDescription || b.outcome) ? 1 : 0;
+        if (aCond !== bCond) return bCond - aCond;
+        return (b.confidenceScore || 0) - (a.confidenceScore || 0);
+      })[0]!;
       return buildResultFromCurated(best, lookup);
     }
 

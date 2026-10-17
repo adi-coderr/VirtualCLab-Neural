@@ -24,7 +24,24 @@ export function ReactionResultPanel({ result }: { result: SimulationResult }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [unifiedReactant, setUnifiedReactant] = useState<UnifiedReactantDTO | null>(null);
   const [loadingReactant, setLoadingReactant] = useState(false);
+  const [showConditionsModal, setShowConditionsModal] = useState(false);
   const openSettings = useSettingsStore((s) => s.openSettings);
+
+  const hasConditions = Boolean(
+    resolution.conditionsDescription?.trim() ||
+    resolution.specialConditions?.description?.trim()
+  );
+
+  useEffect(() => {
+    if (!showConditionsModal) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setShowConditionsModal(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showConditionsModal]);
 
   // Deduplicate reactants and products so all reaction substances can be inspected in 3D
   const allSpecies: ResolvedSpecies[] = useMemo(() => {
@@ -164,7 +181,11 @@ export function ReactionResultPanel({ result }: { result: SimulationResult }) {
       {resolution.status === "UNSUPPORTED" && (
         <div className="reaction-result__ai-key-prompt">
           <div className="reaction-result__ai-key-prompt-header">
-            <span className="reaction-result__ai-key-icon">✨</span>
+            <span className="reaction-result__ai-key-icon" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2l2.4 7.2L21.6 12l-7.2 2.4L12 21.6l-2.4-7.2L2.4 12l7.2-2.4z" />
+              </svg>
+            </span>
             <div className="reaction-result__ai-key-prompt-content">
               <strong>Reaction Not in Database — AI Ready</strong>
               <p className="reaction-result__ai-key-prompt-desc">
@@ -222,7 +243,21 @@ export function ReactionResultPanel({ result }: { result: SimulationResult }) {
             }`}
         >
           <div className="reaction-result__thermo-icon" aria-hidden="true">
-            {calorimetry.temperatureDeltaC < 0 ? "❄️" : calorimetry.temperatureDeltaC > 0 ? "🔥" : "🌡️"}
+            {calorimetry.temperatureDeltaC < 0 ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z" />
+                <path d="M19 5v6m0 0l-2-2m2 2l2-2" />
+              </svg>
+            ) : calorimetry.temperatureDeltaC > 0 ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z" />
+                <path d="M17 7l2-2m0 0l2 2m-2-2v6" />
+              </svg>
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z" />
+              </svg>
+            )}
           </div>
           <div className="reaction-result__thermo-info">
             <div className="reaction-result__thermo-title">
@@ -255,10 +290,243 @@ export function ReactionResultPanel({ result }: { result: SimulationResult }) {
         </div>
       )}
 
+      {/* 6b. Hackathon Showcase: Conditions Section & Popup (Only for reactions with conditions) */}
+      {hasConditions && (
+        <div className="reaction-result__conditions-card">
+          <div className="reaction-result__conditions-top">
+            <div className="reaction-result__conditions-icon-wrap" aria-hidden="true">
+              <span className="reaction-result__conditions-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10 2v7.31L4.5 19.5A2 2 0 0 0 6.23 22h11.54a2 2 0 0 0 1.73-2.5L14 9.31V2" />
+                  <line x1="8.5" y1="2" x2="15.5" y2="2" />
+                  <line x1="6.5" y1="16" x2="17.5" y2="16" />
+                </svg>
+              </span>
+            </div>
+            <div className="reaction-result__conditions-main">
+              <div className="reaction-result__conditions-header-row">
+                <span className="reaction-result__conditions-badge">
+                  <span className="reaction-result__conditions-dot" />
+                  Required Reaction Conditions
+                </span>
+                <button
+                  type="button"
+                  className="reaction-result__conditions-popup-btn"
+                  onClick={() => setShowConditionsModal(true)}
+                  title="Open detailed popup with complete setup protocol, outcome, and reaction parameters"
+                >
+                  <span className="reaction-result__conditions-btn-sparkle">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                    </svg>
+                  </span>
+                  <span>View Reaction Protocol</span>
+                </button>
+              </div>
+
+              <div className="reaction-result__conditions-text-row">
+                <strong className="reaction-result__conditions-label">Conditions:</strong>
+                <span className="reaction-result__conditions-desc">
+                  {resolution.conditionsDescription || resolution.specialConditions?.description}
+                </span>
+              </div>
+
+              <div className="reaction-result__conditions-beaker-cue">
+                <span className="reaction-result__conditions-beaker-cue-icon">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14.5 2v17.5c0 1.4-1.1 2.5-2.5 2.5s-2.5-1.1-2.5-2.5V2" />
+                    <line x1="8.5" y1="2" x2="15.5" y2="2" />
+                    <line x1="9.5" y1="12" x2="14.5" y2="12" />
+                  </svg>
+                </span>
+                <span className="reaction-result__conditions-beaker-cue-text">
+                  Physical after-effects and residue are simulated visually in the workbench beaker.
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Conditions Popup Modal */}
+      {showConditionsModal && hasConditions && (
+        <div
+          className="reaction-conditions-modal__overlay"
+          onClick={() => setShowConditionsModal(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reaction-conditions-modal-title"
+        >
+          <div
+            className="reaction-conditions-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="reaction-conditions-modal__header">
+              <div className="reaction-conditions-modal__header-left">
+                <div className="reaction-conditions-modal__icon-badge">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M10 2v7.31L4.5 19.5A2 2 0 0 0 6.23 22h11.54a2 2 0 0 0 1.73-2.5L14 9.31V2" />
+                    <line x1="8.5" y1="2" x2="15.5" y2="2" />
+                    <line x1="6.5" y1="16" x2="17.5" y2="16" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 id="reaction-conditions-modal-title" className="reaction-conditions-modal__title">
+                    {displayEquation || resolution.balancedEquation || "Special Reaction Protocol"}
+                  </h3>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="reaction-conditions-modal__close-btn"
+                onClick={() => setShowConditionsModal(false)}
+                aria-label="Close conditions popup"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="reaction-conditions-modal__body">
+              {/* Card 1: Conditions */}
+              <div className="reaction-conditions-modal__card reaction-conditions-modal__card--conditions">
+                <div className="reaction-conditions-modal__card-header">
+                  <span className="reaction-conditions-modal__card-icon">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M9 11l3 3L22 4" />
+                      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                    </svg>
+                  </span>
+                  <h4>Required Experimental Conditions &amp; Setup</h4>
+                </div>
+                <p className="reaction-conditions-modal__card-text">
+                  {resolution.conditionsDescription || resolution.specialConditions?.description}
+                </p>
+              </div>
+
+              {/* Card 2: Outcome */}
+              {(resolution.outcome || resolution.specialConditions?.outcome) && (
+                <div className="reaction-conditions-modal__card reaction-conditions-modal__card--outcome">
+                  <div className="reaction-conditions-modal__card-header">
+                    <span className="reaction-conditions-modal__card-icon">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                    </span>
+                    <h4>Empirical Reaction Outcome &amp; Observations</h4>
+                  </div>
+                  <p className="reaction-conditions-modal__card-text">
+                    {resolution.outcome || resolution.specialConditions?.outcome}
+                  </p>
+                </div>
+              )}
+
+              {/* Card 3: After-Effect */}
+              {(resolution.afterEffect || resolution.specialConditions?.afterEffect) && (
+                <div className="reaction-conditions-modal__card reaction-conditions-modal__card--aftereffect">
+                  <div className="reaction-conditions-modal__card-header">
+                    <span className="reaction-conditions-modal__card-icon">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M4.5 3h15" />
+                        <path d="M6 3v16a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V3" />
+                        <path d="M6 14h12" />
+                      </svg>
+                    </span>
+                    <h4>Observed After-Effect &amp; Beaker State</h4>
+                    <span className="reaction-conditions-modal__card-badge">Simulated in Beaker</span>
+                  </div>
+                  <p className="reaction-conditions-modal__card-text">
+                    {resolution.afterEffect || resolution.specialConditions?.afterEffect}
+                  </p>
+                </div>
+              )}
+
+              {/* Card 4: Parameters & Thermodynamics */}
+              <div className="reaction-conditions-modal__card reaction-conditions-modal__card--params">
+                <div className="reaction-conditions-modal__card-header">
+                  <span className="reaction-conditions-modal__card-icon">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z" />
+                    </svg>
+                  </span>
+                  <h4>Energetics &amp; Reaction Parameters</h4>
+                </div>
+                <div className="reaction-conditions-modal__params-grid">
+                  <div className="reaction-conditions-modal__param">
+                    <span className="reaction-conditions-modal__param-label">Enthalpy (ΔH)</span>
+                    <span className="reaction-conditions-modal__param-value">
+                      {resolution.enthalpyKjPerMol !== undefined
+                        ? `${resolution.enthalpyKjPerMol > 0 ? "+" : ""}${resolution.enthalpyKjPerMol} kJ/mol`
+                        : "N/A"}
+                    </span>
+                  </div>
+                  <div className="reaction-conditions-modal__param">
+                    <span className="reaction-conditions-modal__param-label">Thermal Profile</span>
+                    <span className="reaction-conditions-modal__param-value reaction-conditions-modal__param-value--capitalize">
+                      {resolution.energyClassification ||
+                        (resolution.enthalpyKjPerMol && resolution.enthalpyKjPerMol < 0
+                          ? "Exothermic"
+                          : "Endothermic")}
+                    </span>
+                  </div>
+                  <div className="reaction-conditions-modal__param">
+                    <span className="reaction-conditions-modal__param-label">Reaction Type</span>
+                    <span className="reaction-conditions-modal__param-value reaction-conditions-modal__param-value--capitalize">
+                      {(resolution.reactionType || "Synthesis").replace(/_/g, " ")}
+                    </span>
+                  </div>
+                  <div className="reaction-conditions-modal__param">
+                    <span className="reaction-conditions-modal__param-label">Database Status</span>
+                    <span className="reaction-conditions-modal__param-value">
+                      Verified Laboratory Standard
+                    </span>
+                  </div>
+                </div>
+
+                {resolution.safetyNotes && (
+                  <div className="reaction-conditions-modal__safety">
+                    <span className="reaction-conditions-modal__safety-icon" aria-hidden="true">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                        <line x1="12" y1="9" x2="12" y2="13" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                      </svg>
+                    </span>
+                    <strong>Safety Protocol:</strong> {resolution.safetyNotes}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="reaction-conditions-modal__footer">
+              <span className="reaction-conditions-modal__footer-tip">
+                Tip: Press <kbd>ESC</kbd> or click outside to dismiss
+              </span>
+              <button
+                type="button"
+                className="reaction-conditions-modal__footer-btn"
+                onClick={() => setShowConditionsModal(false)}
+              >
+                Close Protocol
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 7. Warnings (Real hazard warnings only) */}
       {displayWarnings.length > 0 && (
         <div className="reaction-result__warnings-card">
-          <span className="reaction-result__warnings-icon" aria-hidden="true">⚠️</span>
+          <span className="reaction-result__warnings-icon" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+          </span>
           <ul className="reaction-result__warnings-list">
             {displayWarnings.map((w, i) => (
               <li key={i}>{w}</li>

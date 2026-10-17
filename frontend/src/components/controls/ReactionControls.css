@@ -312,6 +312,57 @@
   color: #0284c7;
 }
 
+.reaction-controls__showcase-tag {
+  color: #f59e0b;
+}
+
+.reaction-controls__showcase-pill {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(217, 119, 6, 0.2) 100%);
+  color: #b45309;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  flex-shrink: 0;
+}
+
+.reaction-controls__suggestion-badges {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.reaction-controls__preset-tag--showcase {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(217, 119, 6, 0.2) 100%);
+  color: #b45309;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.reaction-controls__preset-conditions-box {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 10px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.06) 0%, rgba(147, 51, 234, 0.08) 100%);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.reaction-controls__preset-conditions-tag {
+  font-weight: 700;
+  color: #6d28d9;
+  flex-shrink: 0;
+}
+
+.reaction-controls__preset-conditions-val {
+  color: var(--graphite-700);
+}
+
 .reaction-controls__preset-scale-row {
   display: flex;
   align-items: center;

@@ -114,6 +114,7 @@ export function ContainerView({
           hasContents={hasContents}
           contents={container.contents}
           capacity={capacity}
+          afterEffectVisual={container.afterEffectVisual}
         />
       </div>
 

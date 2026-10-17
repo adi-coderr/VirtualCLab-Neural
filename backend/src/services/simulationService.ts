@@ -628,6 +628,16 @@ export class SimulationService {
       safetyNotes: (matchedRow.hazards as any)?.safetyNotes,
       warnings: [],
       isAiPredicted: false,
+      conditionsDescription: cond.description || cond.specialConditions,
+      outcome: cond.outcome,
+      afterEffect: cond.afterEffect,
+      specialConditions: (cond.description || cond.specialConditions)
+        ? {
+            description: cond.description || cond.specialConditions,
+            outcome: cond.outcome,
+            afterEffect: cond.afterEffect,
+          }
+        : undefined,
     };
 
     const { stoichiometry, calorimetry } = this.computeStoichiometryForResolution(

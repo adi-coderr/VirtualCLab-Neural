@@ -18,8 +18,21 @@
 }
 
 .observable-effects__icon {
-  font-size: 1.4rem;
-  line-height: 1;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: var(--paper-100);
+  border: 1px solid var(--paper-200);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--graphite-600);
+  flex-shrink: 0;
+}
+
+.observable-effects__temp-arrow {
+  font-weight: 700;
+  margin-right: 2px;
 }
 
 .observable-effects__body {

@@ -38,11 +38,18 @@ export function ReactionControls({
   const runReactionByEquation = useLabStore((s) => s.runReactionByEquation);
   const activeContainer = useLabStore((s) => s.containers.find((c) => c.id === s.activeContainerId));
 
+  const [showcaseReactions, setShowcaseReactions] = useState<CuratedReaction[]>([]);
+
   useEffect(() => {
     let cancelled = false;
     reactionsApi.list(100).then((res) => {
       if (!cancelled) setCuratedReactions(res.items);
     }).catch(() => { });
+
+    reactionsApi.list(30, 0, "hackathon").then((res) => {
+      if (!cancelled) setShowcaseReactions(res.items);
+    }).catch(() => { });
+
     return () => {
       cancelled = true;
     };
@@ -81,11 +88,19 @@ export function ReactionControls({
     if (reactionSearchQuery.trim()) {
       return searchResults;
     }
-    return curatedReactions;
-  }, [curatedReactions, reactionSearchQuery, searchResults]);
+    const combined = [...showcaseReactions];
+    const seen = new Set(combined.map((r) => r.id));
+    for (const r of curatedReactions) {
+      if (!seen.has(r.id)) {
+        combined.push(r);
+      }
+    }
+    return combined;
+  }, [curatedReactions, reactionSearchQuery, searchResults, showcaseReactions]);
 
   const needsConcentration = VOLUME_UNITS.includes(unit);
   const selectedReaction =
+    showcaseReactions.find((r) => r.id === selectedReactionId) ||
     curatedReactions.find((r) => r.id === selectedReactionId) ||
     searchResults.find((r) => r.id === selectedReactionId);
 
@@ -148,7 +163,12 @@ export function ReactionControls({
           <p className="reaction-controls__section-title">Reaction Equations &amp; Presets</p>
           <div className="reaction-controls__search-box" ref={searchBoxRef}>
             <div className="reaction-controls__search-input-wrapper">
-              <span className="reaction-controls__search-icon" aria-hidden="true">🔍</span>
+              <span className="reaction-controls__search-icon" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+              </span>
               <input
                 type="text"
                 className="reaction-controls__search-input"
@@ -216,29 +236,39 @@ export function ReactionControls({
                     : `Popular Reactions`}
                 </div>
 
-                {displayedReactions.map((r) => (
-                  <button
-                    key={r.id}
-                    type="button"
-                    className={`reaction-controls__suggestion-item ${r.id === selectedReactionId ? "reaction-controls__suggestion-item--selected" : ""
-                      }`}
-                    onClick={() => {
-                      setSelectedReactionId(r.id);
-                      setReactionSearchQuery(r.name);
-                      setIsDropdownOpen(false);
-                    }}
-                    role="option"
-                    aria-selected={r.id === selectedReactionId}
-                  >
-                    <div className="reaction-controls__suggestion-header">
-                      <span className="reaction-controls__suggestion-name">{r.name}</span>
-                      <span className="reaction-controls__suggestion-type">
-                        {r.reactionType.replace(/_/g, " ")}
-                      </span>
-                    </div>
-                    <div className="reaction-controls__suggestion-eq">{r.equationDisplay}</div>
-                  </button>
-                ))}
+                {displayedReactions.map((r) => {
+                  const isShowcase = r.id.startsWith("hackathon") || !!r.conditionsDescription;
+                  return (
+                    <button
+                      key={r.id}
+                      type="button"
+                      className={`reaction-controls__suggestion-item ${r.id === selectedReactionId ? "reaction-controls__suggestion-item--selected" : ""
+                        }`}
+                      onClick={() => {
+                        setSelectedReactionId(r.id);
+                        setReactionSearchQuery(r.name);
+                        setIsDropdownOpen(false);
+                      }}
+                      role="option"
+                      aria-selected={r.id === selectedReactionId}
+                    >
+                      <div className="reaction-controls__suggestion-header">
+                        <span className="reaction-controls__suggestion-name">
+                          {r.name}
+                        </span>
+                        <div className="reaction-controls__suggestion-badges">
+                          {isShowcase && (
+                            <span className="reaction-controls__showcase-pill">Showcase</span>
+                          )}
+                          <span className="reaction-controls__suggestion-type">
+                            {r.reactionType.replace(/_/g, " ")}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="reaction-controls__suggestion-eq">{r.equationDisplay}</div>
+                    </button>
+                  );
+                })}
 
                 {displayedReactions.length === 0 && !reactionSearchQuery.trim() && (
                   <div className="reaction-controls__no-suggestions">
@@ -258,7 +288,18 @@ export function ReactionControls({
                   {selectedReaction.energyClassification}
                   {selectedReaction.enthalpyKjPerMol !== undefined && ` (${selectedReaction.enthalpyKjPerMol > 0 ? "+" : ""}${selectedReaction.enthalpyKjPerMol} kJ/mol)`}
                 </span>
+                {(selectedReaction.id.startsWith("hackathon") || selectedReaction.conditionsDescription) && (
+                  <span className="reaction-controls__preset-tag reaction-controls__preset-tag--showcase">
+                    Hackathon Showcase
+                  </span>
+                )}
               </div>
+              {selectedReaction.conditionsDescription && (
+                <div className="reaction-controls__preset-conditions-box">
+                  <span className="reaction-controls__preset-conditions-tag">Conditions:</span>
+                  <span className="reaction-controls__preset-conditions-val">{selectedReaction.conditionsDescription}</span>
+                </div>
+              )}
               <div className="reaction-controls__preset-scale-row">
                 <span className="reaction-controls__preset-scale-label">Quantity / Scale:</span>
                 {[
@@ -285,7 +326,7 @@ export function ReactionControls({
               {selectedReaction.enthalpyKjPerMol !== undefined && (
                 <div className="reaction-controls__preset-scale-summary">
                   <span className="reaction-controls__scale-badge">
-                    Scale: {presetScale}× &bull; {selectedReaction.enthalpyKjPerMol < 0 ? "🔥 Exothermic warming" : "❄️ Endothermic cooling"} scales with reactant quantity
+                    Scale: {presetScale}× &bull; {selectedReaction.enthalpyKjPerMol < 0 ? "Exothermic warming" : "Endothermic cooling"} scales with reactant quantity
                   </span>
                 </div>
               )}

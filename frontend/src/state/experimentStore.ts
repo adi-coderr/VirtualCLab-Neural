@@ -5,6 +5,7 @@ import { useSettingsStore } from "./settingsStore";
 import type { ChemicalSummary, ReactionConditions, SimulationResult, Unit } from "../types/chemistry";
 import type { Container, ContainerContent, EquipmentType, TimelineEntry } from "../types/experiment";
 import { getChemicalColor, calculateMixtureColor } from "../utils/chemicalColorMixer";
+import { getAfterEffectVisual } from "../utils/afterEffectVisualizer";
 
 function makeId(): string {
   return Math.random().toString(36).slice(2, 10);
@@ -215,7 +216,7 @@ export const useLabStore = create<LabState>((set, get) => ({
   clearContainer: (id) => {
     set((s) => ({
       containers: s.containers.map((c) =>
-        c.id === id ? { ...c, contents: [], temperatureC: 25, appearanceColor: undefined } : c
+        c.id === id ? { ...c, contents: [], temperatureC: 25, appearanceColor: undefined, afterEffectVisual: null } : c
       ),
       lastSimulationResult: s.activeContainerId === id ? null : s.lastSimulationResult,
     }));
@@ -476,10 +477,11 @@ export const useLabStore = create<LabState>((set, get) => ({
           const appearanceColor = primaryColorEffect?.colorTo || calculateMixtureColor(productContents.length > 0 ? productContents : container.contents);
           const calorimetry = simulationResult.calorimetry ?? resolution.calorimetry;
           const nextTemp = calorimetry ? calorimetry.finalTemperatureC : container.temperatureC;
+          const afterEffectVisual = getAfterEffectVisual(resolution);
 
           // The beaker section strictly keeps only the reactants. Products are displayed in the Results Panel.
           containers = s.containers.map((c) =>
-            c.id === container.id ? { ...c, contents: container.contents, temperatureC: nextTemp, appearanceColor } : c
+            c.id === container.id ? { ...c, contents: container.contents, temperatureC: nextTemp, appearanceColor, afterEffectVisual } : c
           );
         }
         const calorimetry = simulationResult.calorimetry ?? resolution.calorimetry;
@@ -600,9 +602,10 @@ export const useLabStore = create<LabState>((set, get) => ({
           const calorimetry = simulationResult.calorimetry ?? resolution.calorimetry;
           const nextTemp = calorimetry ? calorimetry.finalTemperatureC : activeContainer.temperatureC;
           const appearanceColor = primaryColorEffect?.colorTo || calculateMixtureColor(productContents);
+          const afterEffectVisual = getAfterEffectVisual(resolution);
           containers = s.containers.map((c) =>
             c.id === activeContainer.id
-              ? { ...c, contents: reactantContents, temperatureC: nextTemp, appearanceColor }
+              ? { ...c, contents: reactantContents, temperatureC: nextTemp, appearanceColor, afterEffectVisual }
               : c
           );
         }

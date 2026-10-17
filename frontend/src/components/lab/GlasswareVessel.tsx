@@ -1,5 +1,6 @@
 import React from "react";
 import type { ContainerContent, EquipmentType } from "../../types/experiment";
+import type { AfterEffectVisual } from "../../utils/afterEffectVisualizer";
 import { analyzeVesselPhases, type VesselSolid } from "../../utils/phaseUtils";
 import { GlasswarePhases } from "./GlasswarePhases";
 import "./GlasswareVessel.css";
@@ -13,6 +14,7 @@ interface GlasswareVesselProps {
   hasContents: boolean;
   contents?: ContainerContent[];
   capacity?: number;
+  afterEffectVisual?: AfterEffectVisual | null;
 }
 
 export function GlasswareVessel({
@@ -24,6 +26,7 @@ export function GlasswareVessel({
   hasContents,
   contents,
   capacity,
+  afterEffectVisual,
 }: GlasswareVesselProps) {
   const isHot = temperatureC >= 45;
   const isBoiling = temperatureC >= 80;
@@ -51,6 +54,94 @@ export function GlasswareVessel({
       {isCold && (
         <div className="glassware-vessel__frost" aria-hidden="true">
           <span className="frost-glint" />
+        </div>
+      )}
+
+      {/* Eye-Visible Live Reaction Phenomenon Indicator Badge */}
+      {afterEffectVisual && (
+        <div className="beaker-fx__live-tag" style={{ "--tint-color": afterEffectVisual.tintColor } as any}>
+          <span className="beaker-fx__live-tag-dot" />
+          <span className="beaker-fx__live-tag-text">
+            {afterEffectVisual.badge.replace(/[\p{Extended_Pictographic}\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '').trim()}
+          </span>
+        </div>
+      )}
+
+      {/* Visual Reaction Outcome Atmospheric Phenomena (Visible by eyes in beaker) */}
+      {afterEffectVisual?.effect === "flame_smoke" && (
+        <div className="beaker-fx__flame-smoke-layer" aria-hidden="true">
+          <div className="beaker-fx__flame" style={{ "--flame-color": afterEffectVisual.flameColor || "#f59e0b" } as any}>
+            <span className="beaker-fx__flame-tongue t1" />
+            <span className="beaker-fx__flame-tongue t2" />
+            <span className="beaker-fx__flame-tongue t3" />
+            <span className="beaker-fx__flame-core" />
+          </div>
+          {afterEffectVisual.hasSparks && (
+            <div className="beaker-fx__sparks">
+              <span className="spark sp1" />
+              <span className="spark sp2" />
+              <span className="spark sp3" />
+              <span className="spark sp4" />
+              <span className="spark sp5" />
+            </div>
+          )}
+          <div className="beaker-fx__smoke-plume">
+            <span className="smoke-puff sk1" />
+            <span className="smoke-puff sk2" />
+            <span className="smoke-puff sk3" />
+            <span className="smoke-puff sk4" />
+          </div>
+        </div>
+      )}
+
+      {afterEffectVisual?.effect === "purple_eruption" && (
+        <div className="beaker-fx__purple-eruption-layer" aria-hidden="true">
+          <div className="beaker-fx__purple-fume-billow pb1" />
+          <div className="beaker-fx__purple-fume-billow pb2" />
+          <div className="beaker-fx__purple-fume-billow pb3" />
+          <div className="beaker-fx__purple-fume-billow pb4" />
+          <span className="beaker-fx__purple-wisp pw1" />
+          <span className="beaker-fx__purple-wisp pw2" />
+        </div>
+      )}
+
+      {afterEffectVisual?.effect === "brown_fumes_effervescence" && (
+        <div className="beaker-fx__brown-fumes-layer" aria-hidden="true">
+          <div className="beaker-fx__no2-puff np1" />
+          <div className="beaker-fx__no2-puff np2" />
+          <div className="beaker-fx__no2-puff np3" />
+          <div className="beaker-fx__no2-puff np4" />
+          <span className="beaker-fx__no2-wisp nw1" />
+          <span className="beaker-fx__no2-wisp nw2" />
+        </div>
+      )}
+
+      {afterEffectVisual?.effect === "white_smoke_cloud" && (
+        <div className="beaker-fx__white-smoke-layer" aria-hidden="true">
+          <div className="beaker-fx__white-billow ws1" />
+          <div className="beaker-fx__white-billow ws2" />
+          <div className="beaker-fx__white-billow ws3" />
+          <div className="beaker-fx__white-billow ws4" />
+        </div>
+      )}
+
+      {afterEffectVisual?.effect === "nylon_rope_pull" && (
+        <div className="beaker-fx__nylon-rope-layer" aria-hidden="true">
+          <div className="beaker-fx__nylon-line" />
+          <div className="beaker-fx__nylon-tip" />
+        </div>
+      )}
+
+      {afterEffectVisual?.effect === "acid_flash_color" && (
+        <div className="beaker-fx__acid-flash-layer" aria-hidden="true">
+          <div className="beaker-fx__acid-flame-tongue" />
+          <div className="beaker-fx__acid-smoke-puff" />
+        </div>
+      )}
+
+      {afterEffectVisual?.effect === "incandescent_glow" && (
+        <div className="beaker-fx__incandescent-layer" aria-hidden="true">
+          <div className="beaker-fx__thermal-core-glow" />
         </div>
       )}
 
@@ -137,6 +228,41 @@ export function GlasswareVessel({
           <clipPath id="clip-burette">
             <path d="M 72 14 L 72 152 L 88 152 L 88 14 Z" />
           </clipPath>
+
+          {/* After-Effect Visual Gradients */}
+          <linearGradient id="purple-vapor-grad" x1="0%" y1="100%" x2="0%" y2="0%">
+            <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0.12" />
+            <stop offset="45%" stopColor="#a855f7" stopOpacity="0.55" />
+            <stop offset="85%" stopColor="#c084fc" stopOpacity="0.75" />
+            <stop offset="100%" stopColor="#9333ea" stopOpacity="0.25" />
+          </linearGradient>
+
+          <linearGradient id="brown-fume-grad" x1="0%" y1="100%" x2="0%" y2="0%">
+            <stop offset="0%" stopColor="#d97706" stopOpacity="0.15" />
+            <stop offset="45%" stopColor="#b45309" stopOpacity="0.65" />
+            <stop offset="85%" stopColor="#78350f" stopOpacity="0.80" />
+            <stop offset="100%" stopColor="#451a03" stopOpacity="0.30" />
+          </linearGradient>
+
+          <linearGradient id="white-smoke-grad" x1="0%" y1="100%" x2="0%" y2="0%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.20" />
+            <stop offset="50%" stopColor="#f1f5f9" stopOpacity="0.80" />
+            <stop offset="100%" stopColor="#e2e8f0" stopOpacity="0.45" />
+          </linearGradient>
+
+          <radialGradient id="sulfur-grad" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#fef08a" stopOpacity="0.95" />
+            <stop offset="65%" stopColor="#facc15" stopOpacity="0.90" />
+            <stop offset="100%" stopColor="#ca8a04" stopOpacity="0.95" />
+          </radialGradient>
+
+          <radialGradient id="core-glow-grad" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="1" />
+            <stop offset="25%" stopColor="#fef08a" stopOpacity="0.95" />
+            <stop offset="55%" stopColor="#f97316" stopOpacity="0.85" />
+            <stop offset="85%" stopColor="#dc2626" stopOpacity="0.4" />
+            <stop offset="100%" stopColor="#7f1d1d" stopOpacity="0" />
+          </radialGradient>
         </defs>
 
         {/* Render specific glassware vessel with phase support */}
@@ -149,6 +275,7 @@ export function GlasswareVessel({
             gradId={gradId}
             containerId={containerId}
             capacity={effectiveCapacity}
+            afterEffectVisual={afterEffectVisual}
           />
         )}
         {equipmentType === "test_tube" && (
@@ -160,6 +287,7 @@ export function GlasswareVessel({
             gradId={gradId}
             containerId={containerId}
             capacity={effectiveCapacity}
+            afterEffectVisual={afterEffectVisual}
           />
         )}
         {equipmentType === "graduated_cylinder" && (
@@ -194,6 +322,7 @@ export function GlasswareVessel({
               gradId={gradId}
               containerId={containerId}
               capacity={effectiveCapacity}
+              afterEffectVisual={afterEffectVisual}
             />
           )}
       </svg>
@@ -209,6 +338,7 @@ interface VesselSvgProps {
   gradId?: string;
   containerId?: string;
   capacity?: number;
+  afterEffectVisual?: AfterEffectVisual | null;
 }
 
 /* =========================================================================
@@ -222,6 +352,7 @@ function BeakerSvg({
   gradId = "liq-grad-beaker",
   containerId,
   capacity = 100,
+  afterEffectVisual,
 }: VesselSvgProps) {
   // Continuous piece-wise linear mapping between floor y = 179 and Level 5 mark y = 58
   // 0% -> 179 (floor)
@@ -303,7 +434,7 @@ function BeakerSvg({
       />
 
       {/* 4. Contents Body (Solids & Liquid Clipped inside inner vessel cavity) */}
-      {(hasContents || (solids && solids.length > 0)) && (
+      {(hasContents || (solids && solids.length > 0) || afterEffectVisual) && (
         <g clipPath="url(#clip-beaker)">
           {/* Solid mounds, crystals, metal chunks resting on vessel floor */}
           {solids && solids.length > 0 && (
@@ -388,7 +519,74 @@ function BeakerSvg({
                   </g>
                 );
               })}
+
+              {/* Dense Violent Boiling Effervescence Bubbles */}
+              {afterEffectVisual?.hasViolentBubbles && (
+                <g className="beaker-violent-bubbles">
+                  {[
+                    { x: 48, yRatio: 0.90, r: 4.2, delay: "0s", cls: "vb1" },
+                    { x: 60, yRatio: 0.75, r: 5.5, delay: "0.12s", cls: "vb2" },
+                    { x: 72, yRatio: 0.85, r: 3.8, delay: "0.24s", cls: "vb3" },
+                    { x: 84, yRatio: 0.60, r: 6.2, delay: "0.08s", cls: "vb4" },
+                    { x: 96, yRatio: 0.80, r: 4.6, delay: "0.18s", cls: "vb5" },
+                    { x: 108, yRatio: 0.70, r: 4.0, delay: "0.32s", cls: "vb6" },
+                    { x: 54, yRatio: 0.45, r: 5.0, delay: "0.15s", cls: "vb7" },
+                    { x: 68, yRatio: 0.30, r: 6.5, delay: "0.28s", cls: "vb8" },
+                    { x: 88, yRatio: 0.35, r: 5.8, delay: "0.05s", cls: "vb9" },
+                    { x: 102, yRatio: 0.40, r: 4.4, delay: "0.22s", cls: "vb10" },
+                    { x: 64, yRatio: 0.15, r: 6.8, delay: "0.35s", cls: "vb11" },
+                    { x: 80, yRatio: 0.10, r: 7.2, delay: "0.10s", cls: "vb12" },
+                    { x: 94, yRatio: 0.12, r: 6.0, delay: "0.25s", cls: "vb13" },
+                  ].map((b, i) => {
+                    const bubbleY = liquidY + liquidHeight * b.yRatio;
+                    if (bubbleY < liquidY + 4 || bubbleY > 176) return null;
+                    return (
+                      <circle
+                        key={`vb-${i}`}
+                        cx={b.x}
+                        cy={bubbleY}
+                        r={b.r}
+                        fill="rgba(255, 255, 255, 0.45)"
+                        stroke="#ffffff"
+                        strokeWidth="1.2"
+                        className={`beaker-violent-bubble ${b.cls}`}
+                        style={{ animationDelay: b.delay }}
+                      />
+                    );
+                  })}
+                </g>
+              )}
             </>
+          )}
+
+          {/* Molten Burning / Incandescent Core */}
+          {afterEffectVisual?.hasGlowingCore && (
+            <g className="beaker-core-glow-group">
+              <ellipse
+                cx="80"
+                cy={liquidY > 160 ? 174 : Math.min(174, liquidY + liquidHeight * 0.75)}
+                rx="28"
+                ry="14"
+                fill="url(#core-glow-grad)"
+                className="beaker-core-pulse"
+              />
+              <circle
+                cx="80"
+                cy={liquidY > 160 ? 174 : Math.min(174, liquidY + liquidHeight * 0.75)}
+                r="7"
+                fill="#ffffff"
+                filter="drop-shadow(0 0 6px #f59e0b)"
+              />
+            </g>
+          )}
+
+          {/* In-Beaker Physical After-Effect Visualization */}
+          {afterEffectVisual && (
+            <BeakerAfterEffectGraphic
+              afterEffect={afterEffectVisual}
+              liquidY={liquidY}
+              liquidHeight={liquidHeight}
+            />
           )}
         </g>
       )}
@@ -587,6 +785,7 @@ function ErlenmeyerSvg({
   gradId = "liq-grad-erlenmeyer_flask",
   containerId,
   capacity = 250,
+  afterEffectVisual,
 }: VesselSvgProps) {
   const isLarge = capacity >= 1000;
   const val4 = Math.round(capacity * 0.8);
@@ -653,7 +852,7 @@ function ErlenmeyerSvg({
       />
 
       {/* 4. Contents Body (Solids & Liquid Clipped inside inner conical glass cavity) */}
-      {(hasContents || (solids && solids.length > 0)) && (
+      {(hasContents || (solids && solids.length > 0) || afterEffectVisual) && (
         <g clipPath="url(#clip-erlenmeyer)">
           {/* Solid mounds, crystals, metal chunks resting on conical floor */}
           {solids && solids.length > 0 && (
@@ -732,6 +931,15 @@ function ErlenmeyerSvg({
                 );
               })}
             </>
+          )}
+
+          {/* In-Flask Physical After-Effect Visualization */}
+          {afterEffectVisual && (
+            <BeakerAfterEffectGraphic
+              afterEffect={afterEffectVisual}
+              liquidY={liquidY}
+              liquidHeight={liquidHeight}
+            />
           )}
         </g>
       )}
@@ -881,6 +1089,7 @@ function TestTubeSvg({
   gradId = "liq-grad-test_tube",
   containerId,
   capacity = 20,
+  afterEffectVisual,
 }: VesselSvgProps) {
   const val3 = Math.round(capacity * 0.75);
   const val2 = Math.round(capacity * 0.5);
@@ -936,7 +1145,7 @@ function TestTubeSvg({
       />
 
       {/* 4. Contents Body (Solids & Liquid Clipped inside rounded test tube) */}
-      {(hasContents || (solids && solids.length > 0)) && (
+      {(hasContents || (solids && solids.length > 0) || afterEffectVisual) && (
         <g clipPath="url(#clip-test-tube)">
           {/* Solid mounds, crystals, metal chunks resting on hemispherical bottom */}
           {solids && solids.length > 0 && (
@@ -1015,6 +1224,15 @@ function TestTubeSvg({
                 );
               })}
             </>
+          )}
+
+          {/* In-Tube Physical After-Effect Visualization */}
+          {afterEffectVisual && (
+            <BeakerAfterEffectGraphic
+              afterEffect={afterEffectVisual}
+              liquidY={liquidY}
+              liquidHeight={liquidHeight}
+            />
           )}
         </g>
       )}
@@ -1416,3 +1634,230 @@ function BuretteSvg({
     </g>
   );
 }
+
+/* =========================================================================
+ * BEAKER AFTER-EFFECT VISUALIZER GRAPHICS
+ * Renders authentic physical reaction residues, fumes, films & crusts inside the beaker
+ * ========================================================================= */
+function BeakerAfterEffectGraphic({
+  afterEffect,
+  liquidY,
+  liquidHeight,
+}: {
+  afterEffect: AfterEffectVisual;
+  liquidY: number;
+  liquidHeight: number;
+}) {
+  switch (afterEffect.type) {
+    case "polymer_film":
+      // Nylon 6,6 interfacial polymer film and rope
+      return (
+        <g className="beaker-after-effect-polymer">
+          {/* Interfacial white membrane across the fluid layer */}
+          <path
+            d={`M 27 ${liquidY} Q 55 ${liquidY - 3} 80 ${liquidY} Q 105 ${liquidY + 3} 133 ${liquidY}`}
+            stroke="#ffffff"
+            strokeWidth="3.5"
+            fill="none"
+            opacity="0.95"
+            filter="drop-shadow(0 0 2px rgba(255,255,255,0.8))"
+          />
+          <path
+            d={`M 29 ${liquidY + 1.5} Q 80 ${liquidY + 4} 131 ${liquidY + 1.5}`}
+            stroke="rgba(241, 245, 249, 0.85)"
+            strokeWidth="2"
+            fill="none"
+          />
+          {/* Vertical pulled polymer thread rising up toward beaker mouth */}
+          <path
+            d={`M 80 ${liquidY} Q 74 ${liquidY * 0.7} 82 ${liquidY * 0.4} Q 78 40 80 20`}
+            stroke="#ffffff"
+            strokeWidth="2.2"
+            strokeDasharray="4 2"
+            fill="none"
+            opacity="0.9"
+            className="nylon-thread-pulse"
+          />
+          <circle cx="80" cy={liquidY} r="3" fill="#ffffff" opacity="0.95" />
+        </g>
+      );
+
+    case "salt_crust":
+      // White NaCl crystalline crust coating walls and floor
+      return (
+        <g className="beaker-after-effect-salt">
+          {/* Crust coating on left wall */}
+          <path
+            d="M 27 30 L 32 32 L 28 60 L 33 90 L 28 130 L 33 160 L 28 175"
+            stroke="#ffffff"
+            strokeWidth="3"
+            fill="none"
+            opacity="0.9"
+            strokeDasharray="2 1"
+          />
+          {/* Crust coating on right wall */}
+          <path
+            d="M 133 30 L 128 32 L 132 60 L 127 90 L 132 130 L 127 160 L 132 175"
+            stroke="#ffffff"
+            strokeWidth="3"
+            fill="none"
+            opacity="0.9"
+            strokeDasharray="2 1"
+          />
+          {/* Floor crust deposit */}
+          <path
+            d="M 32 178 Q 80 181 128 178"
+            stroke="#ffffff"
+            strokeWidth="4"
+            fill="none"
+            opacity="0.95"
+            strokeDasharray="3 1.5"
+          />
+          {/* Sparkling salt crystal facets */}
+          <circle cx="45" cy="176" r="1.8" fill="#ffffff" opacity="0.95" />
+          <circle cx="65" cy="177" r="1.5" fill="#ffffff" opacity="0.95" />
+          <circle cx="85" cy="176.5" r="2.0" fill="#ffffff" opacity="0.95" />
+          <circle cx="105" cy="177" r="1.6" fill="#ffffff" opacity="0.95" />
+          <circle cx="30" cy="85" r="1.5" fill="#ffffff" opacity="0.9" />
+          <circle cx="130" cy="95" r="1.5" fill="#ffffff" opacity="0.9" />
+        </g>
+      );
+
+    case "purple_vapor":
+      // Violet iodine sublimation gas swirling inside upper chamber
+      return (
+        <g className="beaker-after-effect-purple-vapor">
+          <ellipse cx="80" cy="70" rx="48" ry="40" fill="url(#purple-vapor-grad)" className="beaker-vapor-swirl" />
+          <circle cx="60" cy="60" r="14" fill="#a855f7" opacity="0.25" />
+          <circle cx="95" cy="55" r="16" fill="#c084fc" opacity="0.28" />
+          <circle cx="75" cy="35" r="12" fill="#9333ea" opacity="0.22" />
+        </g>
+      );
+
+    case "brown_fumes":
+      // Reddish-brown NO2 gas plume
+      return (
+        <g className="beaker-after-effect-brown-fumes">
+          <ellipse cx="80" cy="65" rx="49" ry="38" fill="url(#brown-fume-grad)" className="beaker-fume-billow" />
+          <circle cx="55" cy="55" r="15" fill="#b45309" opacity="0.45" />
+          <circle cx="100" cy="50" r="18" fill="#92400e" opacity="0.40" />
+          <circle cx="78" cy="32" r="14" fill="#78350f" opacity="0.50" />
+        </g>
+      );
+
+    case "white_smoke":
+      // Thick white NH4Cl smoke cloud
+      return (
+        <g className="beaker-after-effect-white-smoke">
+          <ellipse cx="80" cy="70" rx="50" ry="42" fill="url(#white-smoke-grad)" className="beaker-smoke-cloud" />
+          <circle cx="60" cy="65" r="16" fill="#ffffff" opacity="0.75" />
+          <circle cx="98" cy="60" r="18" fill="#f8fafc" opacity="0.70" />
+          <circle cx="75" cy="40" r="14" fill="#f1f5f9" opacity="0.80" />
+        </g>
+      );
+
+    case "sulfur_deposit":
+      // Canary yellow colloidal sulfur mound
+      return (
+        <g className="beaker-after-effect-sulfur">
+          <ellipse cx="80" cy="176" rx="44" ry="4.5" fill="url(#sulfur-grad)" />
+          <path
+            d="M 38 178 Q 60 171 80 170 Q 100 171 122 178 Z"
+            fill="#eab308"
+            opacity="0.95"
+          />
+          <circle cx="62" cy="173" r="2.5" fill="#fef08a" opacity="0.9" />
+          <circle cx="78" cy="171.5" r="3" fill="#fde047" opacity="0.95" />
+          <circle cx="95" cy="173.5" r="2.2" fill="#ca8a04" opacity="0.9" />
+        </g>
+      );
+
+    case "oily_layer":
+      // Dense immiscible bottom layer (e.g. 1,2-dibromoethane)
+      return (
+        <g className="beaker-after-effect-oily">
+          <ellipse cx="80" cy="174" rx="48" ry="4.5" fill="rgba(254, 240, 138, 0.85)" stroke="#ca8a04" strokeWidth="1" />
+          <path
+            d="M 32 174 Q 80 177 128 174"
+            stroke="#facc15"
+            strokeWidth="1.8"
+            fill="none"
+            opacity="0.95"
+          />
+        </g>
+      );
+
+    case "carbon_specks":
+      // Dispersed elemental carbon specks
+      return (
+        <g className="beaker-after-effect-carbon">
+          <ellipse cx="80" cy="177" rx="46" ry="3.5" fill="rgba(15, 23, 42, 0.4)" />
+          <circle cx="48" cy="176" r="1.6" fill="#0f172a" />
+          <circle cx="58" cy="165" r="1.2" fill="#1e293b" />
+          <circle cx="70" cy="175" r="1.8" fill="#020617" />
+          <circle cx="85" cy="170" r="1.4" fill="#0f172a" />
+          <circle cx="96" cy="176" r="1.7" fill="#020617" />
+          <circle cx="108" cy="162" r="1.3" fill="#1e293b" />
+          <circle cx="118" cy="175" r="1.5" fill="#0f172a" />
+          <circle cx="76" cy={Math.max(35, liquidY + 15)} r="1.4" fill="#0f172a" opacity="0.8" />
+          <circle cx="90" cy={Math.max(35, liquidY + 25)} r="1.1" fill="#1e293b" opacity="0.75" />
+        </g>
+      );
+
+    case "crystal_mesh":
+      // White sharp interlocking needle crystals (aspirin / precipitate)
+      return (
+        <g className="beaker-after-effect-crystals">
+          <line x1="42" y1="178" x2="62" y2="168" stroke="#ffffff" strokeWidth="1.6" opacity="0.95" />
+          <line x1="55" y1="177" x2="78" y2="164" stroke="#f8fafc" strokeWidth="1.8" opacity="0.95" />
+          <line x1="72" y1="166" x2="95" y2="175" stroke="#ffffff" strokeWidth="1.6" opacity="0.95" />
+          <line x1="88" y1="176" x2="112" y2="166" stroke="#f1f5f9" strokeWidth="1.7" opacity="0.95" />
+          <line x1="105" y1="168" x2="124" y2="177" stroke="#ffffff" strokeWidth="1.5" opacity="0.95" />
+          <line x1="60" y1="170" x2="85" y2="173" stroke="#e2e8f0" strokeWidth="1.4" opacity="0.9" />
+          <circle cx="78" cy="164" r="1.2" fill="#ffffff" />
+          <circle cx="95" cy="175" r="1.2" fill="#ffffff" />
+        </g>
+      );
+
+    case "solid_compound":
+      // Sintered black-grey FeS solid
+      return (
+        <g className="beaker-after-effect-solid">
+          <ellipse cx="80" cy="176" rx="46" ry="4" fill="#1e293b" stroke="#334155" strokeWidth="1" />
+          <path
+            d="M 35 177 Q 60 172 80 171 Q 105 172 125 177 Z"
+            fill="#334155"
+            opacity="0.95"
+          />
+        </g>
+      );
+
+    case "o2_bubbles":
+      // Micro-bubbles adhering to walls
+      return (
+        <g className="beaker-after-effect-o2">
+          <circle cx="31" cy="70" r="2.2" fill="#e0f2fe" stroke="#38bdf8" strokeWidth="0.8" opacity="0.9" />
+          <circle cx="30" cy="110" r="2.4" fill="#e0f2fe" stroke="#38bdf8" strokeWidth="0.8" opacity="0.9" />
+          <circle cx="31" cy="145" r="2.0" fill="#e0f2fe" stroke="#38bdf8" strokeWidth="0.8" opacity="0.9" />
+          <circle cx="129" cy="75" r="2.2" fill="#e0f2fe" stroke="#38bdf8" strokeWidth="0.8" opacity="0.9" />
+          <circle cx="130" cy="115" r="2.5" fill="#e0f2fe" stroke="#38bdf8" strokeWidth="0.8" opacity="0.9" />
+          <circle cx="129" cy="150" r="1.9" fill="#e0f2fe" stroke="#38bdf8" strokeWidth="0.8" opacity="0.9" />
+        </g>
+      );
+
+    case "acid_mist":
+    default:
+      // Fine condensation beads on glass
+      return (
+        <g className="beaker-after-effect-mist">
+          <circle cx="30" cy="40" r="1.5" fill="#ffffff" opacity="0.85" />
+          <circle cx="31" cy="65" r="1.8" fill="#ffffff" opacity="0.8" />
+          <circle cx="30" cy="95" r="1.4" fill="#ffffff" opacity="0.8" />
+          <circle cx="129" cy="45" r="1.6" fill="#ffffff" opacity="0.85" />
+          <circle cx="130" cy="75" r="1.7" fill="#ffffff" opacity="0.8" />
+          <circle cx="129" cy="105" r="1.5" fill="#ffffff" opacity="0.8" />
+        </g>
+      );
+  }
+}
+

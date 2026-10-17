@@ -231,6 +231,9 @@ export interface CuratedReaction {
   source: string;
   reference?: string;
   safetyNotes?: string;
+  conditionsDescription?: string;
+  outcome?: string;
+  afterEffect?: string;
 }
 
 export interface CalorimetryResult {
@@ -313,6 +316,14 @@ export interface ReactionResolution {
   processBreakdown?: ChemicalProcessBreakdown;
   aiProvider?: string;
   isAiPredicted?: boolean;
+  conditionsDescription?: string;
+  outcome?: string;
+  afterEffect?: string;
+  specialConditions?: {
+    description: string;
+    outcome?: string;
+    afterEffect?: string;
+  };
 }
 
 export class ChemistryEngineError extends Error {

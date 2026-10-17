@@ -33,6 +33,8 @@ export interface ContainerContent {
   physicalForm?: PhysicalForm;
 }
 
+import type { AfterEffectVisual } from "../utils/afterEffectVisualizer";
+
 export interface Container {
   id: string;
   name: string;
@@ -40,6 +42,7 @@ export interface Container {
   contents: ContainerContent[];
   temperatureC: number;
   appearanceColor?: string;
+  afterEffectVisual?: AfterEffectVisual | null;
 }
 
 export type EquipmentType = "beaker" | "test_tube" | "erlenmeyer_flask" | "graduated_cylinder" | "burette";
