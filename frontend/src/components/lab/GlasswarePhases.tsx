@@ -381,9 +381,8 @@ function MetalSolid({
   isSubmerged: boolean;
   id: string;
 }) {
-  const isRibbonOrStrip = true;
-  const stripWidth = Math.min(22, baseWidth * 0.24);
-  const stripHeight = Math.min(55, baseWidth * 0.65);
+  const stripWidth = Math.min(13, baseWidth * 0.13);
+  const stripHeight = Math.min(26, baseWidth * 0.26);
   const gradId = `metal-grad-${id}`;
 
   return (
@@ -401,28 +400,28 @@ function MetalSolid({
       </defs>
 
       {/* Metal Base Contact Shadow */}
-      <ellipse cx={cx - 10} cy={floorY} rx={stripWidth * 1.2} ry="3.0" fill="rgba(15, 23, 42, 0.35)" />
+      <ellipse cx={cx - 32} cy={floorY} rx={stripWidth * 0.9} ry="2.0" fill="rgba(15, 23, 42, 0.35)" />
 
-      {/* Leaning Metallic Ribbon/Strip (e.g. Zinc strip, Magnesium ribbon, Copper turnings) */}
+      {/* Leaning Metallic Ribbon/Strip against glass wall */}
       <path
-        d={`M ${cx - 24} ${floorY}
-            L ${cx - 24 + stripWidth} ${floorY}
-            L ${cx - 6 + stripWidth} ${floorY - stripHeight}
-            L ${cx - 6} ${floorY - stripHeight}
+        d={`M ${cx - 38} ${floorY}
+            L ${cx - 38 + stripWidth} ${floorY}
+            L ${cx - 30 + stripWidth} ${floorY - stripHeight}
+            L ${cx - 30} ${floorY - stripHeight}
             Z`}
         fill={`url(#${gradId})`}
         stroke="rgba(255, 255, 255, 0.75)"
-        strokeWidth="1.1"
+        strokeWidth="0.9"
       />
 
       {/* Specular Highlight Streak Along Metallic Edge */}
       <line
-        x1={cx - 6 + stripWidth * 0.45}
+        x1={cx - 30 + stripWidth * 0.4}
         y1={floorY - stripHeight}
-        x2={cx - 24 + stripWidth * 0.45}
+        x2={cx - 38 + stripWidth * 0.4}
         y2={floorY}
         stroke="#ffffff"
-        strokeWidth="1.4"
+        strokeWidth="1.0"
         strokeLinecap="round"
         opacity="0.85"
       />
@@ -430,10 +429,10 @@ function MetalSolid({
       {/* Metal Strip Top Chamfered Cut Edge */}
       <polygon
         points={`
-          ${cx - 6},${floorY - stripHeight}
-          ${cx - 6 + stripWidth},${floorY - stripHeight}
-          ${cx - 4 + stripWidth},${floorY - stripHeight - 2}
-          ${cx - 4},${floorY - stripHeight - 2}
+          ${cx - 30},${floorY - stripHeight}
+          ${cx - 30 + stripWidth},${floorY - stripHeight}
+          ${cx - 28 + stripWidth},${floorY - stripHeight - 1.5}
+          ${cx - 28},${floorY - stripHeight - 1.5}
         `}
         fill="#ffffff"
         opacity="0.75"

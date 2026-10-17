@@ -318,53 +318,6 @@
 }
 
 /* =========================================================================
- * EYE-VISIBLE LIVE REACTION PHENOMENON INDICATOR BADGE
- * ========================================================================= */
-.beaker-fx__live-tag {
-  position: absolute;
-  top: -16px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 10px;
-  background: rgba(15, 23, 42, 0.88);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 9999px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3), 0 0 10px var(--tint-color, #38bdf8);
-  color: #ffffff;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  pointer-events: none;
-  z-index: 25;
-  animation: liveTagFloat 3s infinite alternate ease-in-out;
-}
-
-.beaker-fx__live-tag-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--tint-color, #38bdf8);
-  box-shadow: 0 0 8px var(--tint-color, #38bdf8);
-  animation: liveTagPulse 1.4s infinite alternate ease-in-out;
-}
-
-@keyframes liveTagFloat {
-  0% { transform: translateX(-50%) translateY(0); }
-  100% { transform: translateX(-50%) translateY(-3px); }
-}
-
-@keyframes liveTagPulse {
-  0% { transform: scale(0.85); opacity: 0.75; }
-  100% { transform: scale(1.3); opacity: 1; }
-}
-
-/* =========================================================================
  * FLAME & SMOKE PHENOMENA (Sodium in Cl2, Mg in CO2, rapid exothermic fires)
  * ========================================================================= */
 .beaker-fx__flame-smoke-layer {
@@ -383,7 +336,7 @@
   width: 52px;
   height: 72px;
   pointer-events: none;
-  filter: drop-shadow(0 0 14px var(--flame-color, #f59e0b)) drop-shadow(0 0 28px rgba(249, 115, 22, 0.7));
+  filter: drop-shadow(0 0 10px var(--flame-color, #f59e0b)) drop-shadow(0 0 18px rgba(249, 115, 22, 0.5));
 }
 
 .beaker-fx__flame-tongue {
@@ -458,17 +411,17 @@
   left: 50%;
   transform: translateX(-50%);
   width: 60px;
-  height: 120px;
+  height: 90px;
   pointer-events: none;
 }
 
 .spark {
   position: absolute;
-  width: 3.5px;
-  height: 3.5px;
+  width: 3px;
+  height: 3px;
   border-radius: 50%;
   background: #ffffff;
-  box-shadow: 0 0 6px #fde047, 0 0 12px #f97316;
+  box-shadow: 0 0 6px #fde047, 0 0 10px #f97316;
   opacity: 0;
 }
 
@@ -481,58 +434,58 @@
 @keyframes sparkFly1 {
   0% { transform: translate(0, 0) scale(1); opacity: 1; }
   80% { opacity: 0.8; }
-  100% { transform: translate(-28px, -110px) scale(0.3); opacity: 0; }
+  100% { transform: translate(-20px, -65px) scale(0.3); opacity: 0; }
 }
 @keyframes sparkFly2 {
   0% { transform: translate(0, 0) scale(1.2); opacity: 1; }
   80% { opacity: 0.9; }
-  100% { transform: translate(6px, -130px) scale(0.2); opacity: 0; }
+  100% { transform: translate(4px, -75px) scale(0.2); opacity: 0; }
 }
 @keyframes sparkFly3 {
   0% { transform: translate(0, 0) scale(1.1); opacity: 1; }
   80% { opacity: 0.85; }
-  100% { transform: translate(32px, -115px) scale(0.3); opacity: 0; }
+  100% { transform: translate(22px, -68px) scale(0.3); opacity: 0; }
 }
 @keyframes sparkFly4 {
   0% { transform: translate(0, 0) scale(0.9); opacity: 1; }
   80% { opacity: 0.8; }
-  100% { transform: translate(-18px, -95px) scale(0.2); opacity: 0; }
+  100% { transform: translate(-14px, -55px) scale(0.2); opacity: 0; }
 }
 @keyframes sparkFly5 {
   0% { transform: translate(0, 0) scale(1); opacity: 1; }
   80% { opacity: 0.85; }
-  100% { transform: translate(22px, -125px) scale(0.2); opacity: 0; }
+  100% { transform: translate(16px, -70px) scale(0.2); opacity: 0; }
 }
 
 /* Smoke plume billowing from beaker mouth */
 .beaker-fx__smoke-plume {
   position: absolute;
-  top: -34px;
+  top: -10px;
   left: 50%;
   transform: translateX(-50%);
   width: 80px;
-  height: 60px;
+  height: 50px;
   pointer-events: none;
 }
 
 .smoke-puff {
   position: absolute;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.9) 0%, rgba(241, 245, 249, 0.75) 45%, rgba(226, 232, 240, 0.3) 75%, transparent 100%);
-  filter: blur(5px);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.75) 0%, rgba(241, 245, 249, 0.5) 45%, rgba(226, 232, 240, 0.2) 75%, transparent 100%);
+  filter: blur(4px);
   opacity: 0;
 }
 
-.smoke-puff.sk1 { width: 34px; height: 34px; left: 15%; animation: smokePuffAscend 2.4s infinite ease-out; animation-delay: 0s; }
-.smoke-puff.sk2 { width: 42px; height: 42px; left: 35%; animation: smokePuffAscend 2.7s infinite ease-out; animation-delay: 0.7s; }
-.smoke-puff.sk3 { width: 38px; height: 38px; left: 45%; animation: smokePuffAscend 2.5s infinite ease-out; animation-delay: 1.3s; }
-.smoke-puff.sk4 { width: 30px; height: 30px; left: 25%; animation: smokePuffAscend 2.2s infinite ease-out; animation-delay: 1.8s; }
+.smoke-puff.sk1 { width: 30px; height: 30px; left: 15%; animation: smokePuffAscend 2.4s infinite ease-out; animation-delay: 0s; }
+.smoke-puff.sk2 { width: 36px; height: 36px; left: 35%; animation: smokePuffAscend 2.7s infinite ease-out; animation-delay: 0.7s; }
+.smoke-puff.sk3 { width: 32px; height: 32px; left: 45%; animation: smokePuffAscend 2.5s infinite ease-out; animation-delay: 1.3s; }
+.smoke-puff.sk4 { width: 26px; height: 26px; left: 25%; animation: smokePuffAscend 2.2s infinite ease-out; animation-delay: 1.8s; }
 
 @keyframes smokePuffAscend {
-  0% { transform: translateY(20px) scale(0.5); opacity: 0; }
-  30% { opacity: 0.85; }
-  70% { opacity: 0.6; }
-  100% { transform: translateY(-48px) scale(1.6); opacity: 0; }
+  0% { transform: translateY(15px) scale(0.5); opacity: 0; }
+  30% { opacity: 0.7; }
+  70% { opacity: 0.4; }
+  100% { transform: translateY(-30px) scale(1.3); opacity: 0; }
 }
 
 /* =========================================================================
@@ -540,11 +493,11 @@
  * ========================================================================= */
 .beaker-fx__purple-eruption-layer {
   position: absolute;
-  top: -50px;
-  bottom: 25%;
+  top: -10px;
+  bottom: 30%;
   left: 50%;
   transform: translateX(-50%);
-  width: 100px;
+  width: 90px;
   pointer-events: none;
   z-index: 12;
   overflow: visible;
@@ -553,22 +506,22 @@
 .beaker-fx__purple-fume-billow {
   position: absolute;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(233, 213, 255, 0.98) 0%, rgba(192, 132, 252, 0.92) 35%, rgba(147, 51, 234, 0.78) 65%, rgba(88, 28, 135, 0.3) 85%, transparent 100%);
-  filter: blur(5px) drop-shadow(0 0 18px rgba(168, 85, 247, 0.8));
+  background: radial-gradient(circle, rgba(233, 213, 255, 0.85) 0%, rgba(192, 132, 252, 0.65) 35%, rgba(147, 51, 234, 0.45) 65%, rgba(88, 28, 135, 0.15) 85%, transparent 100%);
+  filter: blur(4px);
   opacity: 0;
 }
 
-.beaker-fx__purple-fume-billow.pb1 { width: 50px; height: 50px; left: 10%; animation: purpleBillowRise 2.8s infinite ease-out; animation-delay: 0s; }
-.beaker-fx__purple-fume-billow.pb2 { width: 62px; height: 62px; left: 30%; animation: purpleBillowRise 3.2s infinite ease-out; animation-delay: 0.6s; }
-.beaker-fx__purple-fume-billow.pb3 { width: 56px; height: 56px; left: 45%; animation: purpleBillowRise 3.0s infinite ease-out; animation-delay: 1.3s; }
-.beaker-fx__purple-fume-billow.pb4 { width: 44px; height: 44px; left: 20%; animation: purpleBillowRise 2.6s infinite ease-out; animation-delay: 1.9s; }
+.beaker-fx__purple-fume-billow.pb1 { width: 44px; height: 44px; left: 10%; animation: purpleBillowRise 2.8s infinite ease-out; animation-delay: 0s; }
+.beaker-fx__purple-fume-billow.pb2 { width: 54px; height: 54px; left: 28%; animation: purpleBillowRise 3.2s infinite ease-out; animation-delay: 0.6s; }
+.beaker-fx__purple-fume-billow.pb3 { width: 48px; height: 48px; left: 42%; animation: purpleBillowRise 3.0s infinite ease-out; animation-delay: 1.3s; }
+.beaker-fx__purple-fume-billow.pb4 { width: 38px; height: 38px; left: 20%; animation: purpleBillowRise 2.6s infinite ease-out; animation-delay: 1.9s; }
 
 .beaker-fx__purple-wisp {
   position: absolute;
-  width: 14px;
-  height: 48px;
-  background: linear-gradient(180deg, rgba(192, 132, 252, 0.8) 0%, rgba(147, 51, 234, 0.4) 70%, transparent 100%);
-  filter: blur(3px);
+  width: 12px;
+  height: 40px;
+  background: linear-gradient(180deg, rgba(192, 132, 252, 0.65) 0%, rgba(147, 51, 234, 0.3) 70%, transparent 100%);
+  filter: blur(2.5px);
   border-radius: 50%;
   opacity: 0;
 }
@@ -577,16 +530,16 @@
 .beaker-fx__purple-wisp.pw2 { left: 60%; animation: purpleWispFloat 2.6s infinite ease-in-out; animation-delay: 1.5s; }
 
 @keyframes purpleBillowRise {
-  0% { transform: translateY(40px) scale(0.4) rotate(0deg); opacity: 0; }
-  25% { opacity: 0.95; }
-  65% { opacity: 0.8; transform: translateY(-20px) scale(1.3) rotate(8deg); }
-  100% { transform: translateY(-80px) scale(1.9) rotate(-10deg); opacity: 0; }
+  0% { transform: translateY(25px) scale(0.5) rotate(0deg); opacity: 0; }
+  30% { opacity: 0.7; }
+  70% { opacity: 0.45; transform: translateY(-10px) scale(1.15) rotate(6deg); }
+  100% { transform: translateY(-35px) scale(1.3) rotate(-8deg); opacity: 0; }
 }
 
 @keyframes purpleWispFloat {
-  0% { transform: translateY(20px) scaleX(0.7); opacity: 0; }
-  40% { opacity: 0.85; }
-  100% { transform: translateY(-65px) scaleX(1.4) skewX(12deg); opacity: 0; }
+  0% { transform: translateY(15px) scaleX(0.7); opacity: 0; }
+  40% { opacity: 0.7; }
+  100% { transform: translateY(-45px) scaleX(1.2) skewX(8deg); opacity: 0; }
 }
 
 /* =========================================================================
@@ -594,11 +547,11 @@
  * ========================================================================= */
 .beaker-fx__brown-fumes-layer {
   position: absolute;
-  top: -46px;
-  bottom: 28%;
+  top: -10px;
+  bottom: 30%;
   left: 50%;
   transform: translateX(-50%);
-  width: 95px;
+  width: 90px;
   pointer-events: none;
   z-index: 12;
   overflow: visible;
@@ -607,22 +560,22 @@
 .beaker-fx__no2-puff {
   position: absolute;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(180, 83, 9, 0.95) 0%, rgba(146, 64, 14, 0.88) 40%, rgba(120, 53, 15, 0.72) 70%, rgba(69, 26, 3, 0.25) 88%, transparent 100%);
-  filter: blur(4px) drop-shadow(0 0 14px rgba(180, 83, 9, 0.75));
+  background: radial-gradient(circle, rgba(180, 83, 9, 0.8) 0%, rgba(146, 64, 14, 0.65) 40%, rgba(120, 53, 15, 0.45) 70%, rgba(69, 26, 3, 0.15) 88%, transparent 100%);
+  filter: blur(3.5px);
   opacity: 0;
 }
 
-.beaker-fx__no2-puff.np1 { width: 46px; height: 46px; left: 12%; animation: no2RollRise 2.9s infinite ease-out; animation-delay: 0s; }
-.beaker-fx__no2-puff.np2 { width: 58px; height: 58px; left: 28%; animation: no2RollRise 3.3s infinite ease-out; animation-delay: 0.7s; }
-.beaker-fx__no2-puff.np3 { width: 52px; height: 52px; left: 48%; animation: no2RollRise 3.1s infinite ease-out; animation-delay: 1.4s; }
-.beaker-fx__no2-puff.np4 { width: 42px; height: 42px; left: 22%; animation: no2RollRise 2.7s infinite ease-out; animation-delay: 2.1s; }
+.beaker-fx__no2-puff.np1 { width: 40px; height: 40px; left: 12%; animation: no2RollRise 2.9s infinite ease-out; animation-delay: 0s; }
+.beaker-fx__no2-puff.np2 { width: 50px; height: 50px; left: 28%; animation: no2RollRise 3.3s infinite ease-out; animation-delay: 0.7s; }
+.beaker-fx__no2-puff.np3 { width: 44px; height: 44px; left: 45%; animation: no2RollRise 3.1s infinite ease-out; animation-delay: 1.4s; }
+.beaker-fx__no2-puff.np4 { width: 36px; height: 36px; left: 22%; animation: no2RollRise 2.7s infinite ease-out; animation-delay: 2.1s; }
 
 .beaker-fx__no2-wisp {
   position: absolute;
-  width: 12px;
-  height: 42px;
-  background: linear-gradient(180deg, rgba(180, 83, 9, 0.8) 0%, rgba(120, 53, 15, 0.35) 75%, transparent 100%);
-  filter: blur(2.5px);
+  width: 10px;
+  height: 36px;
+  background: linear-gradient(180deg, rgba(180, 83, 9, 0.65) 0%, rgba(120, 53, 15, 0.25) 75%, transparent 100%);
+  filter: blur(2px);
   border-radius: 50%;
   opacity: 0;
 }
@@ -631,16 +584,16 @@
 .beaker-fx__no2-wisp.nw2 { left: 65%; animation: no2WispFloat 2.8s infinite ease-in-out; animation-delay: 1.6s; }
 
 @keyframes no2RollRise {
-  0% { transform: translateY(35px) scale(0.45); opacity: 0; }
-  30% { opacity: 0.95; }
-  70% { opacity: 0.75; transform: translateY(-25px) scale(1.35) skewX(-6deg); }
-  100% { transform: translateY(-75px) scale(1.85) skewX(8deg); opacity: 0; }
+  0% { transform: translateY(25px) scale(0.5); opacity: 0; }
+  30% { opacity: 0.7; }
+  70% { opacity: 0.45; transform: translateY(-10px) scale(1.15) skewX(-4deg); }
+  100% { transform: translateY(-32px) scale(1.3) skewX(6deg); opacity: 0; }
 }
 
 @keyframes no2WispFloat {
-  0% { transform: translateY(15px); opacity: 0; }
-  45% { opacity: 0.85; }
-  100% { transform: translateY(-60px) skewX(-14deg); opacity: 0; }
+  0% { transform: translateY(12px); opacity: 0; }
+  45% { opacity: 0.7; }
+  100% { transform: translateY(-45px) skewX(-10deg); opacity: 0; }
 }
 
 /* =========================================================================
@@ -648,11 +601,11 @@
  * ========================================================================= */
 .beaker-fx__white-smoke-layer {
   position: absolute;
-  top: -48px;
+  top: -10px;
   bottom: 30%;
   left: 50%;
   transform: translateX(-50%);
-  width: 100px;
+  width: 90px;
   pointer-events: none;
   z-index: 12;
   overflow: visible;
@@ -661,21 +614,21 @@
 .beaker-fx__white-billow {
   position: absolute;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.92) 40%, rgba(226, 232, 240, 0.75) 70%, rgba(203, 213, 225, 0.25) 88%, transparent 100%);
-  filter: blur(6px) drop-shadow(0 0 16px rgba(255, 255, 255, 0.9));
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.85) 0%, rgba(248, 250, 252, 0.7) 40%, rgba(226, 232, 240, 0.45) 70%, rgba(203, 213, 225, 0.15) 88%, transparent 100%);
+  filter: blur(4px);
   opacity: 0;
 }
 
-.beaker-fx__white-billow.ws1 { width: 52px; height: 52px; left: 8%; animation: whiteSmokeSwirl 3.0s infinite ease-out; animation-delay: 0s; }
-.beaker-fx__white-billow.ws2 { width: 66px; height: 66px; left: 26%; animation: whiteSmokeSwirl 3.4s infinite ease-out; animation-delay: 0.8s; }
-.beaker-fx__white-billow.ws3 { width: 58px; height: 58px; left: 46%; animation: whiteSmokeSwirl 3.1s infinite ease-out; animation-delay: 1.6s; }
-.beaker-fx__white-billow.ws4 { width: 46px; height: 46px; left: 18%; animation: whiteSmokeSwirl 2.7s infinite ease-out; animation-delay: 2.2s; }
+.beaker-fx__white-billow.ws1 { width: 44px; height: 44px; left: 8%; animation: whiteSmokeSwirl 3.0s infinite ease-out; animation-delay: 0s; }
+.beaker-fx__white-billow.ws2 { width: 56px; height: 56px; left: 26%; animation: whiteSmokeSwirl 3.4s infinite ease-out; animation-delay: 0.8s; }
+.beaker-fx__white-billow.ws3 { width: 50px; height: 50px; left: 44%; animation: whiteSmokeSwirl 3.1s infinite ease-out; animation-delay: 1.6s; }
+.beaker-fx__white-billow.ws4 { width: 38px; height: 38px; left: 18%; animation: whiteSmokeSwirl 2.7s infinite ease-out; animation-delay: 2.2s; }
 
 @keyframes whiteSmokeSwirl {
-  0% { transform: translateY(35px) scale(0.4) rotate(0deg); opacity: 0; }
-  30% { opacity: 0.98; }
-  70% { opacity: 0.8; transform: translateY(-25px) scale(1.4) rotate(10deg); }
-  100% { transform: translateY(-80px) scale(2.0) rotate(-12deg); opacity: 0; }
+  0% { transform: translateY(25px) scale(0.5) rotate(0deg); opacity: 0; }
+  30% { opacity: 0.7; }
+  70% { opacity: 0.45; transform: translateY(-10px) scale(1.15) rotate(6deg); }
+  100% { transform: translateY(-35px) scale(1.3) rotate(-8deg); opacity: 0; }
 }
 
 /* =========================================================================

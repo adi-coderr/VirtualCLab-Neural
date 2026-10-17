@@ -41,14 +41,24 @@ export function derivePhysicalForm(
     return "liquid";
   }
 
+  // Powders take precedence if explicitly specified or elemental powders like Aluminium
+  if (
+    normName.includes("powder") ||
+    normName.includes("dust") ||
+    normName.includes("filings") ||
+    normName.includes("powdered") ||
+    f.toUpperCase() === "AL"
+  ) {
+    return "powder";
+  }
+
   // 1. Elemental metals and physical strips/turnings/granules
   const isMetalElem =
-    cls === "metal" || /^(fe|zn|cu|mg|al|na|k|ca|ag|au|pt|pb|sn|ni|co|li|ba|sr)$/i.test(f);
+    cls === "metal" || /^(fe|zn|cu|mg|na|k|ca|ag|au|pt|pb|sn|ni|co|li|ba|sr)$/i.test(f);
   if (
     isMetalElem ||
     normName.includes("ribbon") ||
     normName.includes("strip") ||
-    normName.includes("filings") ||
     normName.includes("wire") ||
     normName.includes("foil") ||
     normName.includes("turnings") ||

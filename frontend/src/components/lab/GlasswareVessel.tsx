@@ -57,15 +57,7 @@ export function GlasswareVessel({
         </div>
       )}
 
-      {/* Eye-Visible Live Reaction Phenomenon Indicator Badge */}
-      {afterEffectVisual && (
-        <div className="beaker-fx__live-tag" style={{ "--tint-color": afterEffectVisual.tintColor } as any}>
-          <span className="beaker-fx__live-tag-dot" />
-          <span className="beaker-fx__live-tag-text">
-            {afterEffectVisual.badge.replace(/[\p{Extended_Pictographic}\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '').trim()}
-          </span>
-        </div>
-      )}
+
 
       {/* Visual Reaction Outcome Atmospheric Phenomena (Visible by eyes in beaker) */}
       {afterEffectVisual?.effect === "flame_smoke" && (
@@ -230,26 +222,61 @@ export function GlasswareVessel({
           </clipPath>
 
           {/* After-Effect Visual Gradients */}
-          <linearGradient id="purple-vapor-grad" x1="0%" y1="100%" x2="0%" y2="0%">
-            <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0.12" />
-            <stop offset="45%" stopColor="#a855f7" stopOpacity="0.55" />
-            <stop offset="85%" stopColor="#c084fc" stopOpacity="0.75" />
-            <stop offset="100%" stopColor="#9333ea" stopOpacity="0.25" />
+          {/* Purple Sublimation Vapor Gradients */}
+          <linearGradient id="purple-vapor-body" x1="0%" y1="100%" x2="0%" y2="0%">
+            <stop offset="0%" stopColor="#7e22ce" stopOpacity="0.08" />
+            <stop offset="35%" stopColor="#9333ea" stopOpacity="0.45" />
+            <stop offset="70%" stopColor="#a855f7" stopOpacity="0.55" />
+            <stop offset="100%" stopColor="#c084fc" stopOpacity="0.20" />
           </linearGradient>
+          <radialGradient id="purple-vapor-swirl" cx="45%" cy="40%" r="55%">
+            <stop offset="0%" stopColor="#d8b4fe" stopOpacity="0.65" />
+            <stop offset="50%" stopColor="#a855f7" stopOpacity="0.38" />
+            <stop offset="100%" stopColor="#7e22ce" stopOpacity="0" />
+          </radialGradient>
+          <radialGradient id="purple-vapor-core" cx="55%" cy="45%" r="50%">
+            <stop offset="0%" stopColor="#f3e8ff" stopOpacity="0.55" />
+            <stop offset="50%" stopColor="#c084fc" stopOpacity="0.32" />
+            <stop offset="100%" stopColor="#9333ea" stopOpacity="0" />
+          </radialGradient>
 
-          <linearGradient id="brown-fume-grad" x1="0%" y1="100%" x2="0%" y2="0%">
-            <stop offset="0%" stopColor="#d97706" stopOpacity="0.15" />
-            <stop offset="45%" stopColor="#b45309" stopOpacity="0.65" />
-            <stop offset="85%" stopColor="#78350f" stopOpacity="0.80" />
-            <stop offset="100%" stopColor="#451a03" stopOpacity="0.30" />
+          {/* Brown NO2 Fume Gradients */}
+          <linearGradient id="brown-fume-body" x1="0%" y1="100%" x2="0%" y2="0%">
+            <stop offset="0%" stopColor="#d97706" stopOpacity="0.10" />
+            <stop offset="35%" stopColor="#b45309" stopOpacity="0.55" />
+            <stop offset="75%" stopColor="#78350f" stopOpacity="0.70" />
+            <stop offset="100%" stopColor="#451a03" stopOpacity="0.25" />
           </linearGradient>
+          <radialGradient id="brown-fume-swirl" cx="45%" cy="40%" r="55%">
+            <stop offset="0%" stopColor="#fbbf24" stopOpacity="0.55" />
+            <stop offset="50%" stopColor="#b45309" stopOpacity="0.40" />
+            <stop offset="100%" stopColor="#78350f" stopOpacity="0" />
+          </radialGradient>
+          <radialGradient id="brown-fume-core" cx="55%" cy="45%" r="50%">
+            <stop offset="0%" stopColor="#fed7aa" stopOpacity="0.60" />
+            <stop offset="50%" stopColor="#92400e" stopOpacity="0.35" />
+            <stop offset="100%" stopColor="#451a03" stopOpacity="0" />
+          </radialGradient>
 
-          <linearGradient id="white-smoke-grad" x1="0%" y1="100%" x2="0%" y2="0%">
-            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.20" />
-            <stop offset="50%" stopColor="#f1f5f9" stopOpacity="0.80" />
-            <stop offset="100%" stopColor="#e2e8f0" stopOpacity="0.45" />
+          {/* White Smoke Cloud Gradients */}
+          <linearGradient id="white-smoke-body" x1="0%" y1="100%" x2="0%" y2="0%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.15" />
+            <stop offset="45%" stopColor="#f8fafc" stopOpacity="0.65" />
+            <stop offset="80%" stopColor="#f1f5f9" stopOpacity="0.75" />
+            <stop offset="100%" stopColor="#e2e8f0" stopOpacity="0.30" />
           </linearGradient>
+          <radialGradient id="white-smoke-swirl" cx="45%" cy="40%" r="55%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.75" />
+            <stop offset="50%" stopColor="#e2e8f0" stopOpacity="0.45" />
+            <stop offset="100%" stopColor="#cbd5e1" stopOpacity="0" />
+          </radialGradient>
+          <radialGradient id="white-smoke-core" cx="55%" cy="45%" r="50%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.85" />
+            <stop offset="50%" stopColor="#f1f5f9" stopOpacity="0.50" />
+            <stop offset="100%" stopColor="#cbd5e1" stopOpacity="0" />
+          </radialGradient>
 
+          {/* Sulfur and Core Glow Gradients */}
           <radialGradient id="sulfur-grad" cx="50%" cy="50%" r="50%">
             <stop offset="0%" stopColor="#fef08a" stopOpacity="0.95" />
             <stop offset="65%" stopColor="#facc15" stopOpacity="0.90" />
@@ -257,11 +284,18 @@ export function GlasswareVessel({
           </radialGradient>
 
           <radialGradient id="core-glow-grad" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#ffffff" stopOpacity="1" />
-            <stop offset="25%" stopColor="#fef08a" stopOpacity="0.95" />
-            <stop offset="55%" stopColor="#f97316" stopOpacity="0.85" />
-            <stop offset="85%" stopColor="#dc2626" stopOpacity="0.4" />
+            <stop offset="0%" stopColor="#fffbeb" stopOpacity="0.95" />
+            <stop offset="30%" stopColor="#fef08a" stopOpacity="0.85" />
+            <stop offset="65%" stopColor="#f97316" stopOpacity="0.65" />
+            <stop offset="88%" stopColor="#dc2626" stopOpacity="0.3" />
             <stop offset="100%" stopColor="#7f1d1d" stopOpacity="0" />
+          </radialGradient>
+
+          <radialGradient id="molten-inner-glow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#fffbeb" stopOpacity="0.95" />
+            <stop offset="35%" stopColor="#fde047" stopOpacity="0.80" />
+            <stop offset="70%" stopColor="#f97316" stopOpacity="0.45" />
+            <stop offset="100%" stopColor="#ea580c" stopOpacity="0" />
           </radialGradient>
         </defs>
 
@@ -561,22 +595,28 @@ function BeakerSvg({
 
           {/* Molten Burning / Incandescent Core */}
           {afterEffectVisual?.hasGlowingCore && (
-            <g className="beaker-core-glow-group">
+            <g className="beaker-core-glow-group" aria-hidden="true">
               <ellipse
                 cx="80"
-                cy={liquidY > 160 ? 174 : Math.min(174, liquidY + liquidHeight * 0.75)}
-                rx="28"
-                ry="14"
+                cy={liquidY > 160 ? 175 : Math.min(175, liquidY + liquidHeight * 0.75)}
+                rx="30"
+                ry="9"
                 fill="url(#core-glow-grad)"
                 className="beaker-core-pulse"
+                opacity="0.9"
               />
-              <circle
+              <ellipse
                 cx="80"
-                cy={liquidY > 160 ? 174 : Math.min(174, liquidY + liquidHeight * 0.75)}
-                r="7"
-                fill="#ffffff"
-                filter="drop-shadow(0 0 6px #f59e0b)"
+                cy={liquidY > 160 ? 175 : Math.min(175, liquidY + liquidHeight * 0.75)}
+                rx="14"
+                ry="4.5"
+                fill="url(#molten-inner-glow)"
+                className="beaker-molten-core"
               />
+              {/* Fine incandescent micro-embers instead of solid white disc */}
+              <circle cx="77" cy="174" r="1.2" fill="#fffbeb" opacity="0.95" />
+              <circle cx="83" cy="174.5" r="1.3" fill="#fef08a" opacity="0.9" />
+              <circle cx="80" cy="175" r="1.5" fill="#fef3c7" opacity="0.95" />
             </g>
           )}
 
@@ -1724,35 +1764,64 @@ function BeakerAfterEffectGraphic({
       );
 
     case "purple_vapor":
-      // Violet iodine sublimation gas swirling inside upper chamber
+      // Violet iodine sublimation vapor swirling inside chamber
       return (
-        <g className="beaker-after-effect-purple-vapor">
-          <ellipse cx="80" cy="70" rx="48" ry="40" fill="url(#purple-vapor-grad)" className="beaker-vapor-swirl" />
-          <circle cx="60" cy="60" r="14" fill="#a855f7" opacity="0.25" />
-          <circle cx="95" cy="55" r="16" fill="#c084fc" opacity="0.28" />
-          <circle cx="75" cy="35" r="12" fill="#9333ea" opacity="0.22" />
+        <g className="beaker-after-effect-purple-vapor" aria-hidden="true">
+          {/* Broad volumetric vapor fill */}
+          <ellipse cx="80" cy="75" rx="50" ry="46" fill="url(#purple-vapor-body)" className="beaker-vapor-swirl" />
+          {/* Swirling wisps across the vessel */}
+          <path
+            d="M 28 50 Q 55 30 80 44 Q 105 58 132 42 L 132 95 Q 105 110 80 100 Q 55 90 28 105 Z"
+            fill="url(#purple-vapor-swirl)"
+            className="beaker-vapor-swirl-1"
+          />
+          <path
+            d="M 32 35 Q 60 52 85 36 Q 112 22 128 38 L 128 75 Q 98 62 75 72 Q 48 82 32 68 Z"
+            fill="url(#purple-vapor-core)"
+            className="beaker-vapor-swirl-2"
+          />
+          {/* Upper sublimation wisps escaping toward lip */}
+          <path
+            d="M 45 25 Q 65 35 80 24 Q 95 15 115 28 Q 98 42 80 34 Q 62 26 45 25 Z"
+            fill="url(#purple-vapor-swirl)"
+            opacity="0.8"
+          />
         </g>
       );
 
     case "brown_fumes":
-      // Reddish-brown NO2 gas plume
+      // Reddish-brown NO2 gas billows
       return (
-        <g className="beaker-after-effect-brown-fumes">
-          <ellipse cx="80" cy="65" rx="49" ry="38" fill="url(#brown-fume-grad)" className="beaker-fume-billow" />
-          <circle cx="55" cy="55" r="15" fill="#b45309" opacity="0.45" />
-          <circle cx="100" cy="50" r="18" fill="#92400e" opacity="0.40" />
-          <circle cx="78" cy="32" r="14" fill="#78350f" opacity="0.50" />
+        <g className="beaker-after-effect-brown-fumes" aria-hidden="true">
+          <ellipse cx="80" cy="70" rx="50" ry="44" fill="url(#brown-fume-body)" className="beaker-fume-billow" />
+          <path
+            d="M 28 45 Q 55 25 80 38 Q 105 52 132 36 L 132 90 Q 105 105 80 95 Q 55 85 28 100 Z"
+            fill="url(#brown-fume-swirl)"
+            className="beaker-fume-billow-1"
+          />
+          <path
+            d="M 32 30 Q 60 48 85 32 Q 112 18 128 34 L 128 70 Q 98 58 75 68 Q 48 78 32 64 Z"
+            fill="url(#brown-fume-core)"
+            className="beaker-fume-billow-2"
+          />
         </g>
       );
 
     case "white_smoke":
       // Thick white NH4Cl smoke cloud
       return (
-        <g className="beaker-after-effect-white-smoke">
-          <ellipse cx="80" cy="70" rx="50" ry="42" fill="url(#white-smoke-grad)" className="beaker-smoke-cloud" />
-          <circle cx="60" cy="65" r="16" fill="#ffffff" opacity="0.75" />
-          <circle cx="98" cy="60" r="18" fill="#f8fafc" opacity="0.70" />
-          <circle cx="75" cy="40" r="14" fill="#f1f5f9" opacity="0.80" />
+        <g className="beaker-after-effect-white-smoke" aria-hidden="true">
+          <ellipse cx="80" cy="75" rx="51" ry="48" fill="url(#white-smoke-body)" className="beaker-smoke-cloud" />
+          <path
+            d="M 28 48 Q 55 28 80 42 Q 105 56 132 40 L 132 95 Q 105 110 80 100 Q 55 90 28 105 Z"
+            fill="url(#white-smoke-swirl)"
+            className="beaker-smoke-billow-1"
+          />
+          <path
+            d="M 32 32 Q 60 50 85 34 Q 112 20 128 36 L 128 75 Q 98 62 75 72 Q 48 82 32 68 Z"
+            fill="url(#white-smoke-core)"
+            className="beaker-smoke-billow-2"
+          />
         </g>
       );
 
