@@ -2533,8 +2533,9 @@ function parseHydrateFormula(formula: string, commonName = ""): { baseFormula: s
   const normName = commonName.trim();
   const normForm = formula.trim();
 
-  // 1. Check common name for dot / hyphen notation: e.g. "MgCl2.6H2O", "CuSO4·5H2O", "NiCl2-6H2O", "Fe(NO3)3.9H2O"
-  const nameMatch = normName.match(/^(.+?)[.·\-]\s*(\d*(?:\.\d+)?)\s*H2O$/i);
+  // 1. Check formula or common name for dot / hyphen notation: e.g. "MgCl2.6H2O", "CuSO4·5H2O", "NiCl2-6H2O", "Fe(NO3)3.9H2O"
+  const dotTarget = normForm.match(/[.·\-]\s*\d*(?:\.\d+)?\s*H2O$/i) ? normForm : normName;
+  const nameMatch = dotTarget.match(/^(.+?)[.·\-]\s*(\d*(?:\.\d+)?)\s*H2O$/i);
   if (nameMatch) {
     const base = nameMatch[1]!.trim();
     const wStr = nameMatch[2]!.trim();
@@ -2958,13 +2959,13 @@ export function annotateBondLengthsAndAngles(struct: MoleculeStructure): Molecul
       if (neighbors1.length > 0 && atoms[neighbors1[0]!]) {
         const nAtom = atoms[neighbors1[0]!]!;
         const ang = calc3DAngle(a1, nAtom, a2);
-        const safeAng = isNaN(ang) ? 109.5 : ang;
+        const safeAng = isNaN(ang) || ang < 45.0 ? 109.5 : ang;
         angleDeg = Number(safeAng.toFixed(1));
         angleLabel = `${nAtom.element}–${a1.element}–${a2.element}`;
       } else if (neighbors2.length > 0 && atoms[neighbors2[0]!]) {
         const nAtom = atoms[neighbors2[0]!]!;
         const ang = calc3DAngle(a2, a1, nAtom);
-        const safeAng = isNaN(ang) ? 109.5 : ang;
+        const safeAng = isNaN(ang) || ang < 45.0 ? 109.5 : ang;
         angleDeg = Number(safeAng.toFixed(1));
         angleLabel = `${a1.element}–${a2.element}–${nAtom.element}`;
       } else {
@@ -3006,6 +3007,24 @@ export function generateMoleculeStructure(
 ): MoleculeStructure {
   const rng = createSeededRandom(chemicalId || formula || commonName || smiles || "chemlab_seed");
 
+  const normFormula = (formula || "").trim();
+  const normName = (commonName || "").trim();
+
+  // If formula or common name matches a solvent abbreviation or solvent mixture (e.g. EtOHH2O, EtOH-H2O)
+  if (!smiles) {
+    if (SOLVENT_ABBREVIATIONS[normFormula]) {
+      return generateMoleculeStructure(chemicalId, normFormula, undefined, commonName, SOLVENT_ABBREVIATIONS[normFormula], skip2DRelaxation);
+    }
+    const solvPrefix = normFormula.replace(/H2O$/i, "").replace(/[-—_]/g, "");
+    if (SOLVENT_ABBREVIATIONS[solvPrefix]) {
+      return generateMoleculeStructure(chemicalId, normFormula, undefined, commonName, SOLVENT_ABBREVIATIONS[solvPrefix], skip2DRelaxation);
+    }
+  }
+
+  // Hydrate parsing (e.g. MgCl26H2O, CuSO45H2O, Fe(NO3)3.9H2O, Ba(OH)2.8H2O)
+  const hydrateInfo = !smiles ? parseHydrateFormula(normFormula, normName) : null;
+  let activeFormula = hydrateInfo ? hydrateInfo.baseFormula : normFormula;
+
   const finalize = (res: MoleculeStructure): MoleculeStructure => {
     let result = res;
     if (hydrateInfo && hydrateInfo.waterCount > 0) {
@@ -3027,24 +3046,6 @@ export function generateMoleculeStructure(
     }
   }
 
-  const normFormula = (formula || "").trim();
-  const normName = (commonName || "").trim();
-
-  // If formula or common name matches a solvent abbreviation or solvent mixture (e.g. EtOHH2O, EtOH-H2O)
-  if (!smiles) {
-    if (SOLVENT_ABBREVIATIONS[normFormula]) {
-      return generateMoleculeStructure(chemicalId, "", undefined, commonName, SOLVENT_ABBREVIATIONS[normFormula]);
-    }
-    const solvPrefix = normFormula.replace(/H2O$/i, "").replace(/[-—_]/g, "");
-    if (SOLVENT_ABBREVIATIONS[solvPrefix]) {
-      return generateMoleculeStructure(chemicalId, "", undefined, commonName, SOLVENT_ABBREVIATIONS[solvPrefix]);
-    }
-  }
-
-  // Hydrate parsing (e.g. MgCl26H2O, CuSO45H2O, Fe(NO3)3.9H2O, Ba(OH)2.8H2O)
-  const hydrateInfo = !smiles ? parseHydrateFormula(normFormula, normName) : null;
-  let activeFormula = hydrateInfo ? hydrateInfo.baseFormula : normFormula;
-
   // Clean formulas where parentheses were stripped in DB (e.g. PbNO32 -> Pb(NO3)2, NH42SO4 -> (NH4)2SO4, CaCO3 for caco3-2)
   if (!smiles && normName && /^[A-Z][A-Za-z0-9\(\)]+$/.test(normName) && !normName.includes(" ")) {
     try {
@@ -3053,6 +3054,43 @@ export function generateMoleculeStructure(
         activeFormula = normName;
       }
     } catch {}
+  }
+
+  // Normalization map for common lowercase formulas
+  if (activeFormula && !/[A-Z]/.test(activeFormula)) {
+    const lowerMap: Record<string, string> = {
+      nh4cl: "NH4Cl",
+      nacl: "NaCl",
+      kcl: "KCl",
+      hcl: "HCl",
+      naoh: "NaOH",
+      koh: "KOH",
+      nh3: "NH3",
+      h2o: "H2O",
+      mgcl2: "MgCl2",
+      cacl2: "CaCl2",
+      au2al: "AlAu2",
+      aual2: "Al2Au",
+    };
+    if (lowerMap[activeFormula.toLowerCase()]) {
+      activeFormula = lowerMap[activeFormula.toLowerCase()]!;
+    }
+  }
+
+  // Expand coordination ligand abbreviations (e.g. en, ox, bpy, phen, acac)
+  if (activeFormula && (activeFormula.includes("(en)") || activeFormula.includes("(ox)") || activeFormula.includes("(bpy)") || activeFormula.includes("(phen)") || activeFormula.includes("(acac)") || activeFormula.includes("(dmg)") || activeFormula.includes("(edta)"))) {
+    const ligandExpansion: Record<string, string> = {
+      "\\(en\\)": "(C2H8N2)",
+      "\\(ox\\)": "(C2O4)",
+      "\\(bpy\\)": "(C10H8N2)",
+      "\\(phen\\)": "(C12H8N2)",
+      "\\(acac\\)": "(C5H7O2)",
+      "\\(dmg\\)": "(C4H7N2O2)",
+      "\\(edta\\)": "(C10H12N2O8)",
+    };
+    for (const [pat, exp] of Object.entries(ligandExpansion)) {
+      activeFormula = activeFormula.replace(new RegExp(pat, "g"), exp);
+    }
   }
 
   // Determine composition
@@ -3143,6 +3181,60 @@ export function generateMoleculeStructure(
           const manhattan = Math.abs(x1 - x2) + Math.abs(y1 - y2) + Math.abs(z1 - z2);
           if (manhattan === 1) {
             bonds.push({ atomIndex1: i, atomIndex2: j, order: 1, type: "covalent" });
+          }
+        }
+      }
+
+      return finalize({ curated: true, atoms, bonds });
+    }
+  }
+
+  // 2b. Intermetallic alloys & pure metallic clusters (e.g. AlAu2, Al2Au, CuZn, etc.)
+  const nonMetalSet = new Set(["H", "C", "N", "O", "F", "P", "S", "Cl", "Se", "Br", "I", "He", "Ne", "Ar", "Kr", "Xe", "B", "Si"]);
+  const hasNonMetal = elementKeys.some((k) => nonMetalSet.has(k));
+  if (!hasNonMetal && elementKeys.length > 1) {
+    const totalMetalCount = elementKeys.reduce((acc, k) => acc + (comp[k] ?? 0), 0);
+    if (totalMetalCount > 0) {
+      const atoms: MoleculeStructure["atoms"] = [];
+      const bonds: MoleculeStructure["bonds"] = [];
+      const atomList: string[] = [];
+      for (const k of elementKeys) {
+        const c = comp[k] ?? 0;
+        for (let i = 0; i < c; i++) atomList.push(k);
+      }
+      const d = 2.45;
+      const gridSize = Math.ceil(Math.cbrt(atomList.length));
+      let placedCount = 0;
+      const gridCoords: [number, number, number][] = [];
+
+      for (let x = 0; x < gridSize && placedCount < atomList.length; x++) {
+        for (let y = 0; y < gridSize && placedCount < atomList.length; y++) {
+          for (let z = 0; z < gridSize && placedCount < atomList.length; z++) {
+            const xPos = Number(((x - (gridSize - 1) / 2) * d).toFixed(3));
+            const yPos = Number(((y - (gridSize - 1) / 2) * d).toFixed(3));
+            const zPos = Number(((z - (gridSize - 1) / 2) * d).toFixed(3));
+            atoms.push({
+              atomIndex: placedCount,
+              element: atomList[placedCount]!,
+              x3d: xPos,
+              y3d: yPos,
+              z3d: zPos,
+              x2d: Math.round(xPos * 30),
+              y2d: Math.round(yPos * 30),
+            });
+            gridCoords.push([x, y, z]);
+            placedCount++;
+          }
+        }
+      }
+
+      for (let i = 0; i < atoms.length; i++) {
+        const [x1, y1, z1] = gridCoords[i]!;
+        for (let j = i + 1; j < atoms.length; j++) {
+          const [x2, y2, z2] = gridCoords[j]!;
+          const manhattan = Math.abs(x1 - x2) + Math.abs(y1 - y2) + Math.abs(z1 - z2);
+          if (manhattan === 1) {
+            bonds.push({ atomIndex1: i, atomIndex2: j, order: 1, type: "covalent", length: d });
           }
         }
       }
