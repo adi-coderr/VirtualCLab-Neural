@@ -54,6 +54,7 @@ describe("Strict Reaction Resolution Priority Pipeline", () => {
     it("if ML output is available and API recheck succeeds, enriches with additional internet data", async () => {
       // Mock valid ML prediction for novel reactants not in DB
       vi.spyOn(localMlModelService, "predict").mockResolvedValueOnce({
+        input: "C7H6O3.C4H6O3",
         modelName: "ReactionT5v2",
         rawOutput: "CC(=O)Oc1ccccc1C(=O)O",
         cleanedOutput: "CC(=O)Oc1ccccc1C(=O)O",
@@ -82,8 +83,14 @@ describe("Strict Reaction Resolution Priority Pipeline", () => {
           },
         ],
         reactionType: "esterification",
+        atomEconomyPercent: 75.0,
+        expectedByproducts: ["Acetic acid"],
+        mechanismNotes: "Acid-catalyzed nucleophilic acyl substitution",
         latencyMs: 120,
         trainingDataset: "USPTO-1.8M",
+        device: "mps",
+        beamsUsed: 4,
+        timestamp: new Date().toISOString(),
       });
 
       // Mock API recheck enriching the reaction
@@ -130,6 +137,7 @@ describe("Strict Reaction Resolution Priority Pipeline", () => {
     it("if ML output is available but API is unable to recheck (e.g. error/no key), ML output is treated as final output", async () => {
       // Mock valid ML prediction
       vi.spyOn(localMlModelService, "predict").mockResolvedValueOnce({
+        input: "C7H6O3.C4H6O3",
         modelName: "ReactionT5v2",
         rawOutput: "CC(=O)Oc1ccccc1C(=O)O",
         cleanedOutput: "CC(=O)Oc1ccccc1C(=O)O",
@@ -158,8 +166,14 @@ describe("Strict Reaction Resolution Priority Pipeline", () => {
           },
         ],
         reactionType: "synthesis",
+        atomEconomyPercent: 75.0,
+        expectedByproducts: ["Acetic acid"],
+        mechanismNotes: "Direct forward synthesis of aspirin",
         latencyMs: 95,
         trainingDataset: "USPTO-1.8M",
+        device: "mps",
+        beamsUsed: 4,
+        timestamp: new Date().toISOString(),
       });
 
       // API recheck fails (e.g. network error / timeout)
