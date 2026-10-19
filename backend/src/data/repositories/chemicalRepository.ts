@@ -130,10 +130,15 @@ export class ChemicalRepository {
       }[];
 
       let hasUnphysicalBond = false;
+      const isKnownPeroxide = ["h2o2", "na2o2", "ba-o2", "k2o2", "k2s2o8", "na2s2o8", "(nh4)2s2o8"].includes(chemicalId.toLowerCase());
       for (const b of bonds) {
         const a1 = atoms.find((a) => a.atom_index === b.atom_index_1);
         const a2 = atoms.find((a) => a.atom_index === b.atom_index_2);
         if (a1 && a2) {
+          if (!isKnownPeroxide && a1.element_symbol === "O" && a2.element_symbol === "O") {
+            hasUnphysicalBond = true;
+            break;
+          }
           const d = Math.hypot(a1.x3d - a2.x3d, a1.y3d - a2.y3d, a1.z3d - a2.z3d);
           if (d > 2.65 || (b.bond_type === "covalent" && d < 0.70)) {
             hasUnphysicalBond = true;

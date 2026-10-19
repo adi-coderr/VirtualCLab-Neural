@@ -968,35 +968,43 @@ function generateFromSmiles(smiles: string, rng: () => number): MoleculeStructur
   // If multiple components, sort so the anchor / primary component is laid out first
   if (components.length > 1) {
     components.sort((a, b) => {
-      // 1. Largest component first (e.g. polyatomic ion or main organic molecule)
-      if (a.length !== b.length) return b.length - a.length;
-      // 2. Higher absolute charge first (e.g. Mg+2 before Cl-)
-      const aCharge = Math.abs(a.reduce((s, idx) => s + graph[idx]!.charge, 0));
-      const bCharge = Math.abs(b.reduce((s, idx) => s + graph[idx]!.charge, 0));
-      if (aCharge !== bCharge) return bCharge - aCharge;
-      // 3. Metal before non-metal (e.g. Na+ before Cl-)
+      // 1. Large pre-assembled complex (>= 7 atoms, like [Fe(CN)6]) is always anchor
+      const aIsLargeComplex = a.length >= 7;
+      const bIsLargeComplex = b.length >= 7;
+      if (aIsLargeComplex !== bIsLargeComplex) return aIsLargeComplex ? -1 : 1;
+
       const aHasMetal = a.some((idx) => !["C", "H", "N", "O", "P", "S", "F", "Cl", "Br", "I", "B", "Si"].includes(graph[idx]!.elem));
       const bHasMetal = b.some((idx) => !["C", "H", "N", "O", "P", "S", "F", "Cl", "Br", "I", "B", "Si"].includes(graph[idx]!.elem));
-      if (aHasMetal && !bHasMetal) return -1;
-      if (!aHasMetal && bHasMetal) return 1;
+      const aNetCharge = a.reduce((s, idx) => s + graph[idx]!.charge, 0);
+      const bNetCharge = b.reduce((s, idx) => s + graph[idx]!.charge, 0);
+
+      // 2. Multivalent metal cation or central metal cation coordinates multiple ligands/anions -> placed first!
+      if (aHasMetal && aNetCharge > 0 && (!bHasMetal || bNetCharge <= 0)) return -1;
+      if (bHasMetal && bNetCharge > 0 && (!aHasMetal || aNetCharge <= 0)) return 1;
+
+      // 3. If both or neither are metal cations, higher positive charge first
+      if (aNetCharge > 0 && bNetCharge <= 0) return -1;
+      if (bNetCharge > 0 && aNetCharge <= 0) return 1;
+      if (aNetCharge > 0 && bNetCharge > 0 && aNetCharge !== bNetCharge) return bNetCharge - aNetCharge;
+
+      // 4. Largest component first (e.g. polyatomic ion or main organic molecule)
+      if (a.length !== b.length) return b.length - a.length;
+
+      // 5. Higher absolute charge first
+      const aAbsCharge = Math.abs(aNetCharge);
+      const bAbsCharge = Math.abs(bNetCharge);
+      if (aAbsCharge !== bAbsCharge) return bAbsCharge - aAbsCharge;
+
       return 0;
     });
   }
 
-  // 3. Lay out each component via BFS with hybridization-guided bond vectors
-  const ionicCoordCount: Record<number, number> = {};
-  const pendingIonicBonds: [number, number][] = [];
-
-  components.forEach((comp, compIdx) => {
-    const alreadyPlaced = comp.filter((idx) => placed.has(idx));
-    if (alreadyPlaced.length === 0) {
-      const root = comp[0]!;
-      coords[root] = { x: 0, y: 0, z: 0 };
-      placed.add(root);
-      alreadyPlaced.push(root);
-    }
-
-    const queue: number[] = [...alreadyPlaced];
+  // 3. Lay out each component internally in its own local coordinate system
+  components.forEach((comp) => {
+    const root = comp[0]!;
+    coords[root] = { x: 0, y: 0, z: 0 };
+    const compPlaced = new Set<number>([root]);
+    const queue: number[] = [root];
     const parentMap: Record<number, number> = {};
 
     while (queue.length > 0) {
@@ -1009,29 +1017,9 @@ function generateFromSmiles(smiles: string, rng: () => number): MoleculeStructur
       if (parentMap[u] !== undefined) {
         const pPos = coords[parentMap[u]!]!;
         inDir = vNormalize({ x: uPos.x - pPos.x, y: uPos.y - pPos.y, z: uPos.z - pPos.z });
-      } else {
-        const placedNeighbors = uNode.edges
-          .filter((e) => placed.has(e.target) && coords[e.target])
-          .map((e) => coords[e.target]!);
-        if (placedNeighbors.length === 1) {
-          const p = placedNeighbors[0]!;
-          inDir = vNormalize({ x: uPos.x - p.x, y: uPos.y - p.y, z: uPos.z - p.z });
-        } else if (placedNeighbors.length >= 2) {
-          let sumOut = { x: 0, y: 0, z: 0 };
-          for (const p of placedNeighbors) {
-            const v = vNormalize({ x: uPos.x - p.x, y: uPos.y - p.y, z: uPos.z - p.z });
-            sumOut.x += v.x;
-            sumOut.y += v.y;
-            sumOut.z += v.z;
-          }
-          const len = Math.hypot(sumOut.x, sumOut.y, sumOut.z);
-          if (len > 1e-3) {
-            inDir = { x: sumOut.x / len, y: sumOut.y / len, z: sumOut.z / len };
-          }
-        }
       }
 
-      const unplacedNeighbors = uNode.edges.filter((e) => !placed.has(e.target));
+      const unplacedNeighbors = uNode.edges.filter((e) => !compPlaced.has(e.target) && comp.includes(e.target));
       if (unplacedNeighbors.length === 0) continue;
 
       let fwd = inDir || { x: 1, y: 0, z: 0 };
@@ -1042,13 +1030,13 @@ function generateFromSmiles(smiles: string, rng: () => number): MoleculeStructur
       for (let nIdx = 0; nIdx < unplacedNeighbors.length; nIdx++) {
         const edge = unplacedNeighbors[nIdx]!;
         const v = edge.target;
-        if (placed.has(v)) continue;
+        if (compPlaced.has(v)) continue;
 
         // Check if v belongs to an unplaced 6-ring
-        const unplaced6 = rings.find((r) => r.length === 6 && r.includes(v) && r.every((idx) => !placed.has(idx)));
+        const unplaced6 = rings.find((r) => r.length === 6 && r.includes(v) && r.every((idx) => !compPlaced.has(idx)));
         if (unplaced6) {
           const orderedRing = orderRingPerimeter(unplaced6, graph);
-          placeConnected6Ring(orderedRing, v, u, graph, coords, placed, aromaticRingAtoms, aromaticRingOutward, placedRingCount++);
+          placeConnected6Ring(orderedRing, v, u, graph, coords, compPlaced, aromaticRingAtoms, aromaticRingOutward, placedRingCount++);
           for (const idx of orderedRing) {
             parentMap[idx] = u;
             queue.push(idx);
@@ -1057,10 +1045,10 @@ function generateFromSmiles(smiles: string, rng: () => number): MoleculeStructur
         }
 
         // Check if v belongs to an unplaced 5-ring
-        const unplaced5 = rings.find((r) => r.length === 5 && r.includes(v) && r.every((idx) => !placed.has(idx)));
+        const unplaced5 = rings.find((r) => r.length === 5 && r.includes(v) && r.every((idx) => !compPlaced.has(idx)));
         if (unplaced5) {
           const orderedRing = orderRingPerimeter(unplaced5, graph);
-          placeConnected5Ring(orderedRing, v, u, graph, coords, placed, aromaticRingAtoms, aromaticRingOutward, placedRingCount++);
+          placeConnected5Ring(orderedRing, v, u, graph, coords, compPlaced, aromaticRingAtoms, aromaticRingOutward, placedRingCount++);
           for (const idx of orderedRing) {
             parentMap[idx] = u;
             queue.push(idx);
@@ -1076,7 +1064,7 @@ function generateFromSmiles(smiles: string, rng: () => number): MoleculeStructur
           outDir = fwd;
         } else if (hyb === "SP2") {
           const sign = nIdx % 2 === 0 ? 1 : -1;
-          const cosFwd = 0.5; // cos(180° - 120°) = cos(60°) = +0.5 pointing forward
+          const cosFwd = 0.5;
           const sinFwd = 0.866 * sign;
           outDir = {
             x: fwd.x * cosFwd + right.x * sinFwd,
@@ -1084,7 +1072,7 @@ function generateFromSmiles(smiles: string, rng: () => number): MoleculeStructur
             z: fwd.z * cosFwd + right.z * sinFwd,
           };
         } else {
-          const cosFwd = 0.3333; // cos(180° - 109.5°) = cos(70.5°) = +0.3333 pointing forward
+          const cosFwd = 0.3333;
           const sinFwd = 0.9428;
           const phi = (nIdx * (2 * Math.PI) / 3) + (u % 2 === 0 ? 0 : Math.PI / 3);
           const cx = Math.cos(phi);
@@ -1104,181 +1092,254 @@ function generateFromSmiles(smiles: string, rng: () => number): MoleculeStructur
           z: uPos.z + outDir.z * bondDist + jitter,
         };
 
-        placed.add(v);
+        compPlaced.add(v);
         parentMap[v] = u;
         queue.push(v);
       }
     }
+  });
 
-    if (compIdx > 0) {
-      // Find best coordinating atom in already placed components to pair with an atom in comp
-      let bestTarget = -1;
-      let bestCoordInComp = -1;
-      let bestScore = -Infinity;
+  // 4. Global Spanning Tree Placement of components
+  const ionicCoordCount: Record<number, number> = {};
+  const pendingIonicBonds: [number, number][] = [];
 
-      for (const b of comp) {
-        const nodeB = graph[b]!;
-        const isB_Metal = !["C", "H", "N", "O", "P", "S", "F", "Cl", "Br", "I", "B", "Si"].includes(nodeB.elem);
+  if (components.length > 1) {
+    // Determine optimal root anchor component
+    let anchorIdx = 0;
+    let bestAnchorScore = -Infinity;
+    for (let c = 0; c < components.length; c++) {
+      const comp = components[c]!;
+      const netCharge = comp.reduce((sum, idx) => sum + graph[idx]!.charge, 0);
+      const hasMetal = comp.some((idx) => !["C", "H", "N", "O", "P", "S", "F", "Cl", "Br", "I", "B", "Si"].includes(graph[idx]!.elem));
+      let score = 0;
+      if (comp.length >= 7) score += 1000;
+      const countIdentical = components.filter((other) => other.length === comp.length && graph[other[0]!]?.elem === graph[comp[0]!]?.elem).length;
+      if (countIdentical === 1) score += 300;
+      if (hasMetal && netCharge > 0) score += 200 + netCharge * 25;
+      if (netCharge <= -2) score += 150 + Math.abs(netCharge) * 25;
+      score += comp.length * 10;
+      if (score > bestAnchorScore) {
+        bestAnchorScore = score;
+        anchorIdx = c;
+      }
+    }
 
-        for (let a = 0; a < graph.length; a++) {
-          if (!placed.has(a) || comp.includes(a)) continue;
-          const nodeA = graph[a]!;
-          const isA_Metal = !["C", "H", "N", "O", "P", "S", "F", "Cl", "Br", "I", "B", "Si"].includes(nodeA.elem);
-          const isOppositeCharge = (nodeA.charge > 0 && nodeB.charge < 0) || (nodeA.charge < 0 && nodeB.charge > 0);
-          const isMetalNonmetal = (isA_Metal && !isB_Metal) || (isB_Metal && !isA_Metal);
+    const placedComps = new Set<number>([anchorIdx]);
+    const unplacedComps = new Set<number>(components.map((_, i) => i).filter((i) => i !== anchorIdx));
+    const placedAtomSet = new Set<number>(components[anchorIdx]!);
 
-          if (!isOppositeCharge && !isMetalNonmetal) continue;
+    while (unplacedComps.size > 0) {
+      let bestA = -1;
+      let bestB = -1;
+      let bestUCompIdx = -1;
+      let bestPairScore = -Infinity;
 
-          const aCoordsCount = ionicCoordCount[a] ?? 0;
-          const maxCapacity = Math.max(1, Math.abs(nodeA.charge) || (isA_Metal ? 2 : 1));
-          if (aCoordsCount >= maxCapacity) continue;
+      for (const pIdx of placedComps) {
+        const compA = components[pIdx]!;
+        const netA = compA.reduce((s, idx) => s + graph[idx]!.charge, 0);
 
-          let score = 0;
-          if (isOppositeCharge) score += 10;
-          if (isMetalNonmetal) score += 5;
-          if (nodeA.charge < 0 || nodeB.charge < 0) score += 5;
-          score -= aCoordsCount * 3;
+        for (const uIdx of unplacedComps) {
+          const compB = components[uIdx]!;
+          const netB = compB.reduce((s, idx) => s + graph[idx]!.charge, 0);
 
-          if (score > bestScore) {
-            bestScore = score;
-            bestTarget = a;
-            bestCoordInComp = b;
+          // Disallow like-charged polyatomic ion direct coordination
+          if (netA < 0 && netB < 0) continue;
+          if (netA > 0 && netB > 0) continue;
+
+          for (const a of compA) {
+            const nodeA = graph[a]!;
+            const isA_Metal = !["C", "H", "N", "O", "P", "S", "F", "Cl", "Br", "I", "B", "Si"].includes(nodeA.elem);
+            const aCount = ionicCoordCount[a] ?? 0;
+            const maxCapA = isA_Metal ? 6 : Math.max(1, Math.abs(nodeA.charge));
+            if (aCount >= maxCapA) continue;
+
+            for (const b of compB) {
+              const nodeB = graph[b]!;
+              const isB_Metal = !["C", "H", "N", "O", "P", "S", "F", "Cl", "Br", "I", "B", "Si"].includes(nodeB.elem);
+              const bCount = ionicCoordCount[b] ?? 0;
+              const maxCapB = isB_Metal ? 6 : Math.max(1, Math.abs(nodeB.charge));
+              if (bCount >= maxCapB) continue;
+
+              const isOpposite = (nodeA.charge > 0 && nodeB.charge < 0) || (nodeA.charge < 0 && nodeB.charge > 0);
+              const isMetalLigand = (isA_Metal && !isB_Metal) || (isB_Metal && !isA_Metal);
+
+              if (!isOpposite && !isMetalLigand) continue;
+
+              let score = 0;
+              if (isOpposite) score += 40;
+              if (isMetalLigand) score += 25;
+              if (nodeA.charge !== 0 || nodeB.charge !== 0) score += 10;
+              score -= aCount * 4;
+
+              if (score > bestPairScore) {
+                bestPairScore = score;
+                bestA = a;
+                bestB = b;
+                bestUCompIdx = uIdx;
+              }
+            }
           }
         }
       }
 
-      if (bestTarget !== -1 && bestCoordInComp !== -1) {
-        const targetPos = coords[bestTarget]!;
-        let outDir: Vec3;
-        const targetNeighbors = graph[bestTarget]!.edges
-          .filter((e) => placed.has(e.target) && !comp.includes(e.target) && coords[e.target])
-          .map((e) => coords[e.target]!);
-
-        if (targetNeighbors.length > 0) {
-          let sumAway = { x: 0, y: 0, z: 0 };
-          for (const n of targetNeighbors) {
-            sumAway.x += targetPos.x - n.x;
-            sumAway.y += targetPos.y - n.y;
-            sumAway.z += targetPos.z - n.z;
+      // Fallback for neutral waters / neutral ligands
+      if (bestPairScore === -Infinity) {
+        for (const pIdx of placedComps) {
+          const compA = components[pIdx]!;
+          for (const uIdx of unplacedComps) {
+            const compB = components[uIdx]!;
+            for (const a of compA) {
+              const aCount = ionicCoordCount[a] ?? 0;
+              if (aCount >= 6) continue;
+              for (const b of compB) {
+                let score = 10 - aCount * 2;
+                if (graph[a]!.elem === "O" && graph[b]!.elem === "H") score += 15;
+                if (graph[b]!.elem === "O" && graph[a]!.elem === "H") score += 15;
+                if (graph[a]!.elem !== "C" && graph[b]!.elem !== "C") score += 5;
+                if (score > bestPairScore) {
+                  bestPairScore = score;
+                  bestA = a;
+                  bestB = b;
+                  bestUCompIdx = uIdx;
+                }
+              }
+            }
           }
-          const len = Math.hypot(sumAway.x, sumAway.y, sumAway.z);
-          if (len > 0.1) {
-            outDir = { x: sumAway.x / len, y: sumAway.y / len, z: sumAway.z / len };
-          } else {
-            outDir = { x: 1, y: 0, z: 0 };
-          }
-        } else {
-          const k = ionicCoordCount[bestTarget] ?? 0;
-          if (k === 0) outDir = { x: 1, y: 0, z: 0 };
-          else if (k === 1) outDir = { x: -1, y: 0, z: 0.1 };
-          else if (k === 2) outDir = { x: -0.5, y: 0.866, z: -0.1 };
-          else if (k === 3) outDir = { x: -0.5, y: -0.866, z: 0.1 };
-          else if (k === 4) outDir = { x: 0, y: 0, z: 1 };
-          else outDir = { x: 0, y: 0, z: -1 };
         }
-        outDir = vNormalize(outDir);
+      }
 
-        const dBond = Math.min(2.45, Math.max(2.05, getBondDistance(graph[bestTarget]!.elem, graph[bestCoordInComp]!.elem)));
+      if (bestPairScore === -Infinity) {
+        const firstPComp = Array.from(placedComps)[0]!;
+        const firstUComp = Array.from(unplacedComps)[0]!;
+        bestA = components[firstPComp]![0]!;
+        bestB = components[firstUComp]![0]!;
+        bestUCompIdx = firstUComp;
+      }
 
-        // Multi-direction clash avoidance
-        const candDirs: Vec3[] = [
-          outDir,
-          { x: -outDir.x, y: -outDir.y, z: outDir.z },
-          { x: outDir.y, y: -outDir.x, z: outDir.z },
-          { x: -outDir.y, y: outDir.x, z: outDir.z },
-          { x: outDir.x, y: outDir.y, z: -outDir.z },
-        ];
+      const targetPos = coords[bestA]!;
+      const neighborIndices = new Set<number>();
+      for (const e of graph[bestA]!.edges) {
+        if (placedAtomSet.has(e.target) && coords[e.target]) {
+          neighborIndices.add(e.target);
+        }
+      }
+      for (const [p1, p2] of pendingIonicBonds) {
+        if (p1 === bestA && placedAtomSet.has(p2) && coords[p2]) {
+          neighborIndices.add(p2);
+        } else if (p2 === bestA && placedAtomSet.has(p1) && coords[p1]) {
+          neighborIndices.add(p1);
+        }
+      }
+      const targetNeighbors = Array.from(neighborIndices).map((idx) => coords[idx]!);
 
-        let bestDelta: Vec3 | null = null;
-        for (const dir of candDirs) {
-          const normDir = vNormalize(dir);
+      let outDir: Vec3;
+      if (targetNeighbors.length > 0) {
+        let sumAway = { x: 0, y: 0, z: 0 };
+        for (const n of targetNeighbors) {
+          sumAway.x += targetPos.x - n.x;
+          sumAway.y += targetPos.y - n.y;
+          sumAway.z += targetPos.z - n.z;
+        }
+        const len = Math.hypot(sumAway.x, sumAway.y, sumAway.z);
+        if (len > 0.1) {
+          outDir = { x: sumAway.x / len, y: sumAway.y / len, z: sumAway.z / len };
+        } else {
+          const firstN = targetNeighbors[0]!;
+          outDir = { x: -(firstN.x - targetPos.x), y: -(firstN.y - targetPos.y), z: -(firstN.z - targetPos.z) };
+        }
+      } else {
+        outDir = { x: 1, y: 0, z: 0 };
+      }
+      outDir = vNormalize(outDir);
+
+      const baseBond = Math.min(2.45, Math.max(2.10, getBondDistance(graph[bestA]!.elem, graph[bestB]!.elem)));
+
+      const candDirs: Vec3[] = [
+        outDir,
+        { x: -outDir.x, y: -outDir.y, z: outDir.z },
+        { x: outDir.y, y: -outDir.x, z: outDir.z },
+        { x: -outDir.y, y: outDir.x, z: outDir.z },
+        { x: outDir.x, y: outDir.y, z: -outDir.z },
+        { x: 0, y: 1, z: 0 },
+        { x: 0, y: -1, z: 0 },
+        { x: 0, y: 0, z: 1 },
+        { x: 0, y: 0, z: -1 },
+        { x: 0.707, y: 0.707, z: 0 },
+        { x: -0.707, y: 0.707, z: 0 },
+        { x: 0.707, y: -0.707, z: 0 },
+        { x: -0.707, y: -0.707, z: 0 },
+        { x: 0.577, y: 0.577, z: 0.577 },
+        { x: -0.577, y: -0.577, z: 0.577 },
+        { x: -0.577, y: 0.577, z: -0.577 },
+        { x: 0.577, y: -0.577, z: -0.577 },
+      ];
+
+      const compToPlace = components[bestUCompIdx]!;
+      let bestDelta: Vec3 | null = null;
+      let maxMinDist = -Infinity;
+      let bestClashDir: { dir: Vec3; shift: Vec3; minDist: number } | null = null;
+
+      for (const dir of candDirs) {
+        const normDir = vNormalize(dir);
+        for (const dScale of [baseBond, baseBond + 0.15, baseBond + 0.3]) {
           const tPos = {
-            x: targetPos.x + normDir.x * dBond,
-            y: targetPos.y + normDir.y * dBond,
-            z: targetPos.z + normDir.z * dBond,
+            x: targetPos.x + normDir.x * dScale,
+            y: targetPos.y + normDir.y * dScale,
+            z: targetPos.z + normDir.z * dScale,
           };
-          const curPos = coords[bestCoordInComp]!;
+          const curPos = coords[bestB]!;
           const dShift = { x: tPos.x - curPos.x, y: tPos.y - curPos.y, z: tPos.z - curPos.z };
 
-          let clashes = false;
-          for (const b of comp) {
+          let minDist = Infinity;
+          for (const b of compToPlace) {
             const bx = coords[b]!.x + dShift.x;
             const by = coords[b]!.y + dShift.y;
             const bz = coords[b]!.z + dShift.z;
-            for (let a = 0; a < graph.length; a++) {
-              if (!placed.has(a) || comp.includes(a)) continue;
+            for (const a of placedAtomSet) {
               const pa = coords[a]!;
               const dist = Math.hypot(bx - pa.x, by - pa.y, bz - pa.z);
-              if (dist < 0.80) {
-                clashes = true;
-                break;
-              }
+              if (dist < minDist) minDist = dist;
             }
-            if (clashes) break;
           }
-          if (!clashes) {
+
+          if (minDist > maxMinDist) {
+            maxMinDist = minDist;
+            bestClashDir = { dir: normDir, shift: dShift, minDist };
+          }
+
+          if (minDist >= 0.78) {
             bestDelta = dShift;
             break;
           }
         }
+        if (bestDelta) break;
+      }
 
-        if (bestDelta) {
-          for (const idx of comp) {
-            if (coords[idx]) {
-              coords[idx]!.x += bestDelta.x;
-              coords[idx]!.y += bestDelta.y;
-              coords[idx]!.z += bestDelta.z;
-            }
-          }
-          ionicCoordCount[bestTarget] = (ionicCoordCount[bestTarget] ?? 0) + 1;
-          pendingIonicBonds.push([Math.min(bestTarget, bestCoordInComp), Math.max(bestTarget, bestCoordInComp)]);
-        } else {
-          // If all candidate coordination directions clash, shift component safely along X
-          let maxX = -Infinity;
-          for (let k = 0; k < graph.length; k++) {
-            if (placed.has(k) && !comp.includes(k) && coords[k]) {
-              maxX = Math.max(maxX, coords[k]!.x);
-            }
-          }
-          if (!Number.isFinite(maxX)) maxX = 0;
+      if (!bestDelta && bestClashDir) {
+        bestDelta = bestClashDir.shift;
+      }
 
-          let currMinX = Infinity;
-          for (const idx of comp) {
-            if (coords[idx]) currMinX = Math.min(currMinX, coords[idx]!.x);
-          }
-          if (!Number.isFinite(currMinX)) currMinX = 0;
-
-          const shift = maxX + 2.8 - currMinX;
-          for (const idx of comp) {
-            if (coords[idx]) {
-              coords[idx]!.x += shift;
-            }
-          }
-        }
-      } else {
-        let maxX = -Infinity;
-        for (let k = 0; k < graph.length; k++) {
-          if (placed.has(k) && !comp.includes(k) && coords[k]) {
-            maxX = Math.max(maxX, coords[k]!.x);
-          }
-        }
-        if (!Number.isFinite(maxX)) maxX = 0;
-
-        let currMinX = Infinity;
-        for (const idx of comp) {
-          if (coords[idx]) currMinX = Math.min(currMinX, coords[idx]!.x);
-        }
-        if (!Number.isFinite(currMinX)) currMinX = 0;
-
-        const shift = maxX + 2.8 - currMinX;
-        for (const idx of comp) {
+      if (bestDelta) {
+        for (const idx of compToPlace) {
           if (coords[idx]) {
-            coords[idx]!.x += shift;
+            coords[idx]!.x += bestDelta.x;
+            coords[idx]!.y += bestDelta.y;
+            coords[idx]!.z += bestDelta.z;
           }
         }
       }
+
+      ionicCoordCount[bestA] = (ionicCoordCount[bestA] ?? 0) + 1;
+      ionicCoordCount[bestB] = (ionicCoordCount[bestB] ?? 0) + 1;
+      pendingIonicBonds.push([Math.min(bestA, bestB), Math.max(bestA, bestB)]);
+
+      for (const idx of compToPlace) {
+        placedAtomSet.add(idx);
+      }
+      placedComps.add(bestUCompIdx);
+      unplacedComps.delete(bestUCompIdx);
     }
-  });
+  }
 
   // 4. Assemble heavy atoms
   const atoms: MoleculeStructure["atoms"] = [];
@@ -1339,6 +1400,12 @@ function generateFromSmiles(smiles: string, rng: () => number): MoleculeStructur
       const compA = components[c]!;
       for (let c2 = c + 1; c2 < components.length; c2++) {
         const compB = components[c2]!;
+
+        const netChargeA = compA.reduce((sum, idx) => sum + graph[idx]!.charge, 0);
+        const netChargeB = compB.reduce((sum, idx) => sum + graph[idx]!.charge, 0);
+        if (netChargeA < 0 && netChargeB < 0) continue;
+        if (netChargeA > 0 && netChargeB > 0) continue;
+
         let minD = Infinity;
         let pair: [number, number] | null = null;
         for (const a of compA) {
@@ -2099,6 +2166,7 @@ function generateOrganicStructure(
         const pElem = atoms[p]!.element;
         if (pElem === "H") continue;
         if (["F", "Cl", "Br", "I"].includes(pElem)) continue;
+        if (sym === "O" && pElem === "O" && !name.includes("perox") && !formula.toLowerCase().includes("o2")) continue;
 
         const maxV = ELEMENT_MAX_VALENCE[pElem] ?? 4;
         const used = valenceUsed[p] ?? 0;

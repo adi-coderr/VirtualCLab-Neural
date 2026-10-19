@@ -215,7 +215,11 @@ export class UnifiedReactantService {
     // Structure generation
     let structure: any = null;
     try {
-      structure = generateMoleculeStructure(id, row.formula);
+      let comp = {};
+      try {
+        if (row.formula) comp = parseFormula(row.formula).composition;
+      } catch {}
+      structure = generateMoleculeStructure(id, row.formula, comp, row.canonical_name, row.smiles);
     } catch {
       // Fallback
     }
