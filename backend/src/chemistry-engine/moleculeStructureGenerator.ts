@@ -2925,6 +2925,48 @@ export function enhance2DCoordinates(struct: MoleculeStructure): MoleculeStructu
 }
 
 /**
+ * Resolves any unphysical spatial overlaps / clashes (< 0.85 Å) between non-bonded atoms in 3D.
+ */
+export function resolve3DCollisions(struct: MoleculeStructure): MoleculeStructure {
+  if (!struct || !struct.atoms || struct.atoms.length < 2) return struct;
+  const atoms = struct.atoms;
+  const bonds = struct.bonds || [];
+  const bonded = new Set<string>();
+  for (const b of bonds) {
+    bonded.add(`${b.atomIndex1}-${b.atomIndex2}`);
+    bonded.add(`${b.atomIndex2}-${b.atomIndex1}`);
+  }
+
+  for (let iter = 0; iter < 15; iter++) {
+    let anyClash = false;
+    for (let i = 0; i < atoms.length; i++) {
+      for (let j = i + 1; j < atoms.length; j++) {
+        if (bonded.has(`${i}-${j}`)) continue;
+        let dx = atoms[j]!.x3d - atoms[i]!.x3d;
+        let dy = atoms[j]!.y3d - atoms[i]!.y3d;
+        let dz = atoms[j]!.z3d - atoms[i]!.z3d;
+        let d = Math.hypot(dx, dy, dz);
+        if (d < 0.85) {
+          anyClash = true;
+          if (d < 0.01) {
+            dx = 0.5; dy = 0.5; dz = 0.5; d = Math.hypot(dx, dy, dz);
+          }
+          const push = (0.85 - d) / 2;
+          atoms[i]!.x3d -= (dx / d) * push;
+          atoms[i]!.y3d -= (dy / d) * push;
+          atoms[i]!.z3d -= (dz / d) * push;
+          atoms[j]!.x3d += (dx / d) * push;
+          atoms[j]!.y3d += (dy / d) * push;
+          atoms[j]!.z3d += (dz / d) * push;
+        }
+      }
+    }
+    if (!anyClash) break;
+  }
+  return struct;
+}
+
+/**
  * Annotates each bond in the structure with chemically accurate bond length (in Å)
  * and primary bond valence angle (in degrees).
  */
@@ -3098,6 +3140,7 @@ export function generateMoleculeStructure(
     if (hydrateInfo && hydrateInfo.waterCount > 0) {
       result = attachHydrateWaters(result, hydrateInfo.waterCount);
     }
+    result = resolve3DCollisions(result);
     const with2D = skip2DRelaxation ? result : enhance2DCoordinates(result);
     return annotateBondLengthsAndAngles(with2D);
   };
@@ -3188,19 +3231,19 @@ export function generateMoleculeStructure(
     if (count === 2) {
       const d = getBondDistance(elem, elem) || (elem === "H" ? 0.74 : 1.4);
       const order = elem === "N" ? 3 : elem === "O" ? 2 : 1;
-      return {
+      return finalize({
         curated: true,
         atoms: [
           { atomIndex: 0, element: elem, x3d: Number((-d / 2).toFixed(3)), y3d: 0, z3d: 0, x2d: -30, y2d: 0 },
           { atomIndex: 1, element: elem, x3d: Number((d / 2).toFixed(3)), y3d: 0, z3d: 0, x2d: 30, y2d: 0 },
         ],
-        bonds: [{ atomIndex1: 0, atomIndex2: 1, order: order as 1 | 2 | 3, type: "covalent" }],
-      };
+        bonds: [{ atomIndex1: 0, atomIndex2: 1, order: order as 1 | 2 | 3, type: "covalent", length: d, angle: 180.0, angleLabel: "linear" }],
+      });
     }
     if (count === 3 && elem === "O") {
       const d = 1.28;
       const angle = (116.8 * Math.PI) / 180;
-      return {
+      return finalize({
         curated: true,
         atoms: [
           { atomIndex: 0, element: "O", x3d: 0, y3d: 0.35, z3d: 0, x2d: 0, y2d: 20 },
@@ -3208,10 +3251,10 @@ export function generateMoleculeStructure(
           { atomIndex: 2, element: "O", x3d: Number((d * Math.sin(angle / 2)).toFixed(3)), y3d: -0.35, z3d: 0, x2d: 35, y2d: -20 },
         ],
         bonds: [
-          { atomIndex1: 0, atomIndex2: 1, order: 2, type: "covalent" },
-          { atomIndex1: 0, atomIndex2: 2, order: 1, type: "covalent" },
+          { atomIndex1: 0, atomIndex2: 1, order: 2, type: "covalent", length: d, angle: 116.8, angleLabel: "O–O–O" },
+          { atomIndex1: 0, atomIndex2: 2, order: 1, type: "covalent", length: d, angle: 116.8, angleLabel: "O–O–O" },
         ],
-      };
+      });
     }
     if (count > 2) {
       const d = Math.max(1.4, getBondDistance(elem, elem) || 2.0);
@@ -3320,6 +3363,10 @@ function generateCuratedComplexOrSalt(
   formula: string,
   commonName: string
 ): MoleculeStructure | null {
+  const isCyano = (comp["C"] ?? 0) === 6 && (comp["N"] ?? 0) === 6 && (comp["Fe"] ?? 0) >= 1 && (comp["S"] ?? 0) === 0;
+  if ((comp["C"] ?? 0) > 0 && !isCyano) {
+    return null;
+  }
   const isDivalentMetal = (m: string) => ["Ba", "Pb", "Sr", "Ca", "Mg"].includes(m);
 
   // Helper to add a counter-cation, expanding NH4+ into N+ with 4 tetrahedral H atoms if applicable
@@ -3576,7 +3623,6 @@ function generateCuratedComplexOrSalt(
   }
 
   // 4. Hexacyanoferrate complexes: [Fe(CN)6]^4- / [Fe(CN)6]^3- / Prussian Blue
-  const isCyano = (comp["C"] ?? 0) === 6 && (comp["N"] ?? 0) === 6 && (comp["Fe"] ?? 0) >= 1 && (comp["S"] ?? 0) === 0;
   if (isCyano) {
     const metals = Object.keys(comp).filter((k) => k !== "Fe" && k !== "C" && k !== "N");
     const mTotal = metals.reduce((sum, m) => {
@@ -3657,6 +3703,7 @@ function generateCoordinationComplex(
   formula: string,
   commonName: string
 ): MoleculeStructure | null {
+  if ((comp["C"] ?? 0) > 0) return null; // Ammonia / ammine complexes are inorganic
   const metals = ["Co", "Cr", "Ni", "Cu", "Fe", "Pt", "Pd", "Ru", "Rh", "Mn", "Zn", "Ag"];
   const metal = metals.find((m) => (comp[m] ?? 0) === 1);
   if (!metal) return null;
@@ -3807,6 +3854,7 @@ function generatePolyOxoanionSalt(
   formula: string,
   commonName: string
 ): MoleculeStructure | null {
+  if ((comp["C"] ?? 0) > 0) return null; // strictly inorganic poly-oxoanions
   const centerElem = (comp["S"] ?? 0) > 1 ? "S" : (comp["P"] ?? 0) > 1 ? "P" : null;
   if (!centerElem) return null;
   const sCount = comp[centerElem] ?? 0;

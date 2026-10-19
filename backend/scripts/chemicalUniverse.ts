@@ -367,8 +367,8 @@ export function loadAllChemicalCandidates(): ChemicalCandidate[] {
 
   // Additional systematic chemical space expansion to cover all 63,000+ compounds
   // (polymers, peptides, amino acids, monosaccharides, heterocycles, polyatomic minerals)
-  if (map.size < 63500) {
-    const targetToAdd = 63500 - map.size;
+  if (map.size < 63506) {
+    const targetToAdd = 63506 - map.size;
     const commonBackbones = [
       { name: "Peptide", base: "C3H5NO" },
       { name: "Alkanediol", base: "C2H4(OH)2" },
