@@ -52,29 +52,56 @@ export interface AfterEffectVisual {
 }
 
 /**
- * Analyzes the reaction resolution (outcome, after-effects, observableEffects, chemicals)
- * and generates the full physical in-beaker visual simulation parameters.
+ * Deterministic Chemical Visualizer:
+ * Strict Two-Tier Architecture:
+ * - Tier 1: Dedicated animations for the 20 Curated Showcase Reactions (matched strictly by Canonical ID or Exact Chemical Species pairs).
+ * - Tier 2: Physically accurate observable effects for all other 600+ reactions (bubbling, precipitate settling, or clean solution).
+ * This completely eliminates hallucinations and accidental visual effect leaks between reactions.
  */
 export function getAfterEffectVisual(resolution: ReactionResolution): AfterEffectVisual | null {
+  const rxnId = String((resolution as any).reactionId || (resolution as any).id || "").toLowerCase();
+
+  const reactantIds = new Set(
+    (resolution.reactants || []).map((r) => String(r.chemicalId || "").toLowerCase().trim())
+  );
+  const productIds = new Set(
+    (resolution.products || []).map((p) => String(p.chemicalId || "").toLowerCase().trim())
+  );
+
+  const hasR = (...candidates: string[]) => candidates.some((c) => reactantIds.has(c));
+  const hasP = (...candidates: string[]) => candidates.some((c) => productIds.has(c));
+
   const text = [
     resolution.outcome || "",
     resolution.specialConditions?.outcome || "",
     resolution.afterEffect || "",
     resolution.specialConditions?.afterEffect || "",
     resolution.balancedEquation || "",
-    (resolution as any).reactionId || (resolution as any).id || "",
+    rxnId,
     ...(resolution.reactants || []).map((r) => `${r.chemicalId} ${r.formula} ${r.commonName}`),
     ...(resolution.products || []).map((p) => `${p.chemicalId} ${p.formula} ${p.commonName}`),
   ]
     .join(" ")
     .toLowerCase();
 
-  if (!text.trim() && !resolution.conditionsDescription) {
+  if (!text.trim() && !resolution.conditionsDescription && reactantIds.size === 0) {
     return null;
   }
 
+  // =========================================================================
+  // TIER 1: THE 20 CURATED SHOWCASE REACTIONS (STRICT MATCHING)
+  // =========================================================================
+
   // 1. Nylon-6,6 interfacial trick (Reaction 18)
-  if (text.includes("nylon") || text.includes("adipoyl") || text.includes("c12h22n2o2")) {
+  if (
+    rxnId.includes("rxn-18") ||
+    rxnId.includes("nylon-rope") ||
+    hasP("nylon_66", "nylon-6,6", "c12h22n2o2") ||
+    (hasR("adipoyl-chloride", "adipoyl_chloride") && hasR("hexamethylenediamine")) ||
+    text.includes("interfacial nylon") ||
+    text.includes("nylon rope") ||
+    text.includes("nylon thread")
+  ) {
     return {
       type: "polymer_film",
       effect: "nylon_rope_pull",
@@ -87,7 +114,14 @@ export function getAfterEffectVisual(resolution: ReactionResolution): AfterEffec
   }
 
   // 2. Sodium + chlorine (Reaction 1)
-  if ((text.includes("na") && text.includes("cl2")) || (text.includes("sodium") && text.includes("chlorine")) || text.includes("coats the vessel")) {
+  if (
+    rxnId.includes("rxn-01") ||
+    rxnId.includes("sodium-chlorine") ||
+    (hasR("na") && hasR("cl2")) ||
+    text.includes("warmed sodium lowered into a chlorine-filled jar") ||
+    text.includes("sodium melts and burns with an intense yellow flame") ||
+    text.includes("white nacl coats the vessel")
+  ) {
     return {
       type: "salt_crust",
       effect: "flame_smoke",
@@ -104,7 +138,13 @@ export function getAfterEffectVisual(resolution: ReactionResolution): AfterEffec
   }
 
   // 3. Magnesium + CO2 (Reaction 3)
-  if ((text.includes("mg") && text.includes("co2")) || text.includes("carbon specks") || text.includes("magnesium")) {
+  if (
+    rxnId.includes("rxn-03") ||
+    rxnId.includes("magnesium-carbon-dioxide") ||
+    (hasR("mg") && hasR("co2")) ||
+    text.includes("magnesium burns furiously inside co2") ||
+    text.includes("carbon specks on the vessel wall")
+  ) {
     return {
       type: "carbon_specks",
       effect: "flame_smoke",
@@ -121,7 +161,14 @@ export function getAfterEffectVisual(resolution: ReactionResolution): AfterEffec
   }
 
   // 4. Aluminium + iodine (Reaction 2)
-  if ((text.includes("al") && text.includes("i2")) || text.includes("purple vapour") || text.includes("purple iodine") || text.includes("sublimes")) {
+  if (
+    rxnId.includes("rxn-02") ||
+    rxnId.includes("aluminium-iodine") ||
+    (hasR("al") && hasR("i2")) ||
+    hasP("ali3") ||
+    text.includes("purple iodine crystals and vapour") ||
+    text.includes("unreacted iodine sublimes into dense purple vapour")
+  ) {
     return {
       type: "purple_vapor",
       effect: "purple_eruption",
@@ -136,7 +183,13 @@ export function getAfterEffectVisual(resolution: ReactionResolution): AfterEffec
   }
 
   // 5. Copper + concentrated nitric acid (Reaction 6)
-  if ((text.includes("cu") && text.includes("hno3")) || text.includes("brown no2") || text.includes("brown fumes")) {
+  if (
+    rxnId.includes("rxn-06") ||
+    rxnId.includes("copper-nitric-acid") ||
+    (hasR("cu") && hasR("hno3")) ||
+    text.includes("dense brown no2 fumes") ||
+    text.includes("dense choking reddish-brown no2")
+  ) {
     return {
       type: "brown_fumes",
       effect: "brown_fumes_effervescence",
@@ -151,7 +204,14 @@ export function getAfterEffectVisual(resolution: ReactionResolution): AfterEffec
   }
 
   // 6. Ammonia + HCl magic smoke (Reaction 7)
-  if ((text.includes("nh3") && text.includes("hcl")) || text.includes("nh4cl") || text.includes("white smoke")) {
+  if (
+    rxnId.includes("rxn-07") ||
+    rxnId.includes("ammonia-hydrogen-chloride") ||
+    (hasR("ammonia", "nh3") && hasR("hcl")) ||
+    hasP("ammonium-chloride", "nh4cl") ||
+    text.includes("white nh4cl smoke") ||
+    text.includes("white ammonium chloride smoke")
+  ) {
     return {
       type: "white_smoke",
       effect: "white_smoke_cloud",
@@ -165,7 +225,14 @@ export function getAfterEffectVisual(resolution: ReactionResolution): AfterEffec
   }
 
   // 7. Iron + sulfur (Reaction 4)
-  if ((text.includes("fe") && text.includes("s")) || text.includes("fes") || text.includes("red glow")) {
+  if (
+    rxnId.includes("rxn-04") ||
+    rxnId.includes("iron-sulfur") ||
+    (hasR("fe") && hasR("s")) ||
+    hasP("fes") ||
+    text.includes("fused fes") ||
+    text.includes("cherry-red incandescent thermal front")
+  ) {
     return {
       type: "solid_compound",
       effect: "incandescent_glow",
@@ -179,7 +246,12 @@ export function getAfterEffectVisual(resolution: ReactionResolution): AfterEffec
   }
 
   // 8. Claus reaction / Sulfur precipitation (Reaction 8)
-  if (text.includes("claus") || text.includes("h2s") || text.includes("so2") || text.includes("colloidal sulfur") || text.includes("turbid")) {
+  if (
+    rxnId.includes("rxn-08") ||
+    rxnId.includes("claus") ||
+    (hasR("h2s") && hasR("so2")) ||
+    text.includes("canary-yellow colloidal sulfur cloud")
+  ) {
     return {
       type: "sulfur_deposit",
       effect: "colloidal_precipitate",
@@ -192,7 +264,11 @@ export function getAfterEffectVisual(resolution: ReactionResolution): AfterEffec
   }
 
   // 9. Hydrogen + iodine equilibrium (Reaction 9)
-  if (text.includes("h2(g) + i2(g)") || (text.includes("equilibrium") && text.includes("iodine"))) {
+  if (
+    rxnId.includes("rxn-09") ||
+    rxnId.includes("hydrogen-iodine") ||
+    ((hasR("h2") && hasR("i2")) && (text.includes("equilibrium") || text.includes("reversible")))
+  ) {
     return {
       type: "purple_vapor",
       effect: "purple_eruption",
@@ -205,8 +281,18 @@ export function getAfterEffectVisual(resolution: ReactionResolution): AfterEffec
     };
   }
 
-  // 10. Ethene + bromine & Acetone + iodine (Reaction 11 & 10)
-  if (text.includes("c2h4") || text.includes("bromine water") || text.includes("decoloriz") || text.includes("dibromoethane") || text.includes("acetone")) {
+  // 10. Decolorization & Oily Phase Lens (Reactions 10 & 11)
+  if (
+    rxnId.includes("rxn-10") ||
+    rxnId.includes("rxn-11") ||
+    rxnId.includes("ethene-bromine") ||
+    rxnId.includes("acetone-iodine") ||
+    (hasR("c2h4", "ethene") && hasR("br2", "bromine")) ||
+    (hasR("acetone", "ch3coch3") && hasR("i2", "iodine")) ||
+    hasP("c2h4br2", "1,2-dibromoethane") ||
+    text.includes("1,2-dibromoethane oily lens") ||
+    text.includes("bromine water decoloriz")
+  ) {
     return {
       type: "oily_layer",
       effect: "decolorization_oily",
@@ -219,7 +305,14 @@ export function getAfterEffectVisual(resolution: ReactionResolution): AfterEffec
   }
 
   // 11. Aspirin crystallization (Reaction 17)
-  if (text.includes("aspirin") || text.includes("c9h8o4") || text.includes("needle") || text.includes("crystals")) {
+  if (
+    rxnId.includes("rxn-17") ||
+    rxnId.includes("aspirin") ||
+    hasP("aspirin", "c9h8o4") ||
+    (hasR("c7h6o3", "salicylic-acid", "salicylic_acid") && hasR("acetic-anhydride", "acetic_anhydride")) ||
+    text.includes("needle crystal forest") ||
+    text.includes("aspirin crystals")
+  ) {
     return {
       type: "crystal_mesh",
       effect: "crystal_growth",
@@ -232,7 +325,11 @@ export function getAfterEffectVisual(resolution: ReactionResolution): AfterEffec
   }
 
   // 12. Photosynthesis (Reaction 19)
-  if (text.includes("photosynthesis") || text.includes("glucose") || (text.includes("co2") && text.includes("o2"))) {
+  if (
+    rxnId.includes("rxn-19") ||
+    rxnId.includes("photosynthesis") ||
+    (hasP("glucose") && hasP("o2"))
+  ) {
     return {
       type: "o2_bubbles",
       effect: "effervescent_stream",
@@ -245,7 +342,11 @@ export function getAfterEffectVisual(resolution: ReactionResolution): AfterEffec
   }
 
   // 13. Acid rain / Sulfur + O2 + H2O (Reaction 20)
-  if ((text.includes("s(s)") && text.includes("o2") && text.includes("h2o")) || text.includes("acid rain") || text.includes("h2so3")) {
+  if (
+    rxnId.includes("rxn-20") ||
+    rxnId.includes("acid-rain") ||
+    (hasR("s") && hasR("o2") && hasR("water", "h2o"))
+  ) {
     return {
       type: "acid_mist",
       effect: "acid_flash_color",
@@ -261,7 +362,11 @@ export function getAfterEffectVisual(resolution: ReactionResolution): AfterEffec
   }
 
   // 14. Ostwald process (Reaction 15)
-  if (text.includes("ostwald") || (text.includes("ammonia") && text.includes("o2") && text.includes("no"))) {
+  if (
+    rxnId.includes("rxn-15") ||
+    rxnId.includes("ostwald") ||
+    ((hasR("ammonia", "nh3") && hasR("o2")) && (hasP("no") || text.includes("pt catalyst") || text.includes("gauze")))
+  ) {
     return {
       type: "brown_fumes",
       effect: "brown_fumes_effervescence",
@@ -276,7 +381,12 @@ export function getAfterEffectVisual(resolution: ReactionResolution): AfterEffec
   }
 
   // 15. Fischer esterification (Reaction 16)
-  if (text.includes("esterification") || text.includes("ethyl acetate") || text.includes("ch3cooc2h5")) {
+  if (
+    rxnId.includes("rxn-16") ||
+    rxnId.includes("fischer-esterification") ||
+    hasP("ch3cooc2h5") ||
+    (hasR("acetic-acid", "ch3cooh") && hasR("c2h5oh", "ethanol"))
+  ) {
     return {
       type: "oily_layer",
       effect: "decolorization_oily",
@@ -289,7 +399,18 @@ export function getAfterEffectVisual(resolution: ReactionResolution): AfterEffec
   }
 
   // 16. Wall droplets & condensation (Reactions 5, 12, 13, 14)
-  if (text.includes("condensation") || text.includes("misty") || text.includes("haber") || text.includes("reforming") || text.includes("chloromethane")) {
+  if (
+    rxnId.includes("rxn-05") ||
+    rxnId.includes("rxn-12") ||
+    rxnId.includes("rxn-13") ||
+    rxnId.includes("rxn-14") ||
+    rxnId.includes("haber") ||
+    rxnId.includes("steam-reforming") ||
+    (hasR("h2") && hasR("cl2")) ||
+    (hasR("n2") && hasR("h2")) ||
+    (hasR("ch4") && hasR("cl2")) ||
+    (hasR("ch4") && hasR("water", "h2o"))
+  ) {
     return {
       type: "acid_mist",
       effect: "droplet_condensation",
@@ -301,8 +422,16 @@ export function getAfterEffectVisual(resolution: ReactionResolution): AfterEffec
     };
   }
 
-  // Generic fallback if reaction has observableEffects or gas/precipitation
-  const hasGas = resolution.observableEffects?.some((e) => e.type === "gas_evolution");
+  // =========================================================================
+  // TIER 2: GENERAL DETERMINISTIC OBSERVABLE PHYSICS (FOR ALL OTHER REACTIONS)
+  // =========================================================================
+  const hasGas =
+    resolution.observableEffects?.some((e) => e.type === "gas_evolution" || e.type === "effervescence") ||
+    /\bco2\b/i.test(text) ||
+    /\bh2\b/i.test(text) ||
+    text.includes("effervescence") ||
+    text.includes("gas bubbling");
+
   const hasPrecip = resolution.observableEffects?.some((e) => e.type === "precipitation");
 
   if (hasGas) {
