@@ -166,11 +166,6 @@ export function ReactionResultPanel({ result }: { result: SimulationResult }) {
             aiProvider={resolution.aiProvider}
             isAiPredicted={resolution.isAiPredicted}
           />
-          {resolution.aiProvider && resolution.isAiPredicted && (
-            <span className="reaction-result__provider-badge" title={`Reaction synthesized via ${resolution.aiProvider}`}>
-              {resolution.aiProvider}
-            </span>
-          )}
         </div>
         {resolution.reactionType && (
           <span className="reaction-result__type">{resolution.reactionType.replace(/_/g, " ")}</span>
