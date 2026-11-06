@@ -39,9 +39,48 @@ VirtualCLab/
 
 ---
 
+## Prerequisites
+
+- **Node.js** ≥ 18.18 and **npm** — [Download](https://nodejs.org/)
+- **Python** 3.9+ — [Download](https://www.python.org/downloads/)
+- A modern browser (Chrome, Firefox, Edge)
+
+---
+
+## First-Time Setup
+
+After cloning the repo, follow these steps **once** to set up your environment:
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/adi-coderr/VirtualCLab-Neural.git
+cd VirtualCLab-Neural
+
+# 2. Install Node.js dependencies (backend + frontend)
+cd backend && npm install && cd ..
+cd frontend && npm install && cd ..
+
+# 3. Set up the Python virtual environment (for the ML Model)
+python3 -m venv .venv
+source .venv/bin/activate          # macOS / Linux
+# .venv\Scripts\activate           # Windows
+pip install -r requirements.txt
+
+# 4. Configure environment variables
+cp backend/.env.example backend/.env
+# Edit backend/.env to add your AI API keys (optional — you can also enter them in the UI)
+
+# 5. Initialize the database
+cd backend && npm run db:reset && cd ..
+```
+
+> **Note:** The Neural ML Model weights (~758 MB) are downloaded automatically from HuggingFace on first startup. If you already have a local checkpoint, place it in `virtual_chem_lab_modelV2/model/`.
+
+---
+
 ## Quick Start (All-in-One)
 
-You can launch all services (Python ML model, Node.js backend, and React frontend) with a single command:
+Once setup is complete, launch all services with a single command:
 
 ```bash
 ./start.sh
@@ -63,20 +102,21 @@ If you prefer running services in separate terminal windows to view distinct log
 
 ### 1. Neural ML Model Server (Python / PyTorch)
 ```bash
-.venv/bin/python3 backend/src/ai/model_service.py
+source .venv/bin/activate
+python3 backend/src/ai/model_service.py
 ```
 > Running on `http://127.0.0.1:5005` (MPS / CPU hardware acceleration enabled).
 
 ### 2. Backend API Server (Node.js / Express)
 ```bash
-npm install
+cd backend
 npm run dev
 ```
 > Running on `http://localhost:4000` (auto-detects and connects to the ML server).
 
 ### 3. Frontend Web Application (React / Vite)
 ```bash
-npm install
+cd frontend
 npm run dev
 ```
 > Accessible at `http://localhost:5173`.
