@@ -18,3 +18,4 @@ pydantic==2.13.5
 rdkit==2025.9.2
 numpy==2.0.2
 pandas==2.3.3
+
