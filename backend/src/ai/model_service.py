@@ -26,9 +26,13 @@ if os.path.exists(MODEL_DIR):
     sys.path.insert(0, MODEL_DIR)
     sys.path.insert(0, os.path.join(MODEL_DIR, "task_forward"))
 
-# Check for local checkpoint in virtual_chem_lab_modelV2/model, else fallback to Hugging Face ID
+# Check for local checkpoint in virtual_chem_lab_modelV2/model with actual weights, else fallback to Hugging Face ID
 LOCAL_MODEL_DIR = os.path.join(MODEL_DIR, "model")
-if os.path.exists(os.path.join(LOCAL_MODEL_DIR, "config.json")):
+has_local_weights = os.path.exists(os.path.join(LOCAL_MODEL_DIR, "config.json")) and (
+    os.path.exists(os.path.join(LOCAL_MODEL_DIR, "model.safetensors"))
+    or os.path.exists(os.path.join(LOCAL_MODEL_DIR, "pytorch_model.bin"))
+)
+if has_local_weights:
     MODEL_PATH = LOCAL_MODEL_DIR
 else:
     MODEL_PATH = os.environ.get("REACTIONT5_MODEL", "sagawa/ReactionT5v2-forward")
