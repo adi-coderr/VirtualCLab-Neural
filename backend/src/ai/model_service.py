@@ -63,7 +63,7 @@ def load_model():
     t0 = time.time()
     print(f"[ReactionT5v2] Loading tokenizer and model from {MODEL_PATH}...")
     
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, fix_markdown=False)
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
     
     if torch.backends.mps.is_available():
         device = "mps"

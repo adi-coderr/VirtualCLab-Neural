@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -16,11 +17,39 @@ const unifiedDbPath = path.resolve(__dirname, "../../data/chemlab_unified.db");
 let dbInstance: Database.Database | null = null;
 
 export function getUnifiedDb(): Database.Database {
-  if (!dbInstance) {
+  if (dbInstance) return dbInstance;
+
+  if (!fs.existsSync(unifiedDbPath)) {
+    // Graceful fallback to an in-memory database with schema when unified DB file is absent
+    dbInstance = new Database(":memory:");
+    dbInstance.exec(`
+      CREATE TABLE IF NOT EXISTS reactants_unified (
+        id TEXT PRIMARY KEY,
+        canonical_name TEXT,
+        iupac_name TEXT,
+        formula TEXT,
+        cas_number TEXT,
+        smiles TEXT,
+        category_tags TEXT,
+        melting_point_k REAL,
+        boiling_point_k REAL,
+        density_kg_m3 REAL
+      );
+      CREATE TABLE IF NOT EXISTS reactant_aliases (reactant_id TEXT, alias TEXT);
+      CREATE TABLE IF NOT EXISTS reactant_property_provenance (reactant_id TEXT, property_name TEXT, status TEXT, raw_value TEXT, provenance_source TEXT, confidence_score REAL);
+      CREATE TABLE IF NOT EXISTS reactant_isotopes (reactant_id TEXT, mass_number INT, isotopic_mass_u REAL, abundance_percent REAL, half_life TEXT);
+    `);
+    return dbInstance;
+  }
+
+  try {
     dbInstance = new Database(unifiedDbPath, { readonly: true });
     dbInstance.pragma("journal_mode = WAL");
+    return dbInstance;
+  } catch {
+    dbInstance = new Database(":memory:");
+    return dbInstance;
   }
-  return dbInstance;
 }
 
 export interface ReactantSearchQuery {

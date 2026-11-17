@@ -1,6 +1,28 @@
 import "dotenv/config";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+function resolveDatabaseFile(nodeEnv: string): string {
+  if (process.env.DATABASE_FILE) return process.env.DATABASE_FILE;
+  if (nodeEnv === "test") return ":memory:";
+
+  const candidates = [
+    path.resolve(__dirname, "../../data/chemlab.db"),
+    path.join(process.cwd(), "backend", "data", "chemlab.db"),
+    path.join(process.cwd(), "data", "chemlab.db"),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return path.resolve(__dirname, "../../data/chemlab.db");
+}
 
 export interface AppConfig {
   port: number;
@@ -22,13 +44,7 @@ export function getConfig(): AppConfig {
   const nodeEnv = (process.env.NODE_ENV as AppConfig["nodeEnv"]) || "development";
   cached = {
     port: Number(process.env.PORT ?? 4000),
-    databaseFile:
-      process.env.DATABASE_FILE ??
-      (nodeEnv === "test"
-        ? ":memory:"
-        : fs.existsSync(path.join(process.cwd(), "backend", "data", "chemlab.db"))
-          ? path.join(process.cwd(), "backend", "data", "chemlab.db")
-          : path.join(process.cwd(), "data", "chemlab.db")),
+    databaseFile: resolveDatabaseFile(nodeEnv),
     corsOrigin: process.env.CORS_ORIGIN ?? "http://localhost:5173",
     nodeEnv,
     anthropicApiKey: process.env.ANTHROPIC_API_KEY,
