@@ -41,9 +41,9 @@ VirtualCLab/
 
 ## Prerequisites
 
-- **Node.js** ≥ 18.18 and **npm** — [Download](https://nodejs.org/)
+- **Node.js** ≥ 18.18 (supports Node.js 20, 22 LTS, and Node.js 26+) and **npm** — [Download](https://nodejs.org/)
 - **Python** 3.9+ — [Download](https://www.python.org/downloads/)
-- A modern browser (Chrome, Firefox, Edge)
+- A modern browser (Chrome, Firefox, Brave, Edge)
 
 ---
 
@@ -72,9 +72,15 @@ cp backend/.env.example backend/.env
 
 # 5. Initialize the database
 cd backend && npm run db:reset && cd ..
+
+# 6. Ensure startup script is executable
+chmod +x start.sh
 ```
 
-> **Note:** The Neural ML Model weights (~758 MB) are downloaded automatically from HuggingFace on first startup. If you already have a local checkpoint, place it in `virtual_chem_lab_modelV2/model/`.
+> **Note:** The Neural ML Model weights (~758 MB) are loaded from your local checkpoint in `virtual_chem_lab_modelV2/model/` or downloaded automatically on first startup. You can also pre-download them upfront:
+> ```bash
+> python3 -c "from transformers import AutoTokenizer, AutoModelForSeq2SeqLM; AutoTokenizer.from_pretrained('sagawa/ReactionT5v2-forward'); AutoModelForSeq2SeqLM.from_pretrained('sagawa/ReactionT5v2-forward')"
+> ```
 
 ---
 
@@ -153,6 +159,28 @@ npm run db:reset
    - Click the **"Reaction ML Model"** button in the header or the right-side tab.
    - Click any pre-loaded demo (e.g., *Esterification*, *Aromatic Halogenation*, *Diels-Alder*) or enter your own SMILES/reactants.
    - Click **"Predict Reaction Outcome (ML Model)"** to generate the predicted equation and synthesized products.
+
+---
+
+## Troubleshooting
+
+### Port Already in Use (`EADDRINUSE`)
+If port 4000, 5005, or 5173 is already occupied by a background process, kill lingering instances with:
+```bash
+lsof -ti:4000,5005,5173 | xargs kill -9 2>/dev/null || true
+```
+
+### Resetting the Chemical Database
+If you need to restore the SQLite chemical database to a clean, seeded state:
+```bash
+cd backend && npm run db:reset && cd ..
+```
+
+### Apple Silicon GPU (`mps`) Acceleration
+The ML service automatically detects Apple Silicon and enables Metal Performance Shaders (`mps`). You can verify device status by visiting:
+```
+http://127.0.0.1:5005/health
+```
 
 ---
 
